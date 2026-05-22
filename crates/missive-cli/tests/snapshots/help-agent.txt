@@ -1,6 +1,13 @@
-Manage configured A2A agents, aliases, Agent Card discovery, and cached capability metadata. Registry operations are implemented by later agent tickets.
+Manage configured A2A agent aliases in the local SQLite registry. Agent Card discovery, refresh, and capability inspection are implemented by later A2A tickets.
 
-Usage: missive agent [OPTIONS]
+Usage: missive agent [OPTIONS] [COMMAND]
+
+Commands:
+  add     Add one writable local agent registry entry
+  remove  Remove one writable local agent registry entry
+  list    List local and config-seeded agent registry entries
+  show    Show one local or config-seeded agent registry entry
+  rename  Rename one writable local agent registry entry
 
 Options:
   -h, --help

@@ -31,7 +31,7 @@ Human-facing rendering uses normal `Display` text plus `miette::Diagnostic` code
 
 ## CLI command skeleton
 
-`crates/missive-cli` owns the clap-derived `Cli`, `GlobalArgs`, and `Commands` types. The skeleton currently exposes top-level commands for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`.
+`crates/missive-cli` owns the clap-derived `Cli`, `GlobalArgs`, and `Commands` types. The CLI currently exposes top-level commands for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`. The `agent` command now has implemented registry subcommands for `add`, `remove`, `list`, `show`, and `rename`; other top-level commands remain skeletal until their ordered tickets land.
 
 Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`. `--config` and `--profile` now feed the core configuration loader; timeout enforcement and tracing remain for later tickets.
 
@@ -46,7 +46,7 @@ Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`,
 
 If no explicit output flag is present, the loaded config's effective `output.format` selects the default renderer. The current envelope schema marker is `missive.output.v1`. Successful skeletal commands emit `kind: "command_status"` with a secret-free config source summary; structured errors emit `kind: "error"` with `missive-core`'s `ErrorReport` under `data`. The renderer recursively redacts secret-like JSON fields and HTTP-style auth headers before writing machine output.
 
-Help output for the top-level CLI and key commands is covered by snapshot tests under `crates/missive-cli/tests/snapshots/`. JSON, NDJSON, quiet-mode, error-shape, and redaction behavior is covered by output contract tests under `crates/missive-cli/tests/output_contract.rs`.
+Help output for the top-level CLI and key commands is covered by snapshot tests under `crates/missive-cli/tests/snapshots/`. JSON, NDJSON, quiet-mode, error-shape, and redaction behavior is covered by output contract tests under `crates/missive-cli/tests/output_contract.rs`. Agent registry command behavior, duplicate aliases, missing agents, alias validation, renaming, and config-seeded read-only entries are covered by `crates/missive-cli/tests/agent_registry.rs`.
 
 ## Core primitive contract
 
@@ -71,7 +71,7 @@ The store layer exposes two process lock kinds for later tickets: `state.lock` f
 
 `crates/missive-store` also owns the embedded SQLite migration strategy. Migration SQL files live under `crates/missive-store/migrations`, are recorded in a `schema_migrations` ledger with checksums, and are applied in version order inside transactions. The current schema version is `1` and creates tables for agents, contexts, tasks, messages, artifacts, events, groups, group members, auth refs, push configs, gateway jobs, and adapter bindings.
 
-The store crate now exposes a blocking typed repository facade, `Store`, for one migrated profile database. Repository methods cover agents, contexts, tasks, events, groups/group members, and gateway jobs using `missive-core` identifiers, `MissiveTimestamp`, `Metadata`, typed state/source enums, and validated store-specific ids. SQL remains private to `missive-store`; CLI, gateway, adapter, and router code should use the repository APIs rather than constructing queries. `Store::transaction` provides the transactional update helper for multi-row changes and rolls back if the closure returns an error or a SQLite constraint fails. Because the implementation uses synchronous `rusqlite`, async components should call it from a blocking task or store worker.
+The store crate now exposes a blocking typed repository facade, `Store`, for one migrated profile database. Repository methods cover auth refs, agents, contexts, tasks, events, groups/group members, and gateway jobs using `missive-core` identifiers, `MissiveTimestamp`, `Metadata`, typed state/source enums, and validated store-specific ids. SQL remains private to `missive-store`; CLI, gateway, adapter, and router code should use the repository APIs rather than constructing queries. `missive agent` resolves the selected profile state path, acquires the state mutation lock, opens/migrates the SQLite store, syncs config auth refs as non-secret rows, syncs config-seeded agents as read-only rows, and then performs registry operations through these APIs. `Store::transaction` provides the transactional update helper for multi-row changes, including agent rename, and rolls back if the closure returns an error or a SQLite constraint fails. Because the implementation uses synchronous `rusqlite`, async components should call it from a blocking task or store worker.
 
 See [`docs/storage.md`](storage.md) for table purpose, retention notes, and repository API details.
 

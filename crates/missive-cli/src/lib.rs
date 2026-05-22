@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
 
+pub mod agent;
 pub mod output;
 
 pub use output::{
@@ -48,7 +49,7 @@ const REQUIRED_SUBCOMMANDS: [&str; 14] = [
     bin_name = "missive",
     version,
     about = "Manage A2A-native agent communication from the terminal.",
-    long_about = "missive is a local control-plane CLI for A2A-native agent communication. This skeleton exposes the stable top-level command tree and global flags; operational subcommands are implemented by later tickets.",
+    long_about = "missive is a local control-plane CLI for A2A-native agent communication. The command tree and global flags are stable, and operational behavior is being implemented ticket by ticket.",
     disable_help_subcommand = true,
     propagate_version = true,
     term_width = 100
@@ -123,9 +124,13 @@ pub struct GlobalArgs {
 pub enum Commands {
     /// Manage configured A2A agents and cached Agent Cards.
     #[command(
-        long_about = "Manage configured A2A agents, aliases, Agent Card discovery, and cached capability metadata. Registry operations are implemented by later agent tickets."
+        long_about = "Manage configured A2A agent aliases in the local SQLite registry. Agent Card discovery, refresh, and capability inspection are implemented by later A2A tickets."
     )]
-    Agent,
+    Agent {
+        /// Agent registry operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<agent::AgentCommands>,
+    },
 
     /// Send one message to an A2A agent.
     #[command(
@@ -211,7 +216,7 @@ impl Commands {
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
-            Self::Agent => "agent",
+            Self::Agent { .. } => "agent",
             Self::Send => "send",
             Self::Stream => "stream",
             Self::Task => "task",
@@ -283,8 +288,21 @@ where
 
     match &cli.command {
         Some(command) => {
-            let status = CommandStatus::parsed(command.name()).with_config(&loaded_config);
-            render_success(writer, mode, "command_status", &status, &status.message)
+            if let Commands::Agent {
+                command: Some(agent_command),
+            } = command
+            {
+                agent::execute_agent_command(
+                    agent_command,
+                    &loaded_config,
+                    environment,
+                    mode,
+                    writer,
+                )
+            } else {
+                let status = CommandStatus::parsed(command.name()).with_config(&loaded_config);
+                render_success(writer, mode, "command_status", &status, &status.message)
+            }
         }
         None if matches!(mode, OutputMode::Human) => {
             let mut command = Cli::command();
@@ -475,7 +493,10 @@ mod tests {
         ])
         .expect("global flags should parse at subcommand scope");
 
-        assert!(matches!(cli.command, Some(Commands::Agent)));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Agent { command: None })
+        ));
         assert!(cli.globals.json);
         assert!(cli.globals.ndjson);
         assert!(cli.globals.quiet);

@@ -399,7 +399,7 @@ Validation:
 
 ## 013 — Implement agent registry commands
 
-Status: TODO
+Status: DONE
 
 Phase: Agent Registry
 

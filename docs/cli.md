@@ -1,9 +1,10 @@
 # CLI reference
 
-`missive` currently exposes a clap-based command skeleton. The command tree,
-shared flags, configuration discovery, profile validation, and output rendering
-contract are stable enough for help and machine-output tests, but operational
-behaviour is implemented by later tickets.
+`missive` currently exposes a clap-based command tree with shared flags,
+configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
+rendering. The first implemented operational commands are the SQLite-backed
+agent registry commands; other top-level commands still emit skeletal parsed
+status until their ordered tickets land.
 
 Run help with:
 
@@ -55,28 +56,86 @@ completion  Generate shell completion scripts
 manpage     Generate manual pages
 ```
 
-Each command has a help page. Running a command other than help currently loads
-and validates configuration, then emits a command-status record through the
-selected renderer.
+Each top-level command has a help page. Running an unimplemented command other
+than help currently loads and validates configuration, then emits a
+command-status record through the selected renderer.
+
+## Agent registry commands
+
+`missive agent` manages profile-scoped A2A agent aliases in the local SQLite
+store. Runtime state is resolved through the loaded profile and defaults outside
+the repository; use `MISSIVE_HOME=<absolute-dir>` in disposable demos/tests when
+you want an isolated registry.
+
+Implemented commands:
+
+```bash
+missive agent add <alias> <base-url> \
+  --interface http+json=http://127.0.0.1:8080/a2a \
+  --binding-preference http+json \
+  --auth-ref example-env \
+  --tag local \
+  --notes "Local mock agent" \
+  --metadata role=echo
+missive agent list
+missive agent show <alias>
+missive agent remove <alias>
+missive agent rename <old-alias> <new-alias>
+```
+
+Agent aliases are validated with the shared lowercase CLI-safe identifier rules.
+`agent add` refuses duplicate aliases instead of overwriting existing rows.
+`agent show`, `agent remove`, and `agent rename` fail clearly when an alias is
+missing. `agent remove` and `agent rename` refuse read-only config-seeded agents;
+edit the config file instead.
+
+Supported registry fields:
+
+* alias — command/routing name such as `echo` or `planner-1`
+* base URL — absolute `http` or `https` URL without embedded credentials
+* explicit interface URLs — repeat `--interface BINDING=URL`
+* binding preference — repeat `--binding-preference BINDING` to override the
+  default `http+json`, `json-rpc` order
+* auth refs — `--auth-ref NAME`, where `NAME` must exist in the loaded config
+* tags — repeat `--tag TAG`
+* notes — one short human notes string
+* metadata — repeat `--metadata KEY=VALUE`; `VALUE` is parsed as JSON when
+  possible and otherwise stored as a string
+
+Config file `[agents.<alias>]` entries are synced into the profile database as
+`source = "config_seed"` and `read_only = true` before agent registry commands
+run. This makes config-seeded entries visible in `agent list`/`agent show` while
+preserving the config file as their source of truth.
+
+Human output is concise text. Machine output uses command-specific envelope
+kinds such as `agent_add`, `agent_list`, `agent_show`, `agent_remove`, and
+`agent_rename`:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive agent add echo http://127.0.0.1:8080 --tag local
+MISSIVE_HOME=/tmp/missive-demo missive agent list --json
+```
 
 ## Output contract
 
 The current renderer supports four modes:
 
-* default human output — one redacted status line for a parsed command
+* default human output — command-specific redacted text for implemented commands
+  or one redacted status line for an unimplemented parsed command
 * config `output.format = "json"` or `--json` — one JSON document using stable
   top-level fields
 * config `output.format = "ndjson"` or `--ndjson` — one JSON object per line,
-  currently one command-status event for skeletal commands and reserved for
-  future event streams
+  currently one command-specific event for implemented agent registry commands
+  or one command-status event for skeletal commands, and reserved for future
+  event streams
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are
 provided, `missive` returns usage exit code `64` and renders a structured error;
 when `--ndjson` is present, that error is one JSON object on stderr.
 
-Current successful machine-readable output has this envelope. The `config`
-summary is secret-free and reports only discovery/source metadata and counts:
+Skeletal command machine-readable output has this envelope. The `config` summary
+is secret-free and reports only discovery/source metadata and counts:
 
 ```json
 {

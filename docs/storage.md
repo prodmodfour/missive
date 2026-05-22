@@ -64,7 +64,10 @@ async reactor thread.
 The public repository methods use typed records and upsert inputs rather than SQL
 strings:
 
-* agents: `AgentUpsert`, `AgentRecord`, and CRUD methods for registry rows
+* auth refs: `AuthRefUpsert`, `AuthRefRecord`, and CRUD methods for non-secret
+  environment/keyring reference rows used by agent registry auth-ref links
+* agents: `AgentUpsert`, `AgentRecord`, and CRUD methods for registry rows used
+  by `missive agent add/list/show/remove/rename`
 * contexts: `ContextUpsert`, `ContextRecord`, and CRUD methods for context state
 * tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
@@ -77,9 +80,11 @@ strings:
 Repository records reuse `missive-core` identifiers such as `AgentAlias`,
 `ContextId`, `TaskId`, `EventId`, `GroupName`, `RankName`, `TransportName`,
 `MissiveTimestamp`, and `Metadata`. Store-specific ids such as `GatewayJobId` and
-`AdapterBindingId` are validated wrappers. JSON columns are serialized and parsed
-at the repository boundary so callers receive typed `serde_json::Value`,
-`Metadata`, maps, and lists instead of raw JSON text.
+`AdapterBindingId` are validated wrappers. Auth-ref repository rows persist only
+non-secret references such as environment variable names or keyring account
+coordinates; raw tokens are not stored. JSON columns are serialized and parsed at
+the repository boundary so callers receive typed `serde_json::Value`, `Metadata`,
+maps, and lists instead of raw JSON text.
 
 `Store::transaction` runs a closure against `StoreTransaction`, which exposes the
 same typed repository methods. The transaction commits only when the closure
@@ -90,6 +95,7 @@ should use for multi-row state changes.
 ## Current limitations
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
-but CLI commands do not call them yet. Message/artifact/push-config/auth-ref and
-adapter-binding repositories, retention enforcement, compaction, event replay,
-and durable A2A protocol persistence are implemented by later tickets.
+and the CLI now uses the auth-ref and agent repositories for `missive agent`
+registry commands. Message/artifact/push-config and adapter-binding repositories, retention
+enforcement, compaction, event replay, and durable A2A protocol persistence are
+implemented by later tickets.

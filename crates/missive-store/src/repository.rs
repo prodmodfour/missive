@@ -146,6 +146,42 @@ macro_rules! store_identifier {
 store_identifier!(GatewayJobId, "gateway job id");
 store_identifier!(AdapterBindingId, "adapter binding id");
 
+/// Durable authentication reference kind stored without raw secret material.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthRefKind {
+    /// Secret value is resolved from an environment variable.
+    #[default]
+    Env,
+    /// Secret value is resolved from the platform keyring.
+    Keyring,
+    /// Secret value is managed outside the current repository API.
+    External,
+}
+impl_string_enum!(AuthRefKind, "auth ref kind", {
+    Env => "env",
+    Keyring => "keyring",
+    External => "external",
+});
+
+/// Where the secret backing an auth reference is stored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthSecretStorage {
+    /// Secret value is managed externally and is not stored in SQLite.
+    #[default]
+    External,
+    /// Secret value is resolved from an environment variable.
+    Env,
+    /// Secret value is resolved from the platform keyring.
+    Keyring,
+}
+impl_string_enum!(AuthSecretStorage, "auth secret storage", {
+    External => "external",
+    Env => "env",
+    Keyring => "keyring",
+});
+
 /// Source of an agent registry entry.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -254,6 +290,74 @@ impl_string_enum!(GatewayJobState, "gateway job state", {
     Cancelled => "cancelled",
     Retrying => "retrying",
 });
+
+/// Input used to create or update a non-secret authentication reference row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuthRefUpsert {
+    /// Auth ref name used by agent rows.
+    pub name: String,
+    /// Reference kind.
+    pub kind: AuthRefKind,
+    /// HTTP header populated by future auth handling.
+    pub header_name: String,
+    /// Optional auth scheme prefix such as `Bearer`.
+    pub scheme: Option<String>,
+    /// Environment variable name for `kind = "env"`.
+    pub env_var: Option<String>,
+    /// Keyring service name for `kind = "keyring"`.
+    pub keyring_service: Option<String>,
+    /// Keyring account name for `kind = "keyring"`.
+    pub keyring_account: Option<String>,
+    /// Secret storage location. Raw secret values are not stored in this row.
+    pub secret_storage: AuthSecretStorage,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+}
+
+impl AuthRefUpsert {
+    /// Creates an environment-backed auth ref upsert.
+    #[must_use]
+    pub fn env(name: impl Into<String>, env_var: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            kind: AuthRefKind::Env,
+            header_name: "Authorization".to_owned(),
+            scheme: Some("Bearer".to_owned()),
+            env_var: Some(env_var.into()),
+            keyring_service: None,
+            keyring_account: None,
+            secret_storage: AuthSecretStorage::Env,
+            metadata: Metadata::new(),
+        }
+    }
+}
+
+/// Stored non-secret authentication reference row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuthRefRecord {
+    /// Auth ref name used by agent rows.
+    pub name: String,
+    /// Reference kind.
+    pub kind: AuthRefKind,
+    /// HTTP header populated by future auth handling.
+    pub header_name: String,
+    /// Optional auth scheme prefix such as `Bearer`.
+    pub scheme: Option<String>,
+    /// Environment variable name for `kind = "env"`.
+    pub env_var: Option<String>,
+    /// Keyring service name for `kind = "keyring"`.
+    pub keyring_service: Option<String>,
+    /// Keyring account name for `kind = "keyring"`.
+    pub keyring_account: Option<String>,
+    /// Secret storage location.
+    pub secret_storage: AuthSecretStorage,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+    /// Creation time recorded by SQLite.
+    pub created_at: MissiveTimestamp,
+    /// Last update time recorded by SQLite.
+    pub updated_at: MissiveTimestamp,
+}
 
 /// Input used to create or update an agent registry row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -838,6 +942,26 @@ impl Store {
         }
     }
 
+    /// Creates or updates an auth ref and returns the stored row.
+    pub fn upsert_auth_ref(&self, input: &AuthRefUpsert) -> Result<AuthRefRecord> {
+        upsert_auth_ref(&self.connection, input)
+    }
+
+    /// Reads one auth ref by name.
+    pub fn get_auth_ref(&self, name: &str) -> Result<Option<AuthRefRecord>> {
+        get_auth_ref(&self.connection, name)
+    }
+
+    /// Lists auth refs in deterministic name order.
+    pub fn list_auth_refs(&self) -> Result<Vec<AuthRefRecord>> {
+        list_auth_refs(&self.connection)
+    }
+
+    /// Deletes an auth ref by name. Returns `true` when a row was removed.
+    pub fn delete_auth_ref(&self, name: &str) -> Result<bool> {
+        delete_auth_ref(&self.connection, name)
+    }
+
     /// Creates or updates an agent and returns the stored row.
     pub fn upsert_agent(&self, input: &AgentUpsert) -> Result<AgentRecord> {
         upsert_agent(&self.connection, input)
@@ -987,6 +1111,26 @@ pub struct StoreTransaction<'connection> {
 }
 
 impl StoreTransaction<'_> {
+    /// Creates or updates an auth ref and returns the stored row.
+    pub fn upsert_auth_ref(&self, input: &AuthRefUpsert) -> Result<AuthRefRecord> {
+        upsert_auth_ref(&self.transaction, input)
+    }
+
+    /// Reads one auth ref by name.
+    pub fn get_auth_ref(&self, name: &str) -> Result<Option<AuthRefRecord>> {
+        get_auth_ref(&self.transaction, name)
+    }
+
+    /// Lists auth refs in deterministic name order.
+    pub fn list_auth_refs(&self) -> Result<Vec<AuthRefRecord>> {
+        list_auth_refs(&self.transaction)
+    }
+
+    /// Deletes an auth ref by name. Returns `true` when a row was removed.
+    pub fn delete_auth_ref(&self, name: &str) -> Result<bool> {
+        delete_auth_ref(&self.transaction, name)
+    }
+
     /// Creates or updates an agent and returns the stored row.
     pub fn upsert_agent(&self, input: &AgentUpsert) -> Result<AgentRecord> {
         upsert_agent(&self.transaction, input)
@@ -1128,6 +1272,94 @@ impl StoreTransaction<'_> {
     pub fn delete_gateway_job(&self, gateway_job_id: &GatewayJobId) -> Result<bool> {
         delete_gateway_job(&self.transaction, gateway_job_id)
     }
+}
+
+fn upsert_auth_ref(connection: &Connection, input: &AuthRefUpsert) -> Result<AuthRefRecord> {
+    validate_store_identifier("auth ref name", &input.name)?;
+    validate_len("auth ref header_name", &input.header_name, 128)?;
+    if let Some(scheme) = &input.scheme {
+        validate_len("auth ref scheme", scheme, 64)?;
+    }
+    match input.kind {
+        AuthRefKind::Env => {
+            validate_required_option("auth ref env_var", input.env_var.as_deref())?;
+        }
+        AuthRefKind::Keyring => {
+            validate_required_option("auth ref keyring_service", input.keyring_service.as_deref())?;
+            validate_required_option("auth ref keyring_account", input.keyring_account.as_deref())?;
+        }
+        AuthRefKind::External => {}
+    }
+    let metadata_json = to_json_text("auth ref metadata", &input.metadata)?;
+
+    connection
+        .execute(
+            "INSERT INTO auth_refs (
+                name, kind, header_name, scheme, env_var, keyring_service,
+                keyring_account, secret_storage, metadata_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(name) DO UPDATE SET
+                kind = excluded.kind,
+                header_name = excluded.header_name,
+                scheme = excluded.scheme,
+                env_var = excluded.env_var,
+                keyring_service = excluded.keyring_service,
+                keyring_account = excluded.keyring_account,
+                secret_storage = excluded.secret_storage,
+                metadata_json = excluded.metadata_json,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            params![
+                &input.name,
+                input.kind.as_str(),
+                &input.header_name,
+                input.scheme.as_deref(),
+                input.env_var.as_deref(),
+                input.keyring_service.as_deref(),
+                input.keyring_account.as_deref(),
+                input.secret_storage.as_str(),
+                metadata_json,
+            ],
+        )
+        .map_err(|error| storage_error("upserting auth ref", error))?;
+
+    get_auth_ref(connection, &input.name)?
+        .ok_or_else(|| missing_after_write("auth ref", &input.name))
+}
+
+fn get_auth_ref(connection: &Connection, name: &str) -> Result<Option<AuthRefRecord>> {
+    connection
+        .query_row(
+            "SELECT name, kind, header_name, scheme, env_var, keyring_service,
+                keyring_account, secret_storage, metadata_json, created_at, updated_at
+             FROM auth_refs WHERE name = ?1",
+            params![name],
+            read_auth_ref_row,
+        )
+        .optional()
+        .map_err(|error| storage_error("reading auth ref", error))
+}
+
+fn list_auth_refs(connection: &Connection) -> Result<Vec<AuthRefRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT name, kind, header_name, scheme, env_var, keyring_service,
+                keyring_account, secret_storage, metadata_json, created_at, updated_at
+             FROM auth_refs ORDER BY name",
+        )
+        .map_err(|error| storage_error("preparing auth ref list", error))?;
+    collect_rows(
+        statement.query_map([], read_auth_ref_row),
+        "listing auth refs",
+    )
+}
+
+fn delete_auth_ref(connection: &Connection, name: &str) -> Result<bool> {
+    delete_by_key(
+        connection,
+        "DELETE FROM auth_refs WHERE name = ?1",
+        name,
+        "deleting auth ref",
+    )
 }
 
 fn upsert_agent(connection: &Connection, input: &AgentUpsert) -> Result<AgentRecord> {
@@ -1692,6 +1924,22 @@ fn delete_gateway_job(connection: &Connection, gateway_job_id: &GatewayJobId) ->
     )
 }
 
+fn read_auth_ref_row(row: &Row<'_>) -> rusqlite::Result<AuthRefRecord> {
+    Ok(AuthRefRecord {
+        name: row.get(0)?,
+        kind: parse_sql(1, row.get(1)?)?,
+        header_name: row.get(2)?,
+        scheme: row.get(3)?,
+        env_var: row.get(4)?,
+        keyring_service: row.get(5)?,
+        keyring_account: row.get(6)?,
+        secret_storage: parse_sql(7, row.get(7)?)?,
+        metadata: json_from_sql(8, row.get(8)?)?,
+        created_at: timestamp_from_sql(9, row.get(9)?)?,
+        updated_at: timestamp_from_sql(10, row.get(10)?)?,
+    })
+}
+
 fn read_agent_row(row: &Row<'_>) -> rusqlite::Result<AgentRecord> {
     Ok(AgentRecord {
         alias: parse_sql(0, row.get(0)?)?,
@@ -1944,6 +2192,13 @@ fn validate_non_empty(label: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_required_option(label: &str, value: Option<&str>) -> Result<()> {
+    let Some(value) = value else {
+        return Err(MissiveError::validation(format!("{label} is required")));
+    };
+    validate_non_empty(label, value)
+}
+
 fn validate_len(label: &str, value: &str, max_bytes: usize) -> Result<()> {
     validate_non_empty(label, value)?;
     if value.len() > max_bytes {
@@ -2008,6 +2263,43 @@ mod tests {
 
         assert!(path.exists());
         assert!(store.list_agents().expect("agents list").is_empty());
+    }
+
+    #[test]
+    fn auth_ref_crud_round_trip_stores_non_secret_references() {
+        let store = Store::open_in_memory().expect("store");
+        let mut input = AuthRefUpsert::env("example-env", "MISSIVE_EXAMPLE_TOKEN");
+        input
+            .metadata
+            .insert("purpose", json!("repository-test"))
+            .expect("metadata");
+
+        let created = store.upsert_auth_ref(&input).expect("auth ref upsert");
+
+        assert_eq!(created.name, "example-env");
+        assert_eq!(created.kind, AuthRefKind::Env);
+        assert_eq!(created.env_var.as_deref(), Some("MISSIVE_EXAMPLE_TOKEN"));
+        assert_eq!(created.secret_storage, AuthSecretStorage::Env);
+        assert_eq!(created.metadata.get_str("purpose"), Some("repository-test"));
+        assert_eq!(
+            store.get_auth_ref("example-env").expect("get auth ref"),
+            Some(created.clone())
+        );
+        assert_eq!(
+            store.list_auth_refs().expect("list auth refs"),
+            vec![created]
+        );
+        assert!(
+            store
+                .delete_auth_ref("example-env")
+                .expect("delete auth ref")
+        );
+        assert!(
+            store
+                .get_auth_ref("example-env")
+                .expect("auth ref deleted")
+                .is_none()
+        );
     }
 
     #[test]

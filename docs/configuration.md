@@ -34,7 +34,7 @@ exit code `78`.
 Validated examples live under [`examples/config/`](../examples/config/):
 
 ```bash
-missive agent --config examples/config/minimal.toml --json
+MISSIVE_HOME=/tmp/missive-demo missive agent list --config examples/config/minimal.toml --json
 missive doctor --config examples/config/full.toml --profile ci
 ```
 
@@ -71,8 +71,8 @@ Supported sections in this ticket:
 
 * `profiles` — profile descriptions, default agent aliases, and optional
   profile-specific storage/output/gateway/qos overrides.
-* `agents` — config-seeded agent aliases, base URLs, explicit interface URLs,
-  binding preference, auth ref, tags, notes, and metadata.
+* `agents` — config-seeded read-only agent aliases, base URLs, explicit interface
+  URLs, binding preference, auth ref, tags, notes, and metadata.
 * `auth_refs` — references to secrets in environment variables or platform
   keyrings. Raw token values are not accepted by the schema.
 * `storage` — storage backend defaults. Only `sqlite` is currently defined;
@@ -113,14 +113,17 @@ directory, or be relative to the selected profile's state directory. Relative
 paths containing `..` are rejected so they cannot escape that profile directory.
 If omitted, the default database path is `<state-dir>/missive.sqlite3`.
 
-Process locks live in `<state-dir>/locks/`. `state.lock` coordinates future
-state mutations and migrations; `gateway.lock` coordinates one gateway process
-per profile. Lock files may remain after a process exits, but the OS-level lock
-is released when the owning process or file descriptor closes.
+Process locks live in `<state-dir>/locks/`. `state.lock` coordinates current
+agent registry mutations, config-agent sync, and future migrations;
+`gateway.lock` coordinates one gateway process per profile. Lock files may remain
+after a process exits, but the OS-level lock is released when the owning process
+or file descriptor closes.
 
 The SQLite schema is managed by embedded migrations in `missive-store`; see
 [`docs/storage.md`](storage.md) for the migration strategy, table purposes, and
-retention notes.
+retention notes. `missive agent list/show` include `[agents.<alias>]` entries by
+syncing them into the selected profile database as `source = "config_seed"` and
+read-only rows before each agent registry operation.
 
 ## Validation and redaction
 
