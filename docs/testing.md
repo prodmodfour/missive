@@ -119,6 +119,7 @@ Targeted checks for the reusable mock server and CLI integration are:
 cargo test -p missive-test-support --all-targets
 cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
 cargo test -p missive-cli --test push_command --all-features
+cargo test -p missive-cli --test gateway_command --all-features
 cargo test -p missive-cli --test webhook_command --all-features
 ```
 
@@ -131,11 +132,15 @@ scripts/quality-gate.sh
 
 ## Extending fixtures
 
-The webhook command integration test spawns the `missive` binary, waits for the
-local `/healthz` endpoint, posts unauthorized, malformed, and valid A2A
-`StreamResponse` payloads over loopback HTTP, verifies graceful `--max-events`
-shutdown, checks NDJSON output, and inspects the persisted event journal. It does
-not contact external tunnel providers or third-party services.
+The gateway command integration test spawns the `missive` binary, waits for the
+local `/healthz` endpoint, checks `/status` component JSON over loopback HTTP,
+verifies graceful `--timeout` shutdown, checks NDJSON lifecycle output, and
+inspects persisted `missive.gateway.*` event journal rows. The webhook command
+integration test similarly spawns the binary, waits for local `/healthz`, posts
+unauthorized, malformed, and valid A2A `StreamResponse` payloads over loopback
+HTTP, verifies graceful `--max-events` shutdown, checks NDJSON output, and
+inspects the persisted event journal. Neither test contacts external tunnel
+providers or third-party services.
 
 When later tickets add gateway subscriptions, adapters, collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
 

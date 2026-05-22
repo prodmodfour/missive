@@ -6,8 +6,9 @@ rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive push
-create/get/list/delete`, and `missive webhook run`; other top-level commands
-still emit skeletal parsed status until their ordered tickets land.
+create/get/list/delete`, `missive webhook run`, and `missive gateway run`;
+other top-level commands still emit skeletal parsed status until their ordered
+tickets land.
 
 Run help with:
 
@@ -19,6 +20,8 @@ missive stream --help
 missive task --help
 missive context --help
 missive push --help
+missive gateway --help
+missive gateway run --help
 missive webhook --help
 missive webhook run --help
 ```
@@ -54,10 +57,10 @@ profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
 Agent Card HTTP requests plus implemented send, stream, remote task, and push
 config calls. `missive webhook run` records the effective protocol version on
-inbound callback events when the callback omits `A2A-Version`. Task wait and
-webhook run use global `--timeout` as bounded execution budgets; tracing and
-broader command-specific timeout semantics are intentionally left to their
-ordered implementation tickets.
+inbound callback events when the callback omits `A2A-Version`. Task wait,
+webhook run, and gateway run use global `--timeout` as bounded execution
+budgets; tracing and broader command-specific timeout semantics are
+intentionally left to their ordered implementation tickets.
 
 ## Top-level commands
 
@@ -83,9 +86,9 @@ manpage     Generate manual pages
 Each top-level command has a help page. Running an unimplemented command other
 than help currently loads and validates configuration, then emits a
 command-status record through the selected renderer. Implemented command groups
-with no selected subcommand, such as `missive context --json` or `missive
-webhook --json`, still emit that parsed command-status record so automation can
-distinguish parser support from a specific operation.
+with no selected subcommand, such as `missive context --json`, `missive gateway
+--json`, or `missive webhook --json`, still emit that parsed command-status
+record so automation can distinguish parser support from a specific operation.
 
 ## Agent registry commands
 
@@ -484,6 +487,41 @@ soft-deletes any active local row by setting `deleted_at`; the event journal
 keeps the redacted delete response for audit. Machine-readable output uses
 `push_create`, `push_get`, `push_list`, and `push_delete` envelope kinds.
 
+## Gateway daemon
+
+`missive gateway run` starts the local gateway daemon skeleton. It creates the
+selected profile state directories, acquires the profile `gateway.lock`, opens
+and migrates the SQLite store, starts an async supervisor and local event bus,
+serves health/readiness/status HTTP endpoints, records gateway lifecycle events,
+and shuts down gracefully on Ctrl-C or global `--timeout`.
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo \
+  missive gateway run \
+    --bind-address 127.0.0.1 \
+    --port 7347 \
+    --timeout 30s \
+    --ndjson
+```
+
+By default the daemon uses the selected profile's `gateway.bind_address`. The
+status endpoints are local unauthenticated JSON endpoints: `GET /healthz`,
+`GET /readyz`, and `GET /status`. Override their paths with `--health-path`,
+`--ready-path`, and `--status-path`; the paths must be distinct non-root HTTP
+paths. Status output reports the selected profile, bound address, uptime,
+configured `job_concurrency`, event-bus count, and components: running
+`supervisor`, `event_bus`, `store`, and `health_http` plus idle placeholders for
+future `subscriptions`, embedded `webhook_receiver`, `background_jobs`, and
+`adapters`.
+
+Machine-readable stream output uses `gateway_started`, `gateway_component`, and
+`gateway_stopped` envelope kinds. `--json` emits only the final
+`gateway_stopped` summary after shutdown; use `--ndjson` for one object per
+runtime event. The daemon appends redacted `missive.gateway.started` and
+`missive.gateway.stopped` rows to the local event journal.
+
+See [`gateway.md`](gateway.md) for operational details and current limitations.
+
 ## Webhook receiver
 
 `missive webhook run` starts a local HTTP receiver for A2A push notification
@@ -532,9 +570,10 @@ one object per runtime event.
 `missive events` exposes the selected profile's append-only SQLite event
 journal. The current producers record local agent registry changes, A2A
 send/stream request records, A2A send responses, streaming updates, remote
-task changes observed by send/task commands, push-config changes, and webhook
-callback acceptance/rejection events. Future group, gateway daemon, and adapter
-tickets will append the same event table through the existing typed store API.
+task changes observed by send/task commands, push-config changes, gateway
+daemon lifecycle events, and webhook callback acceptance/rejection events.
+Future group, gateway worker, and adapter tickets will append the same event
+table through the existing typed store API.
 
 Implemented commands:
 
@@ -573,7 +612,8 @@ The current renderer supports four modes:
   top-level fields
 * config `output.format = "ndjson"` or `--ndjson` — one JSON object per line;
   stream emits one `stream_event` line per SSE event plus a `stream_result`
-  summary, webhook run emits `webhook_started`/`webhook_event`/
+  summary, gateway run emits `gateway_started`/`gateway_component`/
+  `gateway_stopped` lines, webhook run emits `webhook_started`/`webhook_event`/
   `webhook_rejected`/`webhook_stopped` lines, `events export` and `events tail`
   emit one `event_record` line per event, while other implemented commands emit
   one command-specific envelope and skeletal commands emit one command-status

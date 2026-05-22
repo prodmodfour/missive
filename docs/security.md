@@ -135,6 +135,12 @@ committing them. The current receiver validates JSON shape and optional header
 tokens, but it does not yet implement JWT/signature verification, replay
 protection, rate limits, or credential rotation.
 
+`missive gateway run` also serves local HTTP only in the current skeleton. Its
+`/healthz`, `/readyz`, and `/status` endpoints are unauthenticated and intended
+for loopback process supervision. Keep the listener bound to `127.0.0.1` unless
+you intentionally place it behind trusted local infrastructure; do not expose it
+as a public control API.
+
 ## Artifact exports
 
 `missive task artifact save` and `missive task artifact export` write only
@@ -149,7 +155,8 @@ fetching or dereferencing remote/local URLs.
 
 Authentication is wired into implemented Agent Card fetch/refresh,
 non-streaming send, streaming send, task get/list/wait/cancel, push config
-requests, and the inbound webhook header-token hook. Future gateway daemon and
+requests, and the inbound webhook header-token hook. The current gateway daemon
+skeleton has no outbound authenticated protocol calls; future gateway worker and
 adapter tickets must reuse the same resolution and redaction path when they add
 outbound requests.
 

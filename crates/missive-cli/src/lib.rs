@@ -14,6 +14,7 @@ pub(crate) mod artifact;
 pub(crate) mod auth;
 pub mod context;
 pub mod events;
+pub mod gateway;
 pub mod output;
 pub mod push;
 pub mod send;
@@ -230,9 +231,13 @@ pub enum Commands {
 
     /// Run and manage the local missive gateway daemon.
     #[command(
-        long_about = "Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, and background jobs. Gateway runtime behavior is implemented by later gateway tickets."
+        long_about = "Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, and background jobs. The current daemon skeleton supervises the event bus, store access, health/status endpoints, and idle placeholders for later workers."
     )]
-    Gateway,
+    Gateway {
+        /// Gateway operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<gateway::GatewayCommands>,
+    },
 
     /// Receive A2A push notification callbacks locally.
     #[command(
@@ -300,7 +305,7 @@ impl Commands {
             Self::Task { .. } => "task",
             Self::Context { .. } => "context",
             Self::Group => "group",
-            Self::Gateway => "gateway",
+            Self::Gateway { .. } => "gateway",
             Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
             Self::Doctor => "doctor",
@@ -434,6 +439,16 @@ where
             command: Some(events_command),
         }) => events::execute_events_command(
             events_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
+        Some(Commands::Gateway {
+            command: Some(gateway_command),
+        }) => gateway::execute_gateway_command(
+            gateway_command,
             &cli.globals,
             &loaded_config,
             environment,

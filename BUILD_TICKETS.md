@@ -910,7 +910,7 @@ Validation:
 
 ## 030 — Implement gateway daemon skeleton
 
-Status: TODO
+Status: DONE
 
 Phase: Gateway
 

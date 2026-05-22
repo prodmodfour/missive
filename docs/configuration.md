@@ -95,7 +95,8 @@ Supported sections in this ticket:
   requests are implemented. Profiles may override the full protocol block with
   `[profiles.<name>.protocol]`.
 * `gateway` — gateway enablement, bind address, optional public base URL, and job
-  concurrency defaults.
+  concurrency defaults. `missive gateway run` uses the selected profile's bind
+  address and job concurrency today.
 * `adapters` — adapter kind, enablement, profile mapping, and non-secret settings
   for later adapter tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
@@ -106,7 +107,7 @@ Supported sections in this ticket:
 Unknown fields are rejected so configuration typos fail early.
 
 For implemented A2A HTTP requests (Agent Card fetch/refresh, non-streaming
-send, streaming send, and remote task get/list/wait/cancel),
+send, streaming send, remote task get/list/wait/cancel, and push config calls),
 `--protocol-version <VERSION>` overrides the selected profile's
 `protocol_version` for that invocation. The
 `--a2a-extension <EXTENSION>` flag appends requested extensions, and
@@ -148,9 +149,9 @@ If omitted, the default database path is `<state-dir>/missive.sqlite3`.
 
 Process locks live in `<state-dir>/locks/`. `state.lock` coordinates current
 agent registry mutations, config-agent sync, and future migrations;
-`gateway.lock` coordinates one gateway process per profile. Lock files may remain
-after a process exits, but the OS-level lock is released when the owning process
-or file descriptor closes.
+`gateway.lock` coordinates one gateway or standalone webhook process per profile.
+Lock files may remain after a process exits, but the OS-level lock is released
+when the owning process or file descriptor closes.
 
 The SQLite schema is managed by embedded migrations in `missive-store`; see
 [`docs/storage.md`](storage.md) for the migration strategy, table purposes, and

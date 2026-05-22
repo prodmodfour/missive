@@ -1070,6 +1070,7 @@ dependencies = [
  "missive-store",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
