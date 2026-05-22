@@ -1,5 +1,9 @@
 #![doc = "Core domain primitives for the missive command-line tool and control plane."]
 
+pub mod error;
+
+pub use error::{ErrorCategory, ErrorReport, MissiveError, MissiveExitCode, Result};
+
 /// Canonical project and binary name.
 pub const PROJECT_NAME: &str = "missive";
 

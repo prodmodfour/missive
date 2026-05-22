@@ -23,6 +23,12 @@ CLI/adapters -> command model -> router/session/context -> A2A client -> remote 
                                            |              -> gateway jobs/subscriptions/webhooks
 ```
 
+## Error handling contract
+
+`crates/missive-core` exposes the shared `MissiveError` and `Result<T>` types for public APIs. Errors are categorized as I/O, configuration, protocol, transport, storage, authentication, validation, or orchestration failures. Each category has a stable diagnostic code such as `missive::validation`, a deterministic CLI exit code reserved for later CLI mapping, and a serializable `ErrorReport` shape for JSON/NDJSON output.
+
+Human-facing rendering uses normal `Display` text plus `miette::Diagnostic` codes and optional help text. Machine-facing rendering should serialize `ErrorReport` instead of parsing human messages.
+
 ## Architecture decision records
 
 The ADR index lives in [`docs/adr/`](adr/README.md). Initial accepted records are:

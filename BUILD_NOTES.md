@@ -2,10 +2,10 @@
 
 ## Current state
 
-Tickets 000, 001, 002, 003, and 004 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000, 001, 002, 003, 004, and 005 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
 * `crates/missive-cli` — package `missive-cli`, binary `missive`, and placeholder CLI entry point
-* `crates/missive-core` — core domain primitive scaffolding
+* `crates/missive-core` — core domain primitive scaffolding, including shared error/result types
 * `crates/missive-a2a` — A2A protocol/client integration scaffolding
 * `crates/missive-store` — persistence scaffolding
 * `crates/missive-router` — routing and collectives scaffolding
@@ -19,7 +19,9 @@ Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-
 
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
 
-Architecture decision records now live under `docs/adr/`, with a template and initial accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, and CLI-first UX. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries.
+Architecture decision records live under `docs/adr/`, with a template and initial accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, and CLI-first UX. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries and shared error handling contract.
+
+`missive-core` now exposes `MissiveError`, `Result<T>`, `ErrorCategory`, `MissiveExitCode`, and `ErrorReport`. The error taxonomy covers I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures. Each category has a stable diagnostic code, deterministic exit code mapping for later CLI use, human `Display` rendering, `miette::Diagnostic` metadata, and a serializable JSON/NDJSON report shape.
 
 ## Quality gates
 
@@ -54,27 +56,27 @@ Checks run by the default gate included:
 Additional targeted validation run during this cycle:
 
 ```bash
-grep -R '^Status:' docs/adr/*.md
-grep -n 'ADR 000[1-4]' docs/architecture.md docs/adr/README.md
+cargo test -p missive-core --all-targets
+cargo clippy -p missive-core --all-targets --all-features -- -D warnings
 ```
 
-The targeted checks confirmed the initial ADR status fields and the links from `docs/architecture.md`.
+The targeted checks covered the new core error rendering tests before the full quality gate.
 
-Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle.
+Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle. Adding the core error contract pulled existing workspace-planned Rust dependencies into `Cargo.lock` (`thiserror`, `miette`, `serde`, and `serde_json` for tests).
 
 ## Latest cycle notes
 
-Implemented ticket 004 — Create architecture decision records scaffold.
+Implemented ticket 005 — Implement core error and result types.
 
 Included:
 
-* added `docs/architecture.md` with current crate boundaries, recommended high-level flow, and links to the initial ADRs
-* replaced the placeholder ADR README with status vocabulary, an ADR index, and template guidance
-* added `docs/adr/template.md`
-* added ADR 0001 for the accepted Rust workspace structure
-* added ADR 0002 for the accepted A2A-first protocol strategy, including alternatives around wrapping `a2a-rs`, hand-rolling protocol models, schema generation, and multi-protocol scope
-* added ADR 0003 for accepted SQLite-backed local state
-* added ADR 0004 for accepted CLI-first UX and automation-friendly output expectations
+* added `crates/missive-core/src/error.rs` with shared `MissiveError` and `Result<T>` primitives
+* added the core error taxonomy for I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures
+* added deterministic category-to-exit-code mapping for later CLI error handling
+* added `ErrorReport` for stable JSON/NDJSON rendering of errors
+* implemented `miette::Diagnostic` metadata for diagnostic codes and optional help text
+* added representative unit tests for human rendering, miette rendering, JSON rendering, source chains, constructor coverage, and exit codes
+* documented the shared error handling contract in `docs/architecture.md`
 
 ## Known blockers
 
@@ -84,7 +86,9 @@ None known.
 
 The `missive` binary is still a placeholder. Real CLI flags, subcommands, output rendering, configuration, A2A integration, persistence, gateway behaviour, adapters, and collectives remain for later tickets.
 
-The ADRs document current architectural direction only. Detailed protocol mapping, storage schema, gateway operations, adapter lifecycle, collectives, security, testing, and runbook documentation remain for later implementation/documentation tickets.
+The new error contract is available in `missive-core`, but other crates still use placeholder APIs and have not yet converted real operational paths to return `missive_core::Result<T>`. CLI mapping from `MissiveExitCode` to process status is intentionally left for the CLI tickets.
+
+Detailed protocol mapping, storage schema, gateway operations, adapter lifecycle, collectives, security, testing, and runbook documentation remain for later implementation/documentation tickets.
 
 Optional exhaustive validation tools are not all installed in this environment yet. The default quality gate passes without them and uses installed optional tools automatically. `cargo-nextest` is currently missing, and miri is unavailable for the active stable toolchain.
 
@@ -92,4 +96,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 005 — Implement core error and result types.
+Ticket 006 — Implement IDs, timestamps, metadata, and envelope primitives.

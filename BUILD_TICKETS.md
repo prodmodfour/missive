@@ -160,7 +160,7 @@ Validation:
 
 ## 005 — Implement core error and result types
 
-Status: TODO
+Status: DONE
 
 Phase: Core
 
