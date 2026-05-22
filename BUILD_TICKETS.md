@@ -789,7 +789,7 @@ Validation:
 
 ## 026 — Build local mock A2A server fixtures
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 

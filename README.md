@@ -6,7 +6,7 @@
 
 This repository is at early workspace stage. It contains:
 
-* a Cargo workspace with the target crate layout under `crates/`
+* a Cargo workspace with the target crate layout under `crates/`, plus a dev-support crate for local A2A integration fixtures
 * a `missive-cli` package that exposes the binary named `missive`
 * a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, context `create/list/show/fork/close/export`, and event journal `list/tail/replay/export`
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
@@ -25,6 +25,7 @@ crates/missive-router     agent selection, policies, groups, collectives
 crates/missive-gateway    daemon, subscriptions, webhooks, jobs, sessions
 crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
 crates/missive-observe    tracing, logs, diagnostics, event export helpers
+crates/missive-test-support reusable local A2A integration fixtures for tests
 ```
 
 The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, and `missive events list/tail/replay/export`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
@@ -56,7 +57,7 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events 
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task/artifact mapping, context continuity, and interface negotiation mapping, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, and [`docs/security.md`](docs/security.md) for auth storage tradeoffs. Future tickets add gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task/artifact mapping, context continuity, and interface negotiation mapping, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, [`docs/security.md`](docs/security.md) for auth storage tradeoffs, and [`docs/testing.md`](docs/testing.md) for local validation and reusable mock A2A fixtures. Future tickets add gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
 
 ## Build and validation
 

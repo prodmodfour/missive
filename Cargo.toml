@@ -8,6 +8,7 @@ members = [
     "crates/missive-observe",
     "crates/missive-router",
     "crates/missive-store",
+    "crates/missive-test-support",
 ]
 default-members = ["crates/missive-cli"]
 resolver = "3"
@@ -28,6 +29,7 @@ missive-gateway = { path = "crates/missive-gateway", version = "0.1.0" }
 missive-observe = { path = "crates/missive-observe", version = "0.1.0" }
 missive-router = { path = "crates/missive-router", version = "0.1.0" }
 missive-store = { path = "crates/missive-store", version = "0.1.0" }
+missive-test-support = { path = "crates/missive-test-support", version = "0.1.0" }
 
 clap = { version = "4.5", features = ["derive"] }
 miette = { version = "7.2", features = ["fancy"] }

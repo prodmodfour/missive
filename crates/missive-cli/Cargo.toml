@@ -44,4 +44,5 @@ keyring = { version = "3.6", default-features = false, features = ["windows-nati
 keyring = { version = "3.6", default-features = false, optional = true }
 
 [dev-dependencies]
+missive-test-support.workspace = true
 tempfile.workspace = true
