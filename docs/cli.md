@@ -424,9 +424,10 @@ only.
 all currently linked `tasks`, `messages`, and `events`. Use `--json` or
 `--ndjson` for the full export payload; human mode prints a concise redacted
 summary. Export payloads recursively redact secret-like keys and HTTP auth
-headers before they reach stdout. Dedicated event replay remains a later ticket,
-and context export does not include artifact rows/files; use `missive task
-artifact export` for task artifacts.
+headers before they reach stdout. For dedicated event filtering, tailing,
+NDJSON export, and replay summaries, use `missive events`. Context export does
+not include artifact rows/files; use `missive task artifact export` for task
+artifacts.
 
 `missive send --context CONTEXT_ID` and `missive stream --context CONTEXT_ID`
 continue to take explicit A2A context ids. Use `missive context show <name>
@@ -438,6 +439,42 @@ kinds. Context views include the context id, optional name/agent/parent, state,
 summary, metadata, timestamps, closed timestamp, and linked message/task/event
 counts.
 
+## Event commands
+
+`missive events` exposes the selected profile's append-only SQLite event
+journal. The current producers record local agent registry changes, A2A
+send/stream request records, A2A send responses, streaming updates, and remote
+task changes observed by send/task commands. Future group, gateway, webhook, and
+adapter tickets will append the same event table through the existing typed store
+API.
+
+Implemented commands:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive events list --json
+MISSIVE_HOME=/tmp/missive-demo missive events list --agent echo --type a2a.task.updated
+MISSIVE_HOME=/tmp/missive-demo missive events tail --from-sequence 100 --limit 10 --ndjson
+MISSIVE_HOME=/tmp/missive-demo missive events replay --context ctx-123 --json
+MISSIVE_HOME=/tmp/missive-demo missive events export --task task-123 --ndjson
+```
+
+Event records include a monotonic `sequence`, stable `event_id`, RFC3339
+`timestamp`, `source`, `event_type`, optional agent/context/task/group/gateway
+job/adapter links, redacted `payload`, metadata, and a `redacted` flag. Filters
+shared by list, tail, replay, and export include `--agent`, `--context`,
+`--task`, `--source`, `--type`, and `--since`. List/replay/export also accept
+`--after-sequence` and `--limit`; tail uses `--from-sequence`, `--limit`,
+`--poll-interval`, and the global `--timeout` as a bounded follow budget.
+
+`events list` renders one `events_list` document in JSON/NDJSON modes. `events
+export --ndjson` emits one `event_record` envelope per line for agent/subprocess
+consumers. `events tail --ndjson` also emits one `event_record` per newly matched
+record as it follows the journal. `events replay` derives deterministic context
+and task summaries from the matching events, including event counts, first/last
+sequences and timestamps, task membership per context, latest task state when it
+can be read from event payloads, and event type counts. Replay is a local
+summary reconstruction; it does not call remote A2A agents or mutate tasks.
+
 ## Output contract
 
 The current renderer supports four modes:
@@ -448,8 +485,9 @@ The current renderer supports four modes:
   top-level fields
 * config `output.format = "ndjson"` or `--ndjson` — one JSON object per line;
   stream emits one `stream_event` line per SSE event plus a `stream_result`
-  summary, while other implemented commands emit one command-specific envelope
-  and skeletal commands emit one command-status event
+  summary, `events export` and `events tail` emit one `event_record` line per
+  event, while other implemented commands emit one command-specific envelope and
+  skeletal commands emit one command-status event
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are
@@ -483,7 +521,7 @@ is secret-free and reports only discovery/source metadata and counts:
 NDJSON uses the same envelope and adds a numeric `sequence` field:
 
 ```json
-{"schema_version":"missive.output.v1","ok":true,"kind":"command_status","sequence":0,"data":{"command":"events","status":"parsed","implemented":false,"config":{"source":"built_in_default","profile":"default","output_format":"human","agent_count":0,"auth_ref_count":0},"message":"missive: 'events' command parsed; implementation lands in a later ticket"}}
+{"schema_version":"missive.output.v1","ok":true,"kind":"event_record","sequence":42,"data":{"sequence":42,"event_id":"evt/a2a.task.updated/example","timestamp":"2026-05-22T00:00:00Z","source":"cli","event_type":"a2a.task.updated","task_id":"task-123","payload":{"state":"completed"},"metadata":{},"redacted":true}}
 ```
 
 Structured errors use `ok: false`, `kind: "error"`, and the shared

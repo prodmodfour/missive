@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use url::Url;
 
 use crate::auth::auth_headers_for_agent;
+use crate::events::new_cli_event;
 use crate::output::{OutputMode, redact_json, redact_text, render_success};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
@@ -449,6 +450,18 @@ where
     input.metadata = parse_metadata(&args.metadata)?;
 
     let record = registry.store.upsert_agent(&input)?;
+    append_agent_event(
+        &registry.store,
+        "missive.agent.add",
+        Some(record.alias.clone()),
+        json!({
+            "alias": record.alias.as_str(),
+            "source": record.source.as_str(),
+            "base_url": record.base_url.clone(),
+            "tags": record.tags.clone(),
+            "metadata": record.metadata.clone(),
+        }),
+    )?;
     let view = AgentView::from_record(&record);
     let message = format!(
         "Added agent '{}' with base URL {}",
@@ -484,6 +497,15 @@ where
             alias.as_str()
         )));
     }
+    append_agent_event(
+        &registry.store,
+        "missive.agent.remove",
+        None,
+        json!({
+            "alias": alias.as_str(),
+            "removed_agent": view.clone(),
+        }),
+    )?;
 
     let message = format!("Removed agent '{}'", alias.as_str());
     let output = AgentActionOutput {
@@ -629,6 +651,17 @@ where
         Ok(new_record)
     })?;
 
+    append_agent_event(
+        &registry.store,
+        "missive.agent.rename",
+        Some(new_record.alias.clone()),
+        json!({
+            "previous_alias": old_alias.as_str(),
+            "alias": new_record.alias.as_str(),
+            "source": new_record.source.as_str(),
+            "base_url": new_record.base_url.clone(),
+        }),
+    )?;
     let view = AgentView::from_record(&new_record);
     let message = format!(
         "Renamed agent '{}' to '{}'",
@@ -644,6 +677,18 @@ where
     };
 
     render_agent_action(writer, mode, "agent_rename", &output)
+}
+
+fn append_agent_event(
+    store: &Store,
+    event_type: &str,
+    alias: Option<AgentAlias>,
+    payload: Value,
+) -> Result<()> {
+    let mut event = new_cli_event(event_type, payload)?;
+    event.agent_alias = alias;
+    store.append_event(&event)?;
+    Ok(())
 }
 
 pub(crate) fn get_existing_agent(store: &Store, alias: &AgentAlias) -> Result<AgentRecord> {

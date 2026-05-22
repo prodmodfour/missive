@@ -408,12 +408,22 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
 
     let store = open_store(&home);
     let events = store.list_events().expect("events");
-    assert_eq!(events.len(), 5);
-    assert_eq!(events[0].event_type, "a2a.stream.task");
-    assert_eq!(events[1].event_type, "a2a.stream.status_update");
-    assert_eq!(events[2].event_type, "a2a.stream.artifact_update");
-    assert_eq!(events[3].event_type, "a2a.stream.artifact_update");
-    assert_eq!(events[4].event_type, "a2a.stream.status_update");
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "missive.agent.add")
+    );
+    let stream_events = events
+        .iter()
+        .filter(|event| event.event_type.starts_with("a2a.stream."))
+        .collect::<Vec<_>>();
+    assert_eq!(stream_events.len(), 6);
+    assert_eq!(stream_events[0].event_type, "a2a.stream.request");
+    assert_eq!(stream_events[1].event_type, "a2a.stream.task");
+    assert_eq!(stream_events[2].event_type, "a2a.stream.status_update");
+    assert_eq!(stream_events[3].event_type, "a2a.stream.artifact_update");
+    assert_eq!(stream_events[4].event_type, "a2a.stream.artifact_update");
+    assert_eq!(stream_events[5].event_type, "a2a.stream.status_update");
     assert!(events.iter().all(|event| event.redacted));
 
     let task = store

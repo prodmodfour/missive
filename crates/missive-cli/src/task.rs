@@ -24,7 +24,7 @@ use missive_store::{
     TaskState, TaskUpsert,
 };
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::agent::{AgentRegistry, get_existing_agent, open_agent_registry};
 use crate::artifact::{
@@ -32,6 +32,7 @@ use crate::artifact::{
     first_artifact_text_from_records, persist_task_artifacts,
 };
 use crate::auth::auth_headers_for_agent;
+use crate::events::new_cli_event;
 use crate::output::{OutputMode, redact_text, render_success};
 use crate::send::{resolve_send_interface, store_task_state};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
@@ -826,16 +827,19 @@ fn upsert_remote_task(
         transaction.upsert_context(&context)?;
     }
 
-    let mut upsert = TaskUpsert::new(
-        task_id,
-        agent.alias.clone(),
-        store_task_state(&task.status.state),
-    );
-    upsert.source = TaskSource::Remote;
-    upsert.context_id = Some(context_id);
-    upsert.remote_task_json = Some(serde_json::to_value(task).map_err(|error| {
+    let raw_task_json = serde_json::to_value(task).map_err(|error| {
         MissiveError::protocol("encoding A2A task for local persistence").with_source(error)
-    })?);
+    })?;
+    let existing = transaction.get_task(&task_id)?;
+    let mapped_state = store_task_state(&task.status.state);
+    let changed = existing.as_ref().is_none_or(|record| {
+        record.state != mapped_state || record.remote_task_json.as_ref() != Some(&raw_task_json)
+    });
+
+    let mut upsert = TaskUpsert::new(task_id.clone(), agent.alias.clone(), mapped_state);
+    upsert.source = TaskSource::Remote;
+    upsert.context_id = Some(context_id.clone());
+    upsert.remote_task_json = Some(raw_task_json.clone());
     upsert.last_message_id = task
         .status
         .message
@@ -851,7 +855,43 @@ fn upsert_remote_task(
     }
     let record = transaction.upsert_task(&upsert)?;
     persist_task_artifacts(transaction, task)?;
+    if changed {
+        append_task_updated_event(
+            transaction,
+            agent,
+            &record,
+            raw_task_json,
+            service_parameters,
+        )?;
+    }
     Ok(record)
+}
+
+fn append_task_updated_event(
+    transaction: &StoreTransaction<'_>,
+    agent: &AgentRecord,
+    record: &TaskRecord,
+    raw_task_json: Value,
+    service_parameters: &ServiceParameters,
+) -> Result<()> {
+    let mut event = new_cli_event(
+        "a2a.task.updated",
+        json!({
+            "task_id": record.task_id.as_str(),
+            "context_id": record.context_id.as_ref().map(ContextId::as_str),
+            "agent": agent.alias.as_str(),
+            "state": record.state.as_str(),
+            "source": record.source.as_str(),
+            "task": raw_task_json,
+        }),
+    )?;
+    event.agent_alias = Some(agent.alias.clone());
+    event.context_id = record.context_id.clone();
+    event.task_id = Some(record.task_id.clone());
+    event.metadata = record.metadata.clone();
+    event.record_a2a_protocol_version(service_parameters.protocol_version.clone())?;
+    transaction.append_event(&event)?;
+    Ok(())
 }
 
 fn protocol_task_state(state: TaskState) -> missive_a2a::protocol::TaskState {

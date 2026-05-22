@@ -80,15 +80,18 @@ Normal human, JSON, and NDJSON output recursively redacts secret-like JSON keys
 and HTTP auth headers before printing. Authorization values preserve only the
 scheme, for example `Bearer [REDACTED]`. Auth headers passed to the A2A request
 builder are marked sensitive, and their debug representation is redacted.
-`missive context export` applies the same output redaction and also redacts raw
-message, task, and event payload JSON before including those records in the
-export payload.
+`missive context export` and `missive events list/tail/replay/export` apply the
+same output redaction and also redact raw message, task, and event payload JSON
+before including those records in stdout. Event producers created in current CLI
+paths store redacted event payloads for agent registry changes, send/stream
+requests, send responses, streaming updates, and changed remote task records.
 
 Redaction is a guardrail, not a substitute for secret hygiene. Do not place real
 tokens in config files, command examples, tests, fixtures, docs, event payloads,
 metadata, context names/summaries, notes, or committed runtime files. Local
 SQLite state can contain raw remote protocol payloads from tasks/messages and
-raw A2A artifact JSON before export-time redaction, so keep profile state
+raw A2A artifact JSON before export-time redaction; event rows are intended to be
+redacted but should still be treated as operational history. Keep profile state
 directories outside the repository and protect them like local application data.
 
 ## Local file inputs

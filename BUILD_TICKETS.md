@@ -759,7 +759,7 @@ Validation:
 
 ## 025 — Implement event journal and replay
 
-Status: TODO
+Status: DONE
 
 Phase: Events
 

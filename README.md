@@ -8,7 +8,7 @@ This repository is at early workspace stage. It contains:
 
 * a Cargo workspace with the target crate layout under `crates/`
 * a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, and context `create/list/show/fork/close/export`
+* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, context `create/list/show/fork/close/export`, and event journal `list/tail/replay/export`
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
@@ -27,7 +27,7 @@ crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
 crates/missive-observe    tracing, logs, diagnostics, event export helpers
 ```
 
-The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, and `missive context create/list/show/fork/close/export`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
+The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, and `missive events list/tail/replay/export`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
 
 ```bash
 cargo run -p missive-cli --bin missive -- --help
@@ -49,7 +49,10 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- context
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- context list
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- context export "Planning round" --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --json
-cargo run -p missive-cli --bin missive -- events --ndjson
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events list --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events export --ndjson
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events tail --limit 10 --ndjson
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events replay --context ctx-123 --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 

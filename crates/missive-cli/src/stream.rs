@@ -32,6 +32,7 @@ use crate::agent::{
 };
 use crate::artifact::{persist_artifact_update, persist_task_artifacts};
 use crate::auth::auth_headers_for_agent;
+use crate::events::new_cli_event;
 use crate::output::{OutputMode, redact_json, render_stream_item, render_success};
 use crate::send::{
     MessagePartSummary, PreparedSend, SendArgs, message_part_limit_bytes, new_local_message_id,
@@ -376,8 +377,40 @@ fn persist_stream_request(
         message.role = Some(MessageRole::User);
         message.protocol_message_id = Some(prepared.request.message.message_id.clone());
         message.metadata = prepared.local_metadata.clone();
-        transaction.insert_message(&message)
+        let stored_message = transaction.insert_message(&message)?;
+        append_stream_request_event(transaction, agent, prepared, service_parameters)?;
+        Ok(stored_message)
     })
+}
+
+fn append_stream_request_event(
+    transaction: &StoreTransaction<'_>,
+    agent: &AgentRecord,
+    prepared: &PreparedSend,
+    service_parameters: &ServiceParameters,
+) -> Result<()> {
+    let mut event = new_cli_event(
+        "a2a.stream.request",
+        json!({
+            "message_id": prepared.request_message_id.as_str(),
+            "context_id": prepared.requested_context_id.as_ref().map(ContextId::as_str),
+            "task_id": prepared.requested_task_id.as_ref().map(TaskId::as_str),
+            "part_count": prepared.request.message.parts.len(),
+            "parts": prepared.part_summaries.clone(),
+            "accepted_output_modes": prepared.accepted_output_modes.clone(),
+            "local_input_bytes": prepared.local_input_bytes,
+            "request_bytes": prepared.request_bytes,
+            "message": prepared.request.message.clone(),
+            "metadata": prepared.local_metadata.clone(),
+        }),
+    )?;
+    event.agent_alias = Some(agent.alias.clone());
+    event.context_id = prepared.requested_context_id.clone();
+    event.task_id = prepared.requested_task_id.clone();
+    event.metadata = prepared.local_metadata.clone();
+    event.record_a2a_protocol_version(service_parameters.protocol_version.clone())?;
+    transaction.append_event(&event)?;
+    Ok(())
 }
 
 fn persist_stream_event(

@@ -1,0 +1,59 @@
+Inspect, tail, replay, or export the local event journal in human, JSON, or NDJSON forms. Event records are stored in the selected profile's SQLite database.
+
+Usage: missive events [OPTIONS] [COMMAND]
+
+Commands:
+  list    List event journal records that match optional filters
+  tail    Follow new event journal records as they are appended
+  replay  Reconstruct task/context summaries from matching event records
+  export  Export matching event records, including one-record-per-line NDJSON
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Global options:
+      --json
+          Emit a single JSON document for command output when the command supports it
+
+      --ndjson
+          Emit newline-delimited JSON events when the command supports streaming output
+
+  -q, --quiet
+          Suppress non-error output
+
+      --no-color
+          Disable colored terminal output and diagnostics
+
+      --config <PATH>
+          Read configuration from this file path
+
+      --profile <PROFILE>
+          Select a named configuration profile
+
+      --timeout <DURATION>
+          Set an overall command timeout such as 30s, 2m, or 1h
+
+      --protocol-version <VERSION>
+          Override the A2A protocol version sent as the A2A-Version service parameter
+
+      --a2a-extension <EXTENSION>
+          Request an A2A extension through the A2A-Extensions service parameter; repeatable
+
+      --service-param <NAME=VALUE>
+          Add an arbitrary A2A service parameter as NAME=VALUE; repeatable
+
+      --bearer-token-env <ENV>
+          Read a bearer token from this environment variable and send it as Authorization
+
+      --header <NAME:VALUE>
+          Add an outbound HTTP header as Name:Value; repeatable and never persisted
+
+      --trace
+          Enable trace-oriented diagnostics for this invocation
+
+  -v, --verbose...
+          Increase human diagnostic verbosity; repeat for more detail

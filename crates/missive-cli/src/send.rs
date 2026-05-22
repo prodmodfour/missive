@@ -35,6 +35,7 @@ use crate::agent::{
 };
 use crate::artifact::persist_task_artifacts;
 use crate::auth::auth_headers_for_agent;
+use crate::events::new_cli_event;
 use crate::output::{OutputMode, render_success};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
@@ -824,6 +825,27 @@ fn persist_send(
             &prepared.local_metadata,
         )?;
 
+        append_send_request_event(
+            transaction,
+            agent,
+            prepared,
+            effective_context_id.as_ref(),
+            effective_task_id.as_ref(),
+            service_parameters,
+        )?;
+        append_send_response_event(
+            transaction,
+            agent,
+            outcome,
+            response_message.as_ref(),
+            effective_context_id.as_ref(),
+            effective_task_id.as_ref(),
+            service_parameters,
+        )?;
+        if let Some(task) = task_response(outcome) {
+            append_send_task_event(transaction, agent, task, service_parameters)?;
+        }
+
         Ok(PersistedSend {
             request_message,
             response_message,
@@ -1012,6 +1034,97 @@ fn insert_response_message(
     row.protocol_message_id = protocol_message_id;
     row.metadata = metadata.clone();
     transaction.insert_message(&row).map(Some)
+}
+
+fn append_send_request_event(
+    transaction: &StoreTransaction<'_>,
+    agent: &AgentRecord,
+    prepared: &PreparedSend,
+    context_id: Option<&ContextId>,
+    task_id: Option<&TaskId>,
+    service_parameters: &ServiceParameters,
+) -> Result<()> {
+    let mut event = new_cli_event(
+        "a2a.send.request",
+        json!({
+            "message_id": prepared.request_message_id.as_str(),
+            "context_id": context_id.map(ContextId::as_str),
+            "task_id": task_id.map(TaskId::as_str),
+            "part_count": prepared.request.message.parts.len(),
+            "parts": prepared.part_summaries.clone(),
+            "accepted_output_modes": prepared.accepted_output_modes.clone(),
+            "local_input_bytes": prepared.local_input_bytes,
+            "request_bytes": prepared.request_bytes,
+            "message": prepared.request.message.clone(),
+            "metadata": prepared.local_metadata.clone(),
+        }),
+    )?;
+    event.agent_alias = Some(agent.alias.clone());
+    event.context_id = context_id.cloned();
+    event.task_id = task_id.cloned();
+    event.metadata = prepared.local_metadata.clone();
+    event.record_a2a_protocol_version(service_parameters.protocol_version.clone())?;
+    transaction.append_event(&event)?;
+    Ok(())
+}
+
+fn append_send_response_event(
+    transaction: &StoreTransaction<'_>,
+    agent: &AgentRecord,
+    outcome: &SendMessageOutcome,
+    response_message: Option<&MessageRecord>,
+    context_id: Option<&ContextId>,
+    task_id: Option<&TaskId>,
+    service_parameters: &ServiceParameters,
+) -> Result<()> {
+    let response_view = SendResponseView::from_outcome(outcome);
+    let mut event = new_cli_event(
+        "a2a.send.response",
+        json!({
+            "shape": response_view.shape,
+            "message_id": response_view.message_id,
+            "response_message_id": response_message.map(|message| message.message_id.as_str()),
+            "task_id": task_id.map(TaskId::as_str),
+            "context_id": context_id.map(ContextId::as_str),
+            "state": response_view.state,
+            "text": response_view.text,
+            "raw": outcome.raw_json.clone(),
+        }),
+    )?;
+    event.agent_alias = Some(agent.alias.clone());
+    event.context_id = context_id.cloned();
+    event.task_id = task_id.cloned();
+    event.record_a2a_protocol_version(service_parameters.protocol_version.clone())?;
+    transaction.append_event(&event)?;
+    Ok(())
+}
+
+fn append_send_task_event(
+    transaction: &StoreTransaction<'_>,
+    agent: &AgentRecord,
+    task: &Task,
+    service_parameters: &ServiceParameters,
+) -> Result<()> {
+    let task_id = TaskId::new(task.id.clone())?;
+    let context_id = ContextId::new(task.context_id.clone())?;
+    let state = store_task_state(&task.status.state).as_str().to_owned();
+    let mut event = new_cli_event(
+        "a2a.task.updated",
+        json!({
+            "task_id": task_id.as_str(),
+            "context_id": context_id.as_str(),
+            "agent": agent.alias.as_str(),
+            "state": state,
+            "source": "remote",
+            "task": task,
+        }),
+    )?;
+    event.agent_alias = Some(agent.alias.clone());
+    event.context_id = Some(context_id);
+    event.task_id = Some(task_id);
+    event.record_a2a_protocol_version(service_parameters.protocol_version.clone())?;
+    transaction.append_event(&event)?;
+    Ok(())
 }
 
 fn task_response(outcome: &SendMessageOutcome) -> Option<&Task> {

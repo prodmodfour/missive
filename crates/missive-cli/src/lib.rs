@@ -13,6 +13,7 @@ pub mod agent;
 pub(crate) mod artifact;
 pub(crate) mod auth;
 pub mod context;
+pub mod events;
 pub mod output;
 pub mod send;
 pub mod stream;
@@ -257,9 +258,13 @@ pub enum Commands {
 
     /// Inspect, tail, replay, or export the local event journal.
     #[command(
-        long_about = "Inspect, tail, replay, or export the local event journal in human, JSON, or NDJSON forms. Event persistence is implemented by a later events ticket."
+        long_about = "Inspect, tail, replay, or export the local event journal in human, JSON, or NDJSON forms. Event records are stored in the selected profile's SQLite database."
     )]
-    Events,
+    Events {
+        /// Event journal operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<events::EventsCommands>,
+    },
 
     /// Generate shell completion scripts.
     #[command(
@@ -290,7 +295,7 @@ impl Commands {
             Self::Push => "push",
             Self::Doctor => "doctor",
             Self::Logs => "logs",
-            Self::Events => "events",
+            Self::Events { .. } => "events",
             Self::Completion => "completion",
             Self::Manpage => "manpage",
         }
@@ -410,6 +415,16 @@ where
             command: Some(context_command),
         }) => context::execute_context_command(
             context_command,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
+        Some(Commands::Events {
+            command: Some(events_command),
+        }) => events::execute_events_command(
+            events_command,
+            &cli.globals,
             &loaded_config,
             environment,
             mode,
