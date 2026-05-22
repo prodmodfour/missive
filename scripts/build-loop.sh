@@ -31,6 +31,8 @@ Environment:
 MISSIVE_BUILD_LOOP_STATE_DIR     Override build-loop logs/lock state directory.
 MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP
                                  Override failed-cycle retry delay in seconds.
+MISSIVE_SPLIT_AGENT_CONTEXT_FILES
+                                 Override prompt context files for token-limit ticket splitting.
 USAGE
 }
 
@@ -131,6 +133,27 @@ If you cannot safely complete the ticket:
 PROMPT_EOF
 )
 
+SPLIT_TICKET_PROMPT=$(cat <<'PROMPT_EOF'
+You are handling an autonomous missive build-loop recovery after the previous agent attempt exceeded the model token/context length.
+
+Read AGENTS.md, PROJECT_BRIEF.md, and BUILD_TICKETS.md. Read BUILD_NOTES.md only if needed.
+
+Your task in this recovery run:
+
+* Do not implement product code or start the ticket.
+* Find the lowest-numbered TODO or IN_PROGRESS ticket in BUILD_TICKETS.md.
+* Split that one oversized ticket into two smaller, sequentially ordered tickets with clear, non-overlapping scopes and acceptance criteria.
+* Preserve the ticket queue's numeric ordering. If the current numbering format requires it, renumber later tickets consistently so every ticket number remains unique and selectable by scripts/build-loop.sh.
+* Preserve AUTOMATION_STATUS and existing completed ticket history.
+* Update BUILD_NOTES.md briefly to record that the oversized ticket was split due to token/context length.
+* Run lightweight validation appropriate for ticket-file edits, at minimum: bash -n scripts/build-loop.sh scripts/run-agent.sh.
+* Commit only the split-ticket/documentation recovery change with a conventional commit message such as "chore: split oversized build ticket".
+* Leave the working tree clean.
+
+If you cannot safely split the ticket, explain why, do not commit partial changes, and leave the working tree clean.
+PROMPT_EOF
+)
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     pp_error "Required command not found: $1"
@@ -160,6 +183,13 @@ failure_retry_summary() {
   else
     printf 'off'
   fi
+}
+
+is_token_length_failure() {
+  local log_file="$1"
+  local pattern
+  pattern='(context[_ -]?length[_ -]?exceeded|context window|maximum context|context length|token length|too many tokens|prompt is too long|input is too long|exceeds?[^[:cntrl:]]{0,80}(token|context)|token[^[:cntrl:]]{0,80}exceeds?|max tokens)'
+  [[ -f "$log_file" ]] && LC_ALL=C grep -Eiq "$pattern" "$log_file"
 }
 
 get_automation_status() {
@@ -301,6 +331,25 @@ clean_failed_cycle() {
   pp_success "Working tree cleaned for retry."
 }
 
+sleep_before_retry() {
+  if (( FAILURE_RETRY_SLEEP > 0 )); then
+    pp_info "Sleeping ${FAILURE_RETRY_SLEEP}s before retrying failed cycle."
+    sleep "$FAILURE_RETRY_SLEEP"
+  else
+    pp_info "Retrying failed cycle immediately."
+  fi
+}
+
+prepare_failed_cycle_retry() {
+  if (( RETRY_ON_FAILURE == 0 )); then
+    pp_error "Stopping after failed cycle because failure retry is disabled."
+    exit 1
+  fi
+
+  cycle=$((cycle - 1))
+  sleep_before_retry
+}
+
 handle_failed_cycle() {
   local restore_ref="$1"
   local message="$2"
@@ -312,19 +361,57 @@ handle_failed_cycle() {
   fi
 
   clean_failed_cycle "$restore_ref" || exit 1
+  prepare_failed_cycle_retry
+}
 
-  if (( RETRY_ON_FAILURE == 0 )); then
-    pp_error "Stopping after failed cycle because failure retry is disabled."
+run_ticket_splitter_agent() {
+  local split_before_head split_after_head split_log_file context_files
+
+  split_before_head="$(git rev-parse HEAD)"
+  split_log_file="$LOG_DIR/split-ticket-$(date +%Y%m%d-%H%M%S).log"
+  context_files="${MISSIVE_SPLIT_AGENT_CONTEXT_FILES:-AGENTS.md PROJECT_BRIEF.md BUILD_TICKETS.md}"
+
+  pp_section "Split oversized ticket"
+  pp_kv "Log file" "$split_log_file"
+  pp_kv "Context files" "$context_files"
+
+  if ! MISSIVE_AGENT_CONTEXT_FILES="$context_files" scripts/run-agent.sh "$SPLIT_TICKET_PROMPT" 2>&1 | tee "$split_log_file"; then
+    pp_error "Ticket splitter agent failed."
+    pp_hint "See $split_log_file"
+    clean_failed_cycle "$split_before_head" || exit 1
     exit 1
   fi
 
-  cycle=$((cycle - 1))
-  if (( FAILURE_RETRY_SLEEP > 0 )); then
-    pp_info "Sleeping ${FAILURE_RETRY_SLEEP}s before retrying failed cycle."
-    sleep "$FAILURE_RETRY_SLEEP"
-  else
-    pp_info "Retrying failed cycle immediately."
+  if [[ -n "$(git status --porcelain)" ]]; then
+    pp_error "Ticket splitter agent left a dirty working tree."
+    git status --short >&2
+    clean_failed_cycle "$split_before_head" || exit 1
+    exit 1
   fi
+
+  split_after_head="$(git rev-parse HEAD)"
+  if [[ "$split_after_head" == "$split_before_head" ]]; then
+    pp_error "Ticket splitter agent completed without creating a split-ticket commit."
+    exit 1
+  fi
+
+  pp_success "Oversized ticket split in commit $(git rev-parse --short HEAD)."
+}
+
+handle_token_length_failure() {
+  local restore_ref="$1"
+  local log_file="$2"
+
+  pp_error "Agent failed because the prompt exceeded the token/context length."
+  pp_hint "See $log_file"
+  clean_failed_cycle "$restore_ref" || exit 1
+  run_ticket_splitter_agent
+  if [[ -n "$(git status --porcelain)" ]]; then
+    pp_error "Working tree is dirty after token-limit recovery."
+    git status --short >&2
+    exit 1
+  fi
+  prepare_failed_cycle_retry
 }
 
 require_command git
@@ -394,14 +481,22 @@ while (( cycle < MAX_CYCLES )); do
 
   pp_section "Agent run"
   if ! scripts/run-agent.sh "$PROMPT" 2>&1 | tee "$log_file"; then
-    handle_failed_cycle "$before_head" "Agent failed during cycle $cycle." "$log_file"
+    if is_token_length_failure "$log_file"; then
+      handle_token_length_failure "$before_head" "$log_file"
+    else
+      handle_failed_cycle "$before_head" "Agent failed during cycle $cycle." "$log_file"
+    fi
     continue
   fi
 
   if [[ -n "$(git status --porcelain)" ]]; then
     pp_error "Agent left a dirty working tree during cycle $cycle."
     git status --short >&2
-    handle_failed_cycle "$before_head" "Retrying after dirty working tree." "$log_file"
+    if is_token_length_failure "$log_file"; then
+      handle_token_length_failure "$before_head" "$log_file"
+    else
+      handle_failed_cycle "$before_head" "Retrying after dirty working tree." "$log_file"
+    fi
     continue
   fi
 
@@ -409,7 +504,11 @@ while (( cycle < MAX_CYCLES )); do
 
   after_head="$(git rev-parse HEAD)"
   if [[ "$after_head" == "$before_head" ]]; then
-    handle_failed_cycle "$before_head" "Cycle completed without a new commit." "$log_file"
+    if is_token_length_failure "$log_file"; then
+      handle_token_length_failure "$before_head" "$log_file"
+    else
+      handle_failed_cycle "$before_head" "Cycle completed without a new commit." "$log_file"
+    fi
     continue
   fi
 

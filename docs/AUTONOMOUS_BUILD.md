@@ -28,6 +28,16 @@ back to the pre-attempt `HEAD`, removes untracked non-ignored files with
 `--failure-retry-sleep SECONDS` or `MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP` to
 change the delay, and `--no-failure-retry` to clean once and stop.
 
+Token/context-length failures get an extra recovery step before the retry. When
+the failed attempt log looks like a model context or token limit was exceeded,
+the loop first cleans back to the pre-attempt `HEAD`, then launches a splitter
+agent with a reduced prompt context. That splitter must only divide the current
+lowest TODO/IN_PROGRESS ticket into two smaller sequential tickets, update notes,
+commit the split, and leave the tree clean. The loop then waits the same
+failed-cycle retry delay and retries against the newly split queue. Set
+`MISSIVE_SPLIT_AGENT_CONTEXT_FILES` to override the splitter prompt files when a
+custom agent needs a different minimal context.
+
 ## missive-specific expectations
 
 The agent should build a Rust CLI that is:

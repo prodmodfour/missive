@@ -11,6 +11,13 @@ if [[ $# -ne 1 ]]; then
 fi
 
 PROMPT="$1"
+DEFAULT_CONTEXT_FILES=(AGENTS.md PROJECT_BRIEF.md BUILD_TICKETS.md BUILD_NOTES.md)
+if [[ -n "${MISSIVE_AGENT_CONTEXT_FILES:-}" ]]; then
+  # shellcheck disable=SC2206 # Intentional whitespace-separated file list for simple automation overrides.
+  CONTEXT_FILES=(${MISSIVE_AGENT_CONTEXT_FILES})
+else
+  CONTEXT_FILES=("${DEFAULT_CONTEXT_FILES[@]}")
+fi
 
 if [[ -n "${MISSIVE_AGENT_COMMAND:-}" ]]; then
   pp_step "Launching configured agent command from MISSIVE_AGENT_COMMAND."
@@ -25,6 +32,14 @@ if ! command -v pi >/dev/null 2>&1; then
 fi
 
 pp_step "Launching Pi agent."
-pp_cmd "pi --no-session -p @AGENTS.md @PROJECT_BRIEF.md @BUILD_TICKETS.md @BUILD_NOTES.md '<prompt>'"
+PI_ARGS=(pi --no-session -p)
+DISPLAY_ARGS=(pi --no-session -p)
+for context_file in "${CONTEXT_FILES[@]}"; do
+  PI_ARGS+=("@${context_file}")
+  DISPLAY_ARGS+=("@${context_file}")
+done
+PI_ARGS+=("$PROMPT")
+DISPLAY_ARGS+=("<prompt>")
+pp_cmd "${DISPLAY_ARGS[*]}"
 
-pi --no-session -p @AGENTS.md @PROJECT_BRIEF.md @BUILD_TICKETS.md @BUILD_NOTES.md "$PROMPT"
+"${PI_ARGS[@]}"

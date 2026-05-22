@@ -48,9 +48,15 @@ without creating a commit, `scripts/build-loop.sh` resets back to the cycle's
 starting `HEAD`, removes untracked non-ignored files with `git clean -fd`, waits
 600 seconds, and retries the same cycle.
 
+If the failed log indicates the model exceeded a token/context-length limit, the
+loop cleans the failed attempt, asks a splitter agent to split the current lowest
+TODO/IN_PROGRESS ticket into two smaller sequential tickets and commit that
+queue-only change, then waits and retries.
+
 ```bash
 scripts/build-loop.sh --failure-retry-sleep 600
 MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP=600 scripts/build-loop.sh
+MISSIVE_SPLIT_AGENT_CONTEXT_FILES="AGENTS.md PROJECT_BRIEF.md BUILD_TICKETS.md" scripts/build-loop.sh
 scripts/build-loop.sh --no-failure-retry
 ```
 
@@ -67,6 +73,10 @@ The default wrapper expects `pi`:
 ```bash
 pi --no-session -p @AGENTS.md @PROJECT_BRIEF.md @BUILD_TICKETS.md @BUILD_NOTES.md "$PROMPT"
 ```
+
+For recovery prompts that need a smaller context, `scripts/run-agent.sh` accepts
+a whitespace-separated `MISSIVE_AGENT_CONTEXT_FILES` override. The build loop
+uses this automatically for token-limit ticket-splitting recovery.
 
 ## 8. Create GitHub issues from tickets
 
