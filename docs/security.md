@@ -75,9 +75,12 @@ may need keyutils/keyring setup or an env-backed fallback.
 Gateway session rows store source kind/source identity, target agent alias,
 resume name, linked context id, reset policy fields, timestamps, reset count,
 and non-secret metadata. They are communication continuity records only, not
-agent memory. Source identities such as adapter user/channel identifiers can be
-operationally sensitive, so keep profile SQLite files outside the repository and
-prune them according to future adapter retention policy.
+agent memory. Busy-input state uses the same source kind/source identity concept
+when deciding queue, interrupt, or steer behavior, and queued inputs may later be
+persisted by adapter/job workers as ordinary gateway state. Source identities
+such as adapter user/channel identifiers can be operationally sensitive, so keep
+profile SQLite files outside the repository and prune them according to future
+adapter retention policy.
 
 `--header Name:Value` is useful for one-off auth headers such as `X-Api-Key`,
 but the full value can be visible in shell history and process listings. Prefer
@@ -197,5 +200,6 @@ adapter tickets must reuse the same resolution and redaction path when they add
 broader outbound requests.
 
 Webhook signature/JWT verification, adapter trust boundaries, trace/log sinks,
-rate limits, gateway subscription auth resolution, user-facing session management
-commands, and insecure local token storage policy are not implemented yet.
+rate limits beyond busy-input `max_queue_depth`, gateway subscription auth
+resolution, user-facing session management commands, and insecure local token
+storage policy are not implemented yet.

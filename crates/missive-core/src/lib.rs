@@ -9,10 +9,11 @@ pub mod routing;
 pub mod timestamp;
 
 pub use config::{
-    AuthRefConfig, AuthRefKind, CONFIG_REDACTED, CONFIG_SCHEMA_VERSION, ColorMode, ConfigDiscovery,
-    ConfigSource, ConfigSourceKind, DEFAULT_A2A_PROTOCOL_VERSION, ENV_CONFIG,
-    ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig, MissiveConfig, OutputConfig, OutputFormat,
-    ProfileConfig, ProtocolConfig, QosConfig, RoutingConfig, StorageBackend, StorageConfig,
+    AuthRefConfig, AuthRefKind, BusyInputConfig, BusyInputMode, CONFIG_REDACTED,
+    CONFIG_SCHEMA_VERSION, ColorMode, ConfigDiscovery, ConfigSource, ConfigSourceKind,
+    DEFAULT_A2A_PROTOCOL_VERSION, ENV_CONFIG, ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig,
+    MissiveConfig, OutputConfig, OutputFormat, ProfileConfig, ProtocolConfig, QosConfig,
+    RoutingConfig, StorageBackend, StorageConfig,
 };
 pub use envelope::Envelope;
 pub use error::{ErrorCategory, ErrorReport, MissiveError, MissiveExitCode, Result};

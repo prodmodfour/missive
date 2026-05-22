@@ -1,11 +1,17 @@
 #![doc = "Gateway daemon scaffolding for missive."]
 
+pub mod busy;
 pub mod daemon;
 pub mod service;
 pub mod session;
 mod subscription;
 pub mod webhook;
 
+pub use busy::{
+    BusyInput, BusyInputAction, BusyInputDisposition, BusyInputOutcome, BusyInputSource,
+    BusyInputState, BusyOperationState, BusySteeringTarget, InFlightOperation, QueuedBusyInput,
+    apply_busy_input,
+};
 pub use daemon::{
     DEFAULT_GATEWAY_HEALTH_PATH, DEFAULT_GATEWAY_READY_PATH, DEFAULT_GATEWAY_STATUS_PATH,
     GatewayComponentStatus, GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent,

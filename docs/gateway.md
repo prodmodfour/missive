@@ -133,9 +133,34 @@ Session rows store reset policy metadata:
 * `idle` — rotate when `last_active_at` is older than the configured idle timeout.
 * `both` — rotate when either the daily boundary or idle timeout is reached.
 
-The reset evaluator lives in `crates/missive-gateway::session` and accepts an injectable clock; tests use a fixed clock so daily and idle boundary behavior is deterministic. The current daemon initializes/migrates the store and reports the `sessions` component as ready, but it does not yet expose user-facing session commands or adapter-driven session rotation. Later busy-input, job, and adapter tickets should use the typed `missive-store` gateway-session repository APIs instead of storing session state in memory.
+The reset evaluator lives in `crates/missive-gateway::session` and accepts an injectable clock; tests use a fixed clock so daily and idle boundary behavior is deterministic. The current daemon initializes/migrates the store and reports the `sessions` component as ready, but it does not yet expose user-facing session commands or adapter-driven session rotation. Busy-input, job, and adapter workers should use the typed `missive-store` gateway-session repository APIs instead of storing session state in memory.
 
 Sessions are not long-term memory. They do not contain learned facts, summaries for model recall, vector indexes, prompts, or tool state. They only record communication routing state: source identity, target agent, resume name, linked context id, reset policy fields, timestamps, reset count, and non-secret metadata.
+
+## Busy input modes
+
+Gateway/adapters use the shared busy-input policy evaluator in
+`crates/missive-gateway::busy` when a source sends new input while an operation
+is already in flight for that source.
+
+Supported modes:
+
+* `queue` — keep the active operation running and queue the new input up to
+  `max_queue_depth`.
+* `interrupt` — mark the active operation as `interrupting`, queue the new input
+  behind cancellation, and return actions for workers to cancel local waits,
+  cancel local subscription jobs, and request remote A2A `CancelTask` when a
+  cancellable task id is known and `interrupt_remote_cancel = true`.
+* `steer` — append the new input to the active task/context when the active
+  protocol state is marked steerable and has a context id or task id.
+
+If `steer` is configured but the active operation cannot accept follow-up input,
+the evaluator applies `unsupported_steer_fallback` (`queue` or `interrupt`) and
+records an explicit fallback action. The effective policy comes from the selected
+profile's `[gateway.busy_input]` block; a configured adapter/source can override
+it with `[adapters.<name>.busy_input]`. The current daemon exposes the policy
+library and config validation, while later background-job and adapter workers
+will execute the returned actions as they add user-visible inbound sources.
 
 ## State and locking
 
@@ -149,4 +174,4 @@ Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_
 
 The subscription worker uses cached Agent Cards already stored in SQLite; run `missive agent inspect <alias>` or use an implemented send/stream/task command first if an agent row has no card cache. It currently sends configured A2A service parameters but does not resolve outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values for subscription calls, so authenticated remote subscriptions remain a later hardening item. It updates task state and event journal rows but does not yet persist subscribed messages or artifacts as dedicated message/artifact rows.
 
-The daemon still does not embed `missive webhook run`, execute user-visible background jobs, run adapters, or expose an authenticated control API. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.
+The daemon still does not embed `missive webhook run`, execute user-visible background jobs, run adapters, or expose an authenticated control API. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current user-facing adapter path invokes it until the later job and adapter tickets add inbound workers. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.

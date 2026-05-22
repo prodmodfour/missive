@@ -97,20 +97,44 @@ Supported sections in this ticket:
   additional non-auth `service_parameters` sent as headers where HTTP-based A2A
   requests are implemented. Profiles may override the full protocol block with
   `[profiles.<name>.protocol]`.
-* `gateway` — gateway enablement, bind address, optional public base URL, and job
-  concurrency defaults. `missive gateway run` uses the selected profile's bind
-  address and job concurrency today.
+* `gateway` — gateway enablement, bind address, optional public base URL, job
+  concurrency defaults, and profile-wide busy-input policy. `missive gateway run`
+  uses the selected profile's bind address and job concurrency today; gateway and
+  future adapter workers share the busy-input policy model.
 * `routing` — default routing policy for `missive route explain` when a command
   does not provide `--policy` and no group policy applies. Profiles may override
   this block with `[profiles.<name>.routing]`. Valid built-in policies are
   `direct`, `capability-match`, `tag-match`, `round-robin`, `weighted`,
   `broadcast`, `first-success`, `quorum`, and `fallback`.
-* `adapters` — adapter kind, enablement, profile mapping, and non-secret settings
-  for later adapter tickets.
+* `adapters` — adapter kind, enablement, profile mapping, optional source-level
+  busy-input overrides, and non-secret settings for later adapter tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
   bytes, and concurrency defaults. `qos.max_request_bytes` is currently enforced
   by `missive send` and `missive stream` while parsing local text, file-reference,
   file-byte, and JSON parts and while checking the serialized A2A request size.
+
+Busy-input policy is configured under `[gateway.busy_input]` and may be
+replaced for a configured source/adapter with `[adapters.<name>.busy_input]`:
+
+```toml
+[gateway.busy_input]
+mode = "queue"                   # queue, interrupt, or steer
+unsupported_steer_fallback = "queue" # queue or interrupt
+interrupt_remote_cancel = true
+max_queue_depth = 32
+
+[adapters.stdio.busy_input]
+mode = "steer"
+unsupported_steer_fallback = "queue"
+max_queue_depth = 16
+```
+
+`queue` preserves the active operation and stores follow-up input for later,
+`interrupt` marks the active operation for cancellation and asks workers to
+cancel local waits/subscriptions plus remote A2A tasks when a cancellable task id
+is known, and `steer` appends follow-up input to the active task/context only
+when protocol state allows it. If steering is unsupported, the configured
+fallback is used; fallback cannot be `steer` to avoid recursive policy loops.
 
 Unknown fields are rejected so configuration typos fail early.
 
@@ -184,6 +208,8 @@ Config validation checks:
   `protocol.service_parameters`; use `protocol_version` and `extensions`
   instead
 * gateway bind address is an IP socket address such as `127.0.0.1:7347`
+* busy-input queue depth must be greater than zero, and unsupported steer
+  fallback must be `queue` or `interrupt`
 * routing policy names in `routing.default_policy`, profile routing overrides,
   and group creation must be one of the built-in missive policy names
 * auth refs identify only environment variables or keyring coordinates, not raw

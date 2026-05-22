@@ -1236,7 +1236,7 @@ Validation:
 
 ## 041 — Implement busy input modes
 
-Status: TODO
+Status: DONE
 
 Phase: Sessions
 

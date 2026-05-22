@@ -20,6 +20,12 @@ bind_address = "127.0.0.1:7347"
 public_base_url = "http://127.0.0.1:7347"
 job_concurrency = 4
 
+[gateway.busy_input]
+mode = "queue"
+unsupported_steer_fallback = "queue"
+interrupt_remote_cancel = true
+max_queue_depth = 32
+
 [qos]
 timeout = "30s"
 connect_timeout = "10s"
@@ -91,6 +97,12 @@ scheme = "Bearer"
 kind = "stdio"
 enabled = true
 session_profile = "default"
+
+[adapters.stdio.busy_input]
+mode = "steer"
+unsupported_steer_fallback = "queue"
+interrupt_remote_cancel = true
+max_queue_depth = 16
 
 [adapters.stdio.settings]
 framing = "ndjson"

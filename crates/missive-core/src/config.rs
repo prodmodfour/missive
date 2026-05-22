@@ -45,6 +45,7 @@ const DEFAULT_CONNECT_TIMEOUT: &str = "10s";
 const DEFAULT_RETRY_BACKOFF: &str = "250ms";
 const DEFAULT_MAX_REQUEST_BYTES: u64 = 1024 * 1024;
 const DEFAULT_CONCURRENCY: u16 = 4;
+const DEFAULT_BUSY_QUEUE_DEPTH: u16 = 32;
 const NAMED_CONFIG_IDENTIFIER_MAX_BYTES: usize = 63;
 const CONFIG_IDENTIFIER_HELP: &str =
     "Use lowercase ASCII letters or digits, with '-', '_' or '.' only in the middle.";
@@ -606,6 +607,75 @@ impl ProtocolConfig {
     }
 }
 
+/// How gateway/adapters handle new input from the same source while an
+/// operation is already in flight.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BusyInputMode {
+    /// Keep the active operation running and queue the new input for later.
+    #[default]
+    Queue,
+    /// Cancel local waits/subscriptions and request remote task cancellation
+    /// where possible before the new input is started.
+    Interrupt,
+    /// Append the input to the active task/context when A2A state allows it.
+    Steer,
+}
+
+impl BusyInputMode {
+    /// Stable lowercase string representation used in config docs and output.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Queue => "queue",
+            Self::Interrupt => "interrupt",
+            Self::Steer => "steer",
+        }
+    }
+}
+
+/// Busy-input policy shared by gateway, sessions, and future adapters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct BusyInputConfig {
+    /// Primary busy-input mode for a source.
+    pub mode: BusyInputMode,
+    /// Fallback mode used when `mode = "steer"` but the active task/context
+    /// cannot accept follow-up input.
+    pub unsupported_steer_fallback: BusyInputMode,
+    /// Whether interrupt mode should request remote A2A `CancelTask` when the
+    /// active operation has a cancellable remote task id.
+    pub interrupt_remote_cancel: bool,
+    /// Maximum number of queued follow-up inputs per source.
+    pub max_queue_depth: u16,
+}
+
+impl Default for BusyInputConfig {
+    fn default() -> Self {
+        Self {
+            mode: BusyInputMode::Queue,
+            unsupported_steer_fallback: BusyInputMode::Queue,
+            interrupt_remote_cancel: true,
+            max_queue_depth: DEFAULT_BUSY_QUEUE_DEPTH,
+        }
+    }
+}
+
+impl BusyInputConfig {
+    fn validate(&self, prefix: &str) -> Result<()> {
+        validate_positive_u16(&format!("{prefix}.max_queue_depth"), self.max_queue_depth)?;
+        if self.unsupported_steer_fallback == BusyInputMode::Steer {
+            return Err(MissiveError::config(format!(
+                "{prefix}.unsupported_steer_fallback must be queue or interrupt"
+            ))
+            .with_help(
+                "Use queue to preserve the follow-up input or interrupt to cancel the active task when steering is unsupported.",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Gateway defaults used by later daemon tickets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -619,6 +689,8 @@ pub struct GatewayConfig {
     pub public_base_url: Option<String>,
     /// Maximum number of concurrent gateway-managed jobs.
     pub job_concurrency: u16,
+    /// Busy-input behavior for gateway-managed sources in this profile.
+    pub busy_input: BusyInputConfig,
 }
 
 impl Default for GatewayConfig {
@@ -628,6 +700,7 @@ impl Default for GatewayConfig {
             bind_address: DEFAULT_GATEWAY_BIND.to_owned(),
             public_base_url: None,
             job_concurrency: DEFAULT_CONCURRENCY,
+            busy_input: BusyInputConfig::default(),
         }
     }
 }
@@ -646,6 +719,7 @@ impl GatewayConfig {
         }
 
         validate_positive_u16("gateway.job_concurrency", self.job_concurrency)?;
+        self.busy_input.validate("gateway.busy_input")?;
 
         Ok(())
     }
@@ -686,6 +760,10 @@ pub struct AdapterConfig {
     /// Optional profile name used for messages entering this adapter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_profile: Option<String>,
+    /// Adapter/source-specific busy-input override. When omitted, the selected
+    /// profile's gateway busy-input policy applies.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub busy_input: Option<BusyInputConfig>,
     /// Adapter-specific non-secret settings.
     pub settings: Metadata,
 }
@@ -696,6 +774,7 @@ impl Default for AdapterConfig {
             kind: String::new(),
             enabled: true,
             session_profile: None,
+            busy_input: None,
             settings: Metadata::default(),
         }
     }
@@ -713,6 +792,10 @@ impl AdapterConfig {
                 ))
                 .with_help("Choose an existing [profiles.<name>] entry for this adapter."));
             }
+        }
+
+        if let Some(busy_input) = &self.busy_input {
+            busy_input.validate(&format!("adapters.{name}.busy_input"))?;
         }
 
         Ok(())
@@ -862,6 +945,36 @@ impl LoadedConfig {
             .protocol
             .clone()
             .unwrap_or_else(|| self.config.protocol.clone()))
+    }
+
+    /// Returns the effective gateway defaults for the selected profile.
+    pub fn gateway_config(&self) -> Result<GatewayConfig> {
+        let profile = self.selected_profile_config()?;
+        Ok(profile
+            .gateway
+            .clone()
+            .unwrap_or_else(|| self.config.gateway.clone()))
+    }
+
+    /// Returns the effective busy-input policy for the selected profile and
+    /// optional adapter/source name.
+    ///
+    /// The profile's gateway busy-input policy is the base. If `source_name`
+    /// names a configured adapter and that adapter has a `busy_input` override,
+    /// the adapter/source override wins.
+    pub fn busy_input_config_for_source(
+        &self,
+        source_name: Option<&str>,
+    ) -> Result<BusyInputConfig> {
+        if let Some(source_name) = source_name {
+            validate_named_config_identifier("busy input source name", source_name)?;
+            if let Some(adapter) = self.config.adapters.get(source_name) {
+                if let Some(busy_input) = &adapter.busy_input {
+                    return Ok(busy_input.clone());
+                }
+            }
+        }
+        Ok(self.gateway_config()?.busy_input)
     }
 
     /// Returns the effective routing defaults for the selected profile.
@@ -1751,6 +1864,102 @@ default_policy = "least-latency"
         assert_eq!(error.category(), ErrorCategory::Config);
         assert!(error.to_string().contains("routing.default_policy"));
         assert!(error.help().is_some());
+    }
+
+    #[test]
+    fn busy_input_config_parses_profile_and_source_overrides() {
+        let config = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[gateway.busy_input]
+mode = "queue"
+unsupported_steer_fallback = "queue"
+interrupt_remote_cancel = true
+max_queue_depth = 4
+
+[profiles.default]
+
+[profiles.default.gateway]
+enabled = true
+bind_address = "127.0.0.1:7348"
+job_concurrency = 2
+
+[profiles.default.gateway.busy_input]
+mode = "interrupt"
+unsupported_steer_fallback = "queue"
+interrupt_remote_cancel = false
+max_queue_depth = 8
+
+[adapters.stdio]
+kind = "stdio"
+enabled = true
+
+[adapters.stdio.busy_input]
+mode = "steer"
+unsupported_steer_fallback = "interrupt"
+interrupt_remote_cancel = true
+max_queue_depth = 3
+"#,
+        )
+        .expect("busy input config should parse");
+        let loaded = LoadedConfig {
+            config,
+            source: ConfigSource::built_in_default(),
+            selected_profile: "default".to_owned(),
+        };
+
+        let profile_policy = loaded
+            .busy_input_config_for_source(None)
+            .expect("profile busy input");
+        assert_eq!(profile_policy.mode, BusyInputMode::Interrupt);
+        assert!(!profile_policy.interrupt_remote_cancel);
+        assert_eq!(profile_policy.max_queue_depth, 8);
+
+        let source_policy = loaded
+            .busy_input_config_for_source(Some("stdio"))
+            .expect("source busy input");
+        assert_eq!(source_policy.mode, BusyInputMode::Steer);
+        assert_eq!(
+            source_policy.unsupported_steer_fallback,
+            BusyInputMode::Interrupt
+        );
+        assert_eq!(source_policy.max_queue_depth, 3);
+    }
+
+    #[test]
+    fn busy_input_config_rejects_recursive_fallback_and_empty_queue() {
+        let recursive = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+
+[gateway.busy_input]
+mode = "steer"
+unsupported_steer_fallback = "steer"
+"#,
+        )
+        .expect_err("recursive steer fallback should fail");
+        assert_eq!(recursive.category(), ErrorCategory::Config);
+        assert!(recursive.to_string().contains("unsupported_steer_fallback"));
+
+        let empty_queue = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+
+[gateway.busy_input]
+max_queue_depth = 0
+"#,
+        )
+        .expect_err("empty busy input queue should fail");
+        assert_eq!(empty_queue.category(), ErrorCategory::Config);
+        assert!(empty_queue.to_string().contains("max_queue_depth"));
     }
 
     #[test]

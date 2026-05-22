@@ -173,7 +173,10 @@ resume by seeding an in-flight task plus a persisted `task_subscription` job,
 serving local mock `SubscribeToTask` SSE updates, verifying terminal cleanup, and
 checking bounded retry/backoff metadata for malformed streams. Gateway session
 unit tests additionally use fixed clocks to cover daily, idle, and combined reset
-policy boundaries without wall-clock sleeps. The webhook
+policy boundaries without wall-clock sleeps. Gateway busy-input unit tests cover
+queue, interrupt, steer, unsupported-steer fallback to queue/interrupt,
+queue-depth limits, and the no-active-operation start path without needing live
+adapters. The webhook
 command integration test similarly spawns the binary, waits for local
 `/healthz`, posts unauthorized, malformed, and valid A2A `StreamResponse`
 payloads over loopback HTTP, verifies graceful `--max-events` shutdown, checks
