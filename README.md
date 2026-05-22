@@ -8,7 +8,7 @@ This repository is at early workspace stage. It contains:
 
 * a Cargo workspace with the target crate layout under `crates/`
 * a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, non-streaming `missive send`, and streaming `missive stream`
+* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, non-streaming `missive send`, streaming `missive stream`, and task `get/list/wait/cancel`
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
@@ -27,7 +27,7 @@ crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
 crates/missive-observe    tracing, logs, diagnostics, event export helpers
 ```
 
-The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, and streaming `missive stream`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
+The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, streaming `missive stream`, and `missive task get/list/wait/cancel`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
 
 ```bash
 cargo run -p missive-cli --bin missive -- --help
@@ -38,12 +38,15 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent r
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- send echo "Say hello" --json
 printf 'hello from stdin' | MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- send echo --stdin
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- stream echo "Show progress" --ndjson
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- task list --agent echo --source remote --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- task wait task-123 --agent echo --timeout 2m --interval 2s --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- task cancel task-123 --agent echo
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --json
 cargo run -p missive-cli --bin missive -- events --ndjson
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream mapping, and interface negotiation mapping, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, and [`docs/security.md`](docs/security.md) for auth storage tradeoffs. Future tickets add task management, richer message parts, artifact export, gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task mapping, and interface negotiation mapping, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, and [`docs/security.md`](docs/security.md) for auth storage tradeoffs. Future tickets add richer message parts, artifact export, gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
 
 ## Build and validation
 

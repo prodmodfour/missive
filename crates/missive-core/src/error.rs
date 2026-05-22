@@ -120,6 +120,14 @@ pub enum MissiveExitCode {
     Permission = 77,
     /// Configuration failure.
     Config = 78,
+    /// A waited A2A task reached a failed state.
+    TaskFailed = 80,
+    /// A waited A2A task reached a cancelled state.
+    TaskCancelled = 81,
+    /// A task wait operation reached its timeout.
+    TaskTimeout = 82,
+    /// A waited A2A task requires more input before it can complete.
+    TaskInputRequired = 83,
 }
 
 impl MissiveExitCode {
@@ -164,6 +172,7 @@ pub struct MissiveError {
     #[source]
     source: Option<Box<dyn StdError + Send + Sync + 'static>>,
     help: Option<String>,
+    exit_code: Option<MissiveExitCode>,
 }
 
 impl MissiveError {
@@ -176,6 +185,7 @@ impl MissiveError {
             message: format!("{} error: {detail}", category.human_label()),
             source: None,
             help: None,
+            exit_code: None,
         }
     }
 
@@ -189,6 +199,7 @@ impl MissiveError {
             message: format!("I/O error while {action}: {source_message}"),
             source: Some(Box::new(source)),
             help: None,
+            exit_code: None,
         }
     }
 
@@ -248,6 +259,13 @@ impl MissiveError {
         self
     }
 
+    /// Overrides the deterministic CLI exit code for command-specific states.
+    #[must_use]
+    pub const fn with_exit_code(mut self, exit_code: MissiveExitCode) -> Self {
+        self.exit_code = Some(exit_code);
+        self
+    }
+
     /// Returns the high-level category.
     #[must_use]
     pub const fn category(&self) -> ErrorCategory {
@@ -263,7 +281,10 @@ impl MissiveError {
     /// Returns the deterministic CLI exit code.
     #[must_use]
     pub const fn exit_code(&self) -> MissiveExitCode {
-        self.category.exit_code()
+        match self.exit_code {
+            Some(exit_code) => exit_code,
+            None => self.category.exit_code(),
+        }
     }
 
     /// Returns the formatted human-readable message.

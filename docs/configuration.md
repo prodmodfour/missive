@@ -104,8 +104,9 @@ Supported sections in this ticket:
 Unknown fields are rejected so configuration typos fail early.
 
 For implemented A2A HTTP requests (Agent Card fetch/refresh, non-streaming
-send, and streaming send), `--protocol-version <VERSION>` overrides the selected
-profile's `protocol_version` for that invocation. The
+send, streaming send, and remote task get/list/wait/cancel),
+`--protocol-version <VERSION>` overrides the selected profile's
+`protocol_version` for that invocation. The
 `--a2a-extension <EXTENSION>` flag appends requested extensions, and
 `--service-param NAME=VALUE` adds or overrides an extra service parameter for the
 invocation. These flags are validated before an outbound request is sent.
@@ -115,7 +116,8 @@ Authentication can be supplied by linking an agent to an `auth_ref`, by passing
 Config auth refs currently support `kind = "env"` and `kind = "keyring"`; they
 store only the environment variable name or keyring service/account, never the
 raw token. CLI-supplied auth headers are used for the current invocation only,
-including `missive send` and `missive stream`, and are not written to SQLite.
+including `missive send`, `missive stream`, and remote `missive task`
+operations, and are not written to SQLite.
 
 ## Local state paths
 

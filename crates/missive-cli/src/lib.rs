@@ -14,6 +14,7 @@ pub(crate) mod auth;
 pub mod output;
 pub mod send;
 pub mod stream;
+pub mod task;
 
 pub use output::{
     CommandStatus, ConfigLoadStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header,
@@ -198,9 +199,13 @@ pub enum Commands {
 
     /// Inspect, list, wait for, or cancel A2A tasks.
     #[command(
-        long_about = "Inspect, list, wait for, and cancel A2A tasks while preserving local task state. Task operations are implemented by later task tickets."
+        long_about = "Inspect local A2A task state, refresh/list tasks from a remote agent, poll task state transitions, and request remote task cancellation."
     )]
-    Task,
+    Task {
+        /// Task operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<task::TaskCommands>,
+    },
 
     /// Manage conversation contexts and session continuity.
     #[command(
@@ -271,7 +276,7 @@ impl Commands {
             Self::Agent { .. } => "agent",
             Self::Send(_) => "send",
             Self::Stream(_) => "stream",
-            Self::Task => "task",
+            Self::Task { .. } => "task",
             Self::Context => "context",
             Self::Group => "group",
             Self::Gateway => "gateway",
@@ -383,6 +388,16 @@ where
             environment,
             mode,
             input,
+            writer,
+        ),
+        Some(Commands::Task {
+            command: Some(task_command),
+        }) => task::execute_task_command(
+            task_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
             writer,
         ),
         Some(command) => {

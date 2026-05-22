@@ -170,9 +170,39 @@ with event types `a2a.stream.task`, `a2a.stream.message`,
 `a2a.stream.status_update`, or `a2a.stream.artifact_update`; a corresponding
 `messages` row with direction `stream_event` is also written. Task and status
 events update the local `tasks` row state and preserve A2A protocol-version
-metadata. Dedicated artifact rows, artifact export, task polling, local task
-cancellation commands, richer file/JSON parts, and push configuration remain
-mapped for later tickets.
+metadata. Dedicated artifact rows, artifact export, task subscription/resume, richer
+file/JSON parts, and push configuration remain mapped for later tickets.
+
+## Task GetTask/ListTasks/CancelTask
+
+`missive task get --remote`, `missive task list --remote`, `missive task wait`,
+and `missive task cancel` use the official `a2a-lf` task request/response types
+behind `missive_a2a::protocol`: `GetTaskRequest`, `ListTasksRequest`,
+`ListTasksResponse`, `CancelTaskRequest`, and `Task`.
+
+Transport mapping follows the negotiated interface:
+
+* `http+json` maps `GetTask` to `GET <interface>/tasks/{id}`, `ListTasks` to
+  `GET <interface>/tasks`, and `CancelTask` to
+  `POST <interface>/tasks/{id}:cancel`. Task ids are percent-encoded as path
+  segments. List filters become query parameters such as `contextId`, `status`,
+  `statusTimestampAfter`, `pageSize`, `pageToken`, `historyLength`, and
+  `includeArtifacts`.
+* `json-rpc` posts JSON-RPC 2.0 methods `GetTask`, `ListTasks`, and
+  `CancelTask` to the selected JSON-RPC interface URL.
+
+Both transports send `A2A-Version`, optional `A2A-Extensions`, configured extra
+service parameters, and resolved auth headers. A task returned by any of these
+operations is persisted to the local `tasks` table with raw remote task JSON,
+context id, mapped state, protocol-version metadata, and status-message id when
+present. `ListTasks` persists each returned task before applying local output
+filters.
+
+`task wait` repeatedly calls `GetTask` unless `--local` is supplied. The wait
+loop treats `completed`, `failed`, `cancelled`, and `input_required` as decisive
+states and returns deterministic process exit codes documented in `docs/cli.md`.
+Timeout is controlled by global `--timeout`; polling cadence is controlled by
+`--interval`.
 
 ## Error mapping
 
@@ -204,6 +234,6 @@ Fixtures live under `tests/fixtures/a2a/1.0/`. Update the fixtures and rerun
 A2A wire shapes change.
 
 Authentication material is resolved for implemented Agent Card fetch/refresh,
-non-streaming send, and streaming send requests. Future task and push protocol
-calls should reuse `AuthHeaders` plus the CLI/config auth resolver instead of
-inventing separate secret handling paths.
+non-streaming send, streaming send, and task get/list/wait/cancel requests.
+Future push protocol calls should reuse `AuthHeaders` plus the CLI/config auth
+resolver instead of inventing separate secret handling paths.

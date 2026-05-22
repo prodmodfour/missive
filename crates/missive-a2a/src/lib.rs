@@ -58,11 +58,13 @@ pub const PUBLIC_AGENT_CARD_PATH: &str = "/.well-known/agent-card.json";
 const DEFAULT_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_STREAM_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TASK_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT: &str = concat!("missive/", env!("CARGO_PKG_VERSION"), " a2a-client");
 const A2A_JSON_CONTENT_TYPE: &str = "application/a2a+json";
 const EVENT_STREAM_CONTENT_TYPE: &str = "text/event-stream";
 const SEND_MESSAGE_REST_PATH: &str = "message:send";
 const SEND_STREAMING_MESSAGE_REST_PATH: &str = "message:stream";
+const TASKS_REST_PATH: &str = "tasks";
 const MAX_SSE_EVENT_DATA_BYTES: usize = 16 * 1024 * 1024;
 
 /// Canonical missive name for the A2A HTTP+JSON protocol binding.
@@ -1678,6 +1680,568 @@ impl Default for StreamMessageClient {
     fn default() -> Self {
         Self::new().expect("default A2A streaming HTTP client should build")
     }
+}
+
+/// Result of an A2A `GetTask` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GetTaskOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed A2A task.
+    pub task: protocol::Task,
+    /// Raw task JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Result of an A2A `ListTasks` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ListTasksOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed A2A list response.
+    pub response: protocol::ListTasksResponse,
+    /// Raw response JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Result of an A2A `CancelTask` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CancelTaskOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed cancelled A2A task.
+    pub task: protocol::Task,
+    /// Raw task JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Blocking A2A client for task get/list/cancel operations.
+#[derive(Debug, Clone)]
+pub struct TaskClient {
+    client: Client,
+}
+
+impl TaskClient {
+    /// Creates a task client with a bounded timeout and missive user agent.
+    pub fn new() -> Result<Self> {
+        Self::with_timeout(DEFAULT_TASK_TIMEOUT)
+    }
+
+    /// Creates a task client with a caller-provided timeout.
+    pub fn with_timeout(timeout: Duration) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(timeout)
+            .user_agent(USER_AGENT)
+            .build()
+            .map_err(|error| {
+                MissiveError::transport("building A2A task HTTP client")
+                    .with_source(error)
+                    .with_help("Check local TLS certificate roots and HTTP client configuration.")
+            })?;
+        Ok(Self { client })
+    }
+
+    /// Fetches one task using the negotiated interface.
+    pub fn get_task(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::GetTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<GetTaskOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.get_http_json(interface, request, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => self.get_json_rpc(interface, request, service_parameters, auth_headers),
+            binding => Err(MissiveError::transport(format!(
+                "A2A GetTask cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    /// Lists tasks using the negotiated interface.
+    pub fn list_tasks(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::ListTasksRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<ListTasksOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.list_http_json(interface, request, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => self.list_json_rpc(interface, request, service_parameters, auth_headers),
+            binding => Err(MissiveError::transport(format!(
+                "A2A ListTasks cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    /// Cancels one task using the negotiated interface.
+    pub fn cancel_task(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::CancelTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<CancelTaskOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.cancel_http_json(interface, request, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => {
+                self.cancel_json_rpc(interface, request, service_parameters, auth_headers)
+            }
+            binding => Err(MissiveError::transport(format!(
+                "A2A CancelTask cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    fn get_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::GetTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<GetTaskOutcome> {
+        let request_body = get_task_request_with_interface_tenant(request, interface);
+        let mut endpoint = rest_endpoint_url(
+            &interface.url,
+            &format!(
+                "{TASKS_REST_PATH}/{}",
+                encode_path_segment(&request_body.id)
+            ),
+        )?;
+        if request_body.history_length.is_some() || request_body.tenant.is_some() {
+            let mut query = endpoint.query_pairs_mut();
+            if let Some(history_length) = request_body.history_length {
+                query.append_pair("historyLength", &history_length.to_string());
+            }
+            if let Some(tenant) = &request_body.tenant {
+                query.append_pair("tenant", tenant);
+            }
+        }
+        let mut http_request = self
+            .client
+            .get(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) =
+            send_task_request(http_request, &endpoint, service_parameters, "A2A GetTask")?;
+        let task = task_from_json(raw_json.clone(), &endpoint, "A2A GetTask response")?;
+        Ok(GetTaskOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            task,
+            raw_json,
+        })
+    }
+
+    fn get_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::GetTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<GetTaskOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = get_task_request_with_interface_tenant(request, interface);
+        let raw_json = self.json_rpc_call(
+            &endpoint,
+            protocol::JsonRpcId::String(request_body.id.clone()),
+            protocol::jsonrpc_methods::GET_TASK,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        let task = task_from_json(raw_json.clone(), &endpoint, "A2A JSON-RPC GetTask result")?;
+        Ok(GetTaskOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            task,
+            raw_json,
+        })
+    }
+
+    fn list_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::ListTasksRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<ListTasksOutcome> {
+        let request_body = list_tasks_request_with_interface_tenant(request, interface);
+        let mut endpoint = rest_endpoint_url(&interface.url, TASKS_REST_PATH)?;
+        append_list_tasks_query(&mut endpoint, &request_body)?;
+        let mut http_request = self
+            .client
+            .get(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) =
+            send_task_request(http_request, &endpoint, service_parameters, "A2A ListTasks")?;
+        let response = serde_json::from_value::<protocol::ListTasksResponse>(raw_json.clone())
+            .map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A ListTasks response from {endpoint} is not a ListTasksResponse"
+                ))
+                .with_source(error)
+            })?;
+        Ok(ListTasksOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            response,
+            raw_json,
+        })
+    }
+
+    fn list_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::ListTasksRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<ListTasksOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = list_tasks_request_with_interface_tenant(request, interface);
+        let raw_json = self.json_rpc_call(
+            &endpoint,
+            protocol::JsonRpcId::String("list-tasks".to_owned()),
+            protocol::jsonrpc_methods::LIST_TASKS,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        let response = serde_json::from_value::<protocol::ListTasksResponse>(raw_json.clone())
+            .map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A JSON-RPC ListTasks result from {endpoint} is not a ListTasksResponse"
+                ))
+                .with_source(error)
+            })?;
+        Ok(ListTasksOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            response,
+            raw_json,
+        })
+    }
+
+    fn cancel_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::CancelTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<CancelTaskOutcome> {
+        let request_body = cancel_task_request_with_interface_tenant(request, interface);
+        let endpoint = rest_endpoint_url(
+            &interface.url,
+            &format!(
+                "{TASKS_REST_PATH}/{}:cancel",
+                encode_path_segment(&request_body.id)
+            ),
+        )?;
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE);
+        if request_body.metadata.is_some() || request_body.tenant.is_some() {
+            http_request = http_request
+                .header("Content-Type", A2A_JSON_CONTENT_TYPE)
+                .json(&request_body);
+        }
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) = send_task_request(
+            http_request,
+            &endpoint,
+            service_parameters,
+            "A2A CancelTask",
+        )?;
+        let task = task_from_json(raw_json.clone(), &endpoint, "A2A CancelTask response")?;
+        Ok(CancelTaskOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            task,
+            raw_json,
+        })
+    }
+
+    fn cancel_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::CancelTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<CancelTaskOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = cancel_task_request_with_interface_tenant(request, interface);
+        let raw_json = self.json_rpc_call(
+            &endpoint,
+            protocol::JsonRpcId::String(request_body.id.clone()),
+            protocol::jsonrpc_methods::CANCEL_TASK,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        let task = task_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A JSON-RPC CancelTask result",
+        )?;
+        Ok(CancelTaskOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            task,
+            raw_json,
+        })
+    }
+
+    fn json_rpc_call<P: Serialize>(
+        &self,
+        endpoint: &Url,
+        id: protocol::JsonRpcId,
+        method: &str,
+        params: &P,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<Value> {
+        let params = serde_json::to_value(params).map_err(|error| {
+            MissiveError::protocol(format!("encoding {method} request as JSON-RPC params"))
+                .with_source(error)
+        })?;
+        let rpc_request = protocol::JsonRpcRequest::new(id, method, Some(params));
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&rpc_request);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!("sending A2A JSON-RPC {method} to {endpoint} failed"))
+                .with_source(error)
+                .with_help("Verify the selected Agent Card JSON-RPC interface URL, local network access, and TLS configuration.")
+        })?;
+        let status = response.status();
+        let body = response.text().map_err(|error| {
+            MissiveError::transport(format!(
+                "reading A2A JSON-RPC {method} response from {endpoint} failed"
+            ))
+            .with_source(error)
+        })?;
+        if !status.is_success() {
+            if response_reports_unsupported_version(&body) {
+                return Err(unsupported_protocol_version_error(
+                    &service_parameters.protocol_version,
+                    endpoint,
+                    status,
+                ));
+            }
+            return Err(MissiveError::transport(format!(
+                "A2A JSON-RPC {method} returned HTTP {status} for {endpoint}"
+            ))
+            .with_help("Inspect the remote agent logs or retry after refreshing its Agent Card."));
+        }
+
+        let raw_rpc = parse_response_json(&body, endpoint, "A2A JSON-RPC task response")?;
+        let rpc_response =
+            serde_json::from_value::<protocol::JsonRpcResponse>(raw_rpc).map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A JSON-RPC {method} response from {endpoint} is not a JSON-RPC response"
+                ))
+                .with_source(error)
+            })?;
+        if let Some(error) = rpc_response.error {
+            if error.code == protocol::error_code::VERSION_NOT_SUPPORTED {
+                return Err(unsupported_protocol_version_error(
+                    &service_parameters.protocol_version,
+                    endpoint,
+                    status,
+                ));
+            }
+            return Err(MissiveError::protocol(format!(
+                "A2A JSON-RPC {method} failed with code {}: {}",
+                error.code, error.message
+            ))
+            .with_help("Inspect the remote agent error data and retry if appropriate."));
+        }
+        rpc_response.result.ok_or_else(|| {
+            MissiveError::protocol(format!(
+                "A2A JSON-RPC {method} response from {endpoint} did not include result or error"
+            ))
+        })
+    }
+}
+
+impl Default for TaskClient {
+    fn default() -> Self {
+        Self::new().expect("default A2A task HTTP client should build")
+    }
+}
+
+fn get_task_request_with_interface_tenant(
+    request: &protocol::GetTaskRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::GetTaskRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn list_tasks_request_with_interface_tenant(
+    request: &protocol::ListTasksRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::ListTasksRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn cancel_task_request_with_interface_tenant(
+    request: &protocol::CancelTaskRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::CancelTaskRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn send_task_request(
+    request: RequestBuilder,
+    endpoint: &Url,
+    service_parameters: &ServiceParameters,
+    label: &str,
+) -> Result<(u16, Value)> {
+    let response = request.send().map_err(|error| {
+        MissiveError::transport(format!("{label} request to {endpoint} failed"))
+            .with_source(error)
+            .with_help("Verify the selected Agent Card interface URL, local network access, and TLS configuration.")
+    })?;
+    let status = response.status();
+    let body = response.text().map_err(|error| {
+        MissiveError::transport(format!("reading {label} response from {endpoint} failed"))
+            .with_source(error)
+    })?;
+    if !status.is_success() {
+        if response_reports_unsupported_version(&body) {
+            return Err(unsupported_protocol_version_error(
+                &service_parameters.protocol_version,
+                endpoint,
+                status,
+            ));
+        }
+        return Err(MissiveError::transport(format!(
+            "{label} returned HTTP {status} for {endpoint}"
+        ))
+        .with_help("Inspect the remote agent logs or retry after refreshing its Agent Card."));
+    }
+
+    parse_response_json(&body, endpoint, label).map(|raw| (status.as_u16(), raw))
+}
+
+fn task_from_json(raw_json: Value, endpoint: &Url, label: &str) -> Result<protocol::Task> {
+    serde_json::from_value::<protocol::Task>(raw_json).map_err(|error| {
+        MissiveError::protocol(format!("{label} from {endpoint} is not a Task"))
+            .with_source(error)
+            .with_help("Expected an A2A Task object with id, contextId, and status fields.")
+    })
+}
+
+fn append_list_tasks_query(endpoint: &mut Url, request: &protocol::ListTasksRequest) -> Result<()> {
+    if request.context_id.is_none()
+        && request.status.is_none()
+        && request.page_size.is_none()
+        && request.page_token.is_none()
+        && request.history_length.is_none()
+        && request.status_timestamp_after.is_none()
+        && request.include_artifacts.is_none()
+        && request.tenant.is_none()
+    {
+        return Ok(());
+    }
+
+    let mut query = endpoint.query_pairs_mut();
+    if let Some(context_id) = &request.context_id {
+        query.append_pair("contextId", context_id);
+    }
+    if let Some(status) = &request.status {
+        query.append_pair("status", &task_state_wire_value(status)?);
+    }
+    if let Some(page_size) = request.page_size {
+        query.append_pair("pageSize", &page_size.to_string());
+    }
+    if let Some(page_token) = &request.page_token {
+        query.append_pair("pageToken", page_token);
+    }
+    if let Some(history_length) = request.history_length {
+        query.append_pair("historyLength", &history_length.to_string());
+    }
+    if let Some(timestamp) = &request.status_timestamp_after {
+        query.append_pair("statusTimestampAfter", &timestamp.to_rfc3339());
+    }
+    if let Some(include_artifacts) = request.include_artifacts {
+        query.append_pair("includeArtifacts", &include_artifacts.to_string());
+    }
+    if let Some(tenant) = &request.tenant {
+        query.append_pair("tenant", tenant);
+    }
+    Ok(())
+}
+
+fn task_state_wire_value(status: &protocol::TaskState) -> Result<String> {
+    let encoded = serde_json::to_string(status).map_err(|error| {
+        MissiveError::protocol("encoding A2A task state query parameter").with_source(error)
+    })?;
+    Ok(encoded.trim_matches('"').to_owned())
+}
+
+fn encode_path_segment(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

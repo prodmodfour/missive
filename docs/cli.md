@@ -4,8 +4,9 @@
 configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
-`missive send`, and streaming `missive stream`; other top-level commands still
-emit skeletal parsed status until their ordered tickets land.
+`missive send`, streaming `missive stream`, and `missive task get/list/wait/cancel`;
+other top-level commands still emit skeletal parsed status until their ordered
+tickets land.
 
 Run help with:
 
@@ -14,6 +15,7 @@ missive --help
 missive agent --help
 missive send --help
 missive stream --help
+missive task --help
 ```
 
 ## Global flags
@@ -45,10 +47,10 @@ locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
 requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
-Agent Card HTTP requests plus implemented send/stream calls and are shared with
-future A2A task/push clients. Timeout enforcement, tracing, task polling, and
-broader command-specific semantics are intentionally left to their ordered
-implementation tickets.
+Agent Card HTTP requests plus implemented send, stream, and remote task calls,
+and are shared with future A2A push clients. Task wait uses global `--timeout`;
+tracing and broader command-specific timeout semantics are intentionally left to
+their ordered implementation tickets.
 
 ## Top-level commands
 
@@ -204,9 +206,9 @@ Supported inputs for this ticket are text-only:
 * repeatable `--accepted-output-mode MIME` populates
   `configuration.acceptedOutputModes`
 
-Binary file bytes, MIME-specific file parts, JSON structured-data parts, remote
-task polling, and artifact export are intentionally deferred to later ordered
-tickets.
+Binary file bytes, MIME-specific file parts, JSON structured-data parts,
+task subscription/resume, and artifact export are intentionally deferred to later
+ordered tickets.
 
 `send` resolves auth the same way as Agent Card commands: agent auth refs,
 `--bearer-token-env`, and repeatable `--header Name:Value` are applied to both
@@ -277,6 +279,58 @@ responses, and stream payloads that are not one of `task`, `message`,
 `statusUpdate`, or `artifactUpdate` fail with deterministic protocol or transport
 errors. If an error occurs mid-stream, earlier event rows and any earlier
 human/NDJSON output remain as a truthful partial stream record.
+
+## Task commands
+
+`missive task` manages the local task view and the initial remote A2A task
+operations:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive task list --json
+MISSIVE_HOME=/tmp/missive-demo missive task list --agent echo --state working --source remote
+MISSIVE_HOME=/tmp/missive-demo missive task list --agent echo --remote --context ctx-1 --updated-after 2026-05-21T00:00:00Z --json
+MISSIVE_HOME=/tmp/missive-demo missive task get task-123 --json
+MISSIVE_HOME=/tmp/missive-demo missive task get task-123 --agent echo --remote --history-length 10 --json
+MISSIVE_HOME=/tmp/missive-demo missive task wait task-123 --agent echo --timeout 2m --interval 2s --json
+MISSIVE_HOME=/tmp/missive-demo missive task cancel task-123 --agent echo
+```
+
+Local `task list` filters SQLite rows by `--agent`, `--context`, `--state`,
+`--updated-after`, and `--source remote|local|gateway`. `task get` reads the
+local row by default and can enforce `--agent`/`--source` on that row.
+
+Passing `--remote` to `task get` or `task list` negotiates the agent interface,
+applies the same service-parameter and auth-header handling used by send/stream,
+queries the remote A2A `GetTask` or `ListTasks` endpoint, persists returned tasks
+back to SQLite, and then renders the updated local task view. Remote `task list`
+is scoped to one agent, so `--agent` is required with `--remote`. Remote list
+filters are also sent to A2A when supported: context, state, updated-after,
+page size/token, history length, and include-artifacts.
+
+`task wait` polls remote `GetTask` by default. It resolves the agent from
+`--agent` or from an existing local task row, uses global `--timeout` for the wait
+budget, and uses `--interval` for the poll cadence. `--local` polls only the
+local SQLite row for future gateway-managed updates. Wait prints a final
+`task_wait` document before returning the deterministic process code:
+
+* `0` when the task reaches `completed`
+* `80` when the task reaches `failed`
+* `81` when the task reaches `cancelled`
+* `82` when the wait times out
+* `83` when the task reaches `input_required`
+
+When a non-success wait state is reached in `--json`/`--ndjson` mode, stdout
+contains the final task output and stderr contains the structured error envelope
+with the same exit code. This keeps task state machine-readable while preserving
+shell-friendly nonzero statuses.
+
+`task cancel` sends A2A `CancelTask` to the resolved remote agent, persists the
+returned task, and renders `task_cancel`. If no local task row exists yet, pass
+`--agent` so missive knows which remote agent to call.
+
+Task output includes the mapped local state, source, agent, context, protocol
+version, status text when present, artifact/history counts, timestamps, metadata,
+and redacted raw remote task JSON when available.
 
 ## Output contract
 

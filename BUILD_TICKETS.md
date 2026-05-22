@@ -639,7 +639,7 @@ Validation:
 
 ## 021 — Implement task get/list/wait/cancel
 
-Status: TODO
+Status: DONE
 
 Phase: Tasks
 
