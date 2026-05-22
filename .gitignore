@@ -21,6 +21,7 @@
 # Coverage, release, and generated reports
 /coverage/
 /dist/
+/mutants.out/
 *.profraw
 
 # Fuzz crash/artifact output

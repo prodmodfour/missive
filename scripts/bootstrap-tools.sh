@@ -234,6 +234,7 @@ install_system_package() {
 install_system_deps() {
   pp_section "System tools"
   install_system_package jq jq jq
+  install_system_package shellcheck shellcheck shellcheck
   install_system_package protoc protobuf-compiler protobuf
   install_system_package sqlite3 sqlite3 sqlite
   install_system_package pkg-config pkg-config pkg-config

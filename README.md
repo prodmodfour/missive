@@ -61,10 +61,12 @@ scripts/quality-gate.sh
 Useful direct Rust commands during this bootstrap phase:
 
 ```bash
+cargo check --workspace --all-targets --all-features
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-cargo build --workspace --all-features
+cargo test --workspace --all-targets --all-features
+RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --all-features --no-deps
+cargo build --workspace --all-features --release
 ```
 
 Runtime state, credentials, logs, database files, generated artifacts, and other machine-local files must stay out of the repository.

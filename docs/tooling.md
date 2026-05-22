@@ -22,7 +22,7 @@ already exist and warns, rather than failing the whole run, when optional tools
 cannot be installed.
 
 To let the script install supported operating-system packages such as `jq`,
-`protoc`, `sqlite3`, and `pkg-config`, opt in explicitly:
+`shellcheck`, `protoc`, `sqlite3`, and `pkg-config`, opt in explicitly:
 
 ```bash
 scripts/bootstrap-tools.sh --system-deps
@@ -62,13 +62,14 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | Rust stable, `cargo` | Yes | Yes | Build and test the Rust workspace. |
 | `rustfmt` | Yes | Yes | Formatting checks. |
 | `clippy` | Yes | Yes | Lints with warnings denied. |
+| `shellcheck` | No | Yes | Optional shell-script linting in addition to `bash -n`. |
 | `cargo-machete` | No | Yes | Optional unused-dependency check. |
 | `cargo-audit` | No | Yes | Optional RustSec advisory check. |
 | `cargo-deny` | No | When deny config exists | Future license/advisory/duplicate policy checks. |
 | `cargo-nextest` | No | Aggressive gate | Faster workspace test runner. |
 | `cargo-llvm-cov` | No | Aggressive gate | Coverage smoke checks. |
 | `miri` | No | Aggressive gate | Undefined-behaviour-oriented Rust test checks. |
-| `cargo-mutants` | No | Aggressive gate | Bounded mutation-test smoke checks. |
+| `cargo-mutants` | No | Aggressive gate | Bounded mutation compile smoke checks. |
 | `cargo-fuzz` | No | Aggressive gate when fuzz targets exist | Fuzz smoke runs. |
 | `sqlx` (`sqlx-cli`) | No | Future store tickets | SQLite migration and query tooling if sqlx is selected. |
 | `just` | No | If a `justfile` with `ci` exists | Optional command runner. |
@@ -76,17 +77,37 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `gh` | No | Helper scripts | Optional GitHub issue creation. |
 | `protoc` | No | Future protocol work | Protocol buffer generation if needed. |
 | `sqlite3` | No | Future store/debug work | Inspect local SQLite databases in tests. |
-| Docker | No | Future container tickets | Local container/devcontainer validation. |
+| Docker | No | Aggressive gate when Docker inputs exist | Local container/devcontainer validation. |
 
 ## Quality gate behavior
 
 `scripts/quality-gate.sh` must pass from a normal checkout with only required
-Rust tooling installed. Optional tools are handled as follows:
+Rust tooling installed. The default gate is intentionally suitable for every
+autonomous cycle and fails on repository hygiene, formatting, lint, test, doc,
+or build regressions.
+
+Default checks include:
+
+* `bash -n` for repository shell scripts, plus `shellcheck` when installed;
+* secret scanning across tracked files and untracked non-ignored files;
+* generated/private/runtime-file scanning across tracked files and untracked
+  non-ignored files;
+* `cargo check --workspace --all-targets` for default, all-features, and
+  no-default-features builds;
+* `cargo fmt --all -- --check`;
+* `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+* workspace tests and doc tests with all features;
+* `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --all-features --no-deps`;
+* debug and release workspace builds, including the release `missive` binary;
+* optional `cargo-machete`, `cargo-audit`, and `cargo-deny` when the relevant
+  tools/configuration are present.
+
+Optional tools are handled as follows:
 
 * if an optional tool is missing, the gate emits a warning and skips that check;
 * if an optional tool is present, the gate runs the matching check;
-* `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks such as nextest,
-  coverage, miri, mutation, and fuzz smoke tests when those tools/targets exist.
+* `cargo-deny` is skipped until a deny configuration exists, because the policy
+  itself is introduced by a later ticket.
 
 Run the default gate for every ticket:
 
@@ -100,6 +121,13 @@ Run deeper validation when feasible:
 MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh
 ```
 
+Aggressive mode adds optional paths for `cargo-nextest`, `cargo-llvm-cov`,
+`cargo-deny`/`cargo-audit`/`cargo-machete`, `miri`, a bounded `cargo-mutants`
+compile smoke, fuzz target smoke runs, benchmark compilation, and Docker or
+devcontainer checks when those inputs exist. Mutation and fuzz smoke bounds can
+be adjusted with `MISSIVE_MUTANTS_SHARD`, `MISSIVE_MUTANTS_TIMEOUT`,
+`MISSIVE_MUTANTS_JOBS`, and `MISSIVE_FUZZ_SECONDS`.
+
 ## Manual package examples
 
 The bootstrap script is the preferred entry point, but manual installation is
@@ -110,7 +138,7 @@ rustup toolchain install stable --profile default --component rustfmt --componen
 cargo install --locked cargo-audit
 cargo install --locked cargo-machete
 sudo apt-get update
-sudo apt-get install -y jq protobuf-compiler sqlite3 pkg-config
+sudo apt-get install -y jq shellcheck protobuf-compiler sqlite3 pkg-config
 ```
 
 Keep runtime state, generated reports, credentials, database files, and local

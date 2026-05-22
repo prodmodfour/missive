@@ -101,7 +101,7 @@ Validation:
 
 ## 003 — Harden Rust quality gate
 
-Status: TODO
+Status: DONE
 
 Phase: Foundation
 
