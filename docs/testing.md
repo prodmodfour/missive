@@ -2,6 +2,10 @@
 
 `missive` tests should be runnable from a clean checkout without contacting third-party agents by default. The ordered build loop still uses `scripts/quality-gate.sh` as the required validation entry point for every ticket.
 
+## Observability tests
+
+`crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI unit tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config. Future operation-span tests should keep using scoped dispatchers rather than relying on one process-global subscriber in parallel test runs.
+
 ## Local mock A2A server fixtures
 
 Reusable A2A integration fixtures live in the dev-support crate:

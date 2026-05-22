@@ -701,6 +701,38 @@ fn process_environment() -> BTreeMap<String, String> {
     std::env::vars().collect()
 }
 
+/// Builds the observability configuration from parsed global diagnostics flags.
+pub fn diagnostics_config_from_globals(
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+) -> Result<missive_observe::ObserveConfig> {
+    missive_observe::ObserveConfig::from_environment(
+        environment,
+        globals.trace,
+        globals.verbose,
+        globals.no_color,
+    )
+}
+
+fn execute_with_diagnostics_and_environment<R, W>(
+    cli: &Cli,
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+    input: &mut R,
+    stdout: &mut W,
+) -> Result<()>
+where
+    R: Read,
+    W: Write,
+{
+    let diagnostics = diagnostics_config_from_globals(&cli.globals, environment)?;
+    let bootstrap = diagnostics.clone();
+    missive_observe::with_observer(diagnostics, || {
+        missive_observe::emit_bootstrap_diagnostic(&bootstrap);
+        execute_with_environment_and_input(cli, environment, current_dir, input, stdout)
+    })?
+}
+
 /// Runs the CLI using process arguments and standard streams.
 #[must_use]
 pub fn run() -> i32 {
@@ -739,7 +771,7 @@ where
             match std::env::current_dir()
                 .map_err(|error| MissiveError::io("reading current directory", error))
                 .and_then(|current_dir| {
-                    execute_with_environment_and_input(
+                    execute_with_diagnostics_and_environment(
                         &cli,
                         &environment,
                         &current_dir,
@@ -793,13 +825,16 @@ where
     E: Write,
 {
     match Cli::try_parse_from(args) {
-        Ok(cli) => {
-            match execute_with_environment_and_input(&cli, environment, current_dir, input, stdout)
-            {
-                Ok(()) => MissiveExitCode::Success.as_i32(),
-                Err(error) => render_execution_error(stderr, &cli.globals, &error),
-            }
-        }
+        Ok(cli) => match execute_with_diagnostics_and_environment(
+            &cli,
+            environment,
+            current_dir,
+            input,
+            stdout,
+        ) {
+            Ok(()) => MissiveExitCode::Success.as_i32(),
+            Err(error) => render_execution_error(stderr, &cli.globals, &error),
+        },
         Err(error) => render_clap_error(error, stdout, stderr),
     }
 }
@@ -933,6 +968,40 @@ mod tests {
         assert_eq!(cli.globals.headers, ["X-Request-Id:trace-1"]);
         assert!(cli.globals.trace);
         assert_eq!(cli.globals.verbose, 2);
+    }
+
+    #[test]
+    fn diagnostics_config_respects_env_filter_and_global_flags() {
+        let globals = GlobalArgs::default();
+        let config = diagnostics_config_from_globals(&globals, &BTreeMap::new())
+            .expect("default diagnostics config");
+        assert_eq!(config.filter, missive_observe::DEFAULT_FILTER);
+        assert_eq!(config.format, missive_observe::LogFormat::Human);
+
+        let verbose = GlobalArgs {
+            verbose: 2,
+            ..GlobalArgs::default()
+        };
+        let config = diagnostics_config_from_globals(&verbose, &BTreeMap::new())
+            .expect("verbose diagnostics config");
+        assert_eq!(config.filter, "debug");
+
+        let trace = GlobalArgs {
+            trace: true,
+            ..GlobalArgs::default()
+        };
+        let config = diagnostics_config_from_globals(&trace, &BTreeMap::new())
+            .expect("trace diagnostics config");
+        assert_eq!(config.filter, "trace");
+
+        let environment = BTreeMap::from([
+            ("RUST_LOG".to_owned(), "missive_cli=info".to_owned()),
+            ("MISSIVE_LOG_FORMAT".to_owned(), "json".to_owned()),
+        ]);
+        let config =
+            diagnostics_config_from_globals(&trace, &environment).expect("env diagnostics config");
+        assert_eq!(config.filter, "missive_cli=info");
+        assert_eq!(config.format, missive_observe::LogFormat::Json);
     }
 
     #[test]

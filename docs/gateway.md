@@ -140,6 +140,8 @@ log stream --predicate 'process == "missive"' --style compact
 
 The generated macOS plist also sends stdout/stderr to `~/Library/Logs/missive/` for user services or `/var/log/missive/` for system services.
 
+Gateway foreground and service logs use the shared missive logging foundation. Set `RUST_LOG=info` or a more specific EnvFilter such as `RUST_LOG=missive_gateway=debug` before `missive gateway run`; set `MISSIVE_LOG_FORMAT=json` when service managers or log collectors should receive one JSON log object per stderr line. Log rendering redacts authorization headers, cookies, tokens, and secret-like fields before writing to stderr. See [`observability.md`](observability.md) for the exact filter precedence, JSON mode, destinations, and redaction boundaries.
+
 Machine-readable service command output uses `gateway_service_install`, `gateway_service_start`, `gateway_service_stop`, `gateway_service_status`, and `gateway_service_uninstall` envelopes. Dry-run output includes the generated service file in `data.service_file` and planned supervisor commands in `data.planned_commands`.
 
 ## Endpoints

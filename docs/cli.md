@@ -64,8 +64,8 @@ The following flags are accepted at the top level and after subcommands:
   for implemented outbound A2A HTTP requests.
 * `--header Name:Value` — add one outbound HTTP header for this invocation;
   repeatable and never persisted.
-* `--trace` — request trace-oriented diagnostics.
-* `--verbose` / `-v` — increase human diagnostic verbosity; repeat as needed.
+* `--trace` — request trace-level diagnostics when `RUST_LOG` is unset.
+* `--verbose` / `-v` — increase diagnostic verbosity when `RUST_LOG` is unset; repeat as needed.
 
 Configuration discovery now supports `--config`, `MISSIVE_CONFIG`, XDG config
 locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
@@ -76,8 +76,14 @@ Agent Card HTTP requests plus implemented send, stream, bcast, barrier remote
 task polling, reduce reducer-agent calls, remote task, and push config calls. `missive webhook run` records
 the effective protocol version on inbound callback events when the callback omits
 `A2A-Version`. Task wait, bcast, barrier, webhook run, and gateway run use global
-`--timeout` as bounded execution budgets; tracing and broader command-specific
-timeout semantics are intentionally left to their ordered implementation tickets.
+`--timeout` as bounded execution budgets. Diagnostics now initialize the shared
+`missive-observe` tracing subscriber: logs go to stderr, `RUST_LOG` uses
+`tracing-subscriber` filter syntax and takes precedence over `--verbose` and
+`--trace`, and `MISSIVE_LOG_FORMAT=json` enables one JSON log object per stderr
+line without changing stdout command JSON. Broader operation-level spans and
+command-specific timeout semantics are intentionally left to their ordered
+implementation tickets. See [`observability.md`](observability.md) for log
+levels, JSON log mode, destinations, and redaction boundaries.
 
 ## Top-level commands
 

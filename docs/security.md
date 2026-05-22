@@ -253,6 +253,9 @@ auth refs, env vars, keyrings, HTTP adapter token env vars, or future explicit
 secret references.
 
 Webhook signature/JWT verification, broader daemon adapter trust-boundary
-enforcement, trace/log sinks, production-grade rate limiting, gateway
+enforcement, external trace/log sinks beyond stderr/service-manager capture,
+operation-wide tracing spans, production-grade rate limiting, gateway
 subscription/job auth resolution, user-facing session management commands, and
-insecure local token storage policy are not implemented yet.
+insecure local token storage policy are not implemented yet. The current logging
+foundation redacts secret-like fields and auth-scheme text at render time, but
+callers should still avoid logging raw payloads or credentials.
