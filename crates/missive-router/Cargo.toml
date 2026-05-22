@@ -12,3 +12,5 @@ path = "src/lib.rs"
 
 [dependencies]
 missive-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

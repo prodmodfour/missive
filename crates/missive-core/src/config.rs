@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use url::Url;
 
-use crate::{Metadata, MissiveError, Result};
+use crate::{Metadata, MissiveError, Result, parse_config_routing_policy};
 
 /// Current configuration schema marker.
 pub const CONFIG_SCHEMA_VERSION: &str = "missive.config.v1";
@@ -72,6 +72,8 @@ pub struct MissiveConfig {
     pub protocol: ProtocolConfig,
     /// Local gateway defaults.
     pub gateway: GatewayConfig,
+    /// Routing defaults for dry-run route planning.
+    pub routing: RoutingConfig,
     /// Adapter definitions for future gateway/adapters work.
     pub adapters: BTreeMap<String, AdapterConfig>,
     /// Quality-of-service defaults for transport and orchestration calls.
@@ -93,6 +95,7 @@ impl Default for MissiveConfig {
             output: OutputConfig::default(),
             protocol: ProtocolConfig::default(),
             gateway: GatewayConfig::default(),
+            routing: RoutingConfig::default(),
             adapters: BTreeMap::new(),
             qos: QosConfig::default(),
         }
@@ -164,6 +167,7 @@ impl MissiveConfig {
         self.output.validate()?;
         self.protocol.validate("protocol")?;
         self.gateway.validate()?;
+        self.routing.validate("routing")?;
         self.qos.validate("qos")?;
 
         for (name, adapter) in &self.adapters {
@@ -228,6 +232,9 @@ pub struct ProfileConfig {
     /// Optional profile-specific gateway override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gateway: Option<GatewayConfig>,
+    /// Optional profile-specific routing default override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routing: Option<RoutingConfig>,
     /// Optional profile-specific quality-of-service override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub qos: Option<QosConfig>,
@@ -264,6 +271,9 @@ impl ProfileConfig {
         }
         if let Some(gateway) = &self.gateway {
             gateway.validate()?;
+        }
+        if let Some(routing) = &self.routing {
+            routing.validate(&format!("profiles.{name}.routing"))?;
         }
         if let Some(qos) = &self.qos {
             qos.validate(&format!("profiles.{name}.qos"))?;
@@ -641,6 +651,30 @@ impl GatewayConfig {
     }
 }
 
+/// Routing defaults used by dry-run route planning.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RoutingConfig {
+    /// Policy used when `missive route explain` is not given an explicit policy
+    /// and the selected group has no routing policy label.
+    pub default_policy: String,
+}
+
+impl Default for RoutingConfig {
+    fn default() -> Self {
+        Self {
+            default_policy: "direct".to_owned(),
+        }
+    }
+}
+
+impl RoutingConfig {
+    fn validate(&self, prefix: &str) -> Result<()> {
+        parse_config_routing_policy(&format!("{prefix}.default_policy"), &self.default_policy)?;
+        Ok(())
+    }
+}
+
 /// Adapter definition used by later gateway adapter tickets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -828,6 +862,15 @@ impl LoadedConfig {
             .protocol
             .clone()
             .unwrap_or_else(|| self.config.protocol.clone()))
+    }
+
+    /// Returns the effective routing defaults for the selected profile.
+    pub fn routing_config(&self) -> Result<RoutingConfig> {
+        let profile = self.selected_profile_config()?;
+        Ok(profile
+            .routing
+            .clone()
+            .unwrap_or_else(|| self.config.routing.clone()))
     }
 
     /// Renders the loaded config, source, and profile with secret-like values redacted.
@@ -1662,6 +1705,52 @@ A2A-Version = "2.0"
 
         assert_eq!(error.category(), ErrorCategory::Config);
         assert!(error.to_string().contains("reserved A2A service parameter"));
+    }
+
+    #[test]
+    fn routing_config_parses_profile_override_and_rejects_invalid_policy() {
+        let config = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[routing]
+default_policy = "broadcast"
+
+[profiles.default]
+
+[profiles.default.routing]
+default_policy = "weighted"
+"#,
+        )
+        .expect("routing config should parse");
+        let loaded = LoadedConfig {
+            config,
+            source: ConfigSource::built_in_default(),
+            selected_profile: "default".to_owned(),
+        };
+
+        assert_eq!(
+            loaded.routing_config().expect("routing").default_policy,
+            "weighted"
+        );
+
+        let error = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[routing]
+default_policy = "least-latency"
+
+[profiles.default]
+"#,
+        )
+        .expect_err("invalid routing policy should fail");
+
+        assert_eq!(error.category(), ErrorCategory::Config);
+        assert!(error.to_string().contains("routing.default_policy"));
+        assert!(error.help().is_some());
     }
 
     #[test]

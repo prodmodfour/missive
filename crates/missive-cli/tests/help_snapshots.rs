@@ -53,6 +53,14 @@ fn key_subcommand_help_snapshots_are_stable() {
             include_str!("snapshots/help-group.txt"),
         ),
         (
+            &["missive", "route", "--help"],
+            include_str!("snapshots/help-route.txt"),
+        ),
+        (
+            &["missive", "route", "explain", "--help"],
+            include_str!("snapshots/help-route-explain.txt"),
+        ),
+        (
             &["missive", "bcast", "--help"],
             include_str!("snapshots/help-bcast.txt"),
         ),

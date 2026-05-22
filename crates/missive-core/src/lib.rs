@@ -5,13 +5,14 @@ pub mod envelope;
 pub mod error;
 pub mod ids;
 pub mod metadata;
+pub mod routing;
 pub mod timestamp;
 
 pub use config::{
     AuthRefConfig, AuthRefKind, CONFIG_REDACTED, CONFIG_SCHEMA_VERSION, ColorMode, ConfigDiscovery,
     ConfigSource, ConfigSourceKind, DEFAULT_A2A_PROTOCOL_VERSION, ENV_CONFIG,
     ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig, MissiveConfig, OutputConfig, OutputFormat,
-    ProfileConfig, ProtocolConfig, QosConfig, StorageBackend, StorageConfig,
+    ProfileConfig, ProtocolConfig, QosConfig, RoutingConfig, StorageBackend, StorageConfig,
 };
 pub use envelope::Envelope;
 pub use error::{ErrorCategory, ErrorReport, MissiveError, MissiveExitCode, Result};
@@ -21,6 +22,10 @@ pub use ids::{
 pub use metadata::{
     METADATA_A2A_EXTENSIONS, METADATA_A2A_PROTOCOL_VERSION, METADATA_A2A_SERVICE_PARAMETERS,
     Metadata,
+};
+pub use routing::{
+    RoutingPolicyKind, SUPPORTED_ROUTING_POLICIES, parse_config_routing_policy,
+    parse_routing_policy,
 };
 pub use timestamp::MissiveTimestamp;
 

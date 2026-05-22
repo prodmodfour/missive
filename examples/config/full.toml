@@ -35,6 +35,9 @@ extensions = []
 [protocol.service_parameters]
 A2A-Tenant = "local-demo"
 
+[routing]
+default_policy = "direct"
+
 [profiles.default]
 description = "Default local profile."
 default_agent = "echo"

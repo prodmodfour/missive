@@ -60,6 +60,9 @@ extensions = []
 [protocol.service_parameters]
 A2A-Tenant = "local-demo"
 
+[routing]
+default_policy = "direct"
+
 [agents.echo]
 base_url = "http://127.0.0.1:8080"
 auth_ref = "example-env"
@@ -97,6 +100,11 @@ Supported sections in this ticket:
 * `gateway` — gateway enablement, bind address, optional public base URL, and job
   concurrency defaults. `missive gateway run` uses the selected profile's bind
   address and job concurrency today.
+* `routing` — default routing policy for `missive route explain` when a command
+  does not provide `--policy` and no group policy applies. Profiles may override
+  this block with `[profiles.<name>.routing]`. Valid built-in policies are
+  `direct`, `capability-match`, `tag-match`, `round-robin`, `weighted`,
+  `broadcast`, `first-success`, `quorum`, and `fallback`.
 * `adapters` — adapter kind, enablement, profile mapping, and non-secret settings
   for later adapter tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
@@ -176,6 +184,8 @@ Config validation checks:
   `protocol.service_parameters`; use `protocol_version` and `extensions`
   instead
 * gateway bind address is an IP socket address such as `127.0.0.1:7347`
+* routing policy names in `routing.default_policy`, profile routing overrides,
+  and group creation must be one of the built-in missive policy names
 * auth refs identify only environment variables or keyring coordinates, not raw
   token values
 * raw secret storage is not part of the auth-ref schema

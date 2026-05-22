@@ -1148,7 +1148,7 @@ Validation:
 
 ## 038 — Implement routing policies
 
-Status: TODO
+Status: DONE
 
 Phase: Router
 

@@ -22,6 +22,7 @@ pub mod group;
 pub mod output;
 pub mod push;
 pub(crate) mod reduce;
+pub(crate) mod route;
 pub mod send;
 pub mod stream;
 pub mod task;
@@ -41,13 +42,14 @@ pub const BINARY_NAME: &str = missive_core::PROJECT_NAME;
 /// Short description of this crate's target responsibility.
 pub const CRATE_PURPOSE: &str = "command parsing, output rendering, and exit codes";
 
-const REQUIRED_SUBCOMMANDS: [&str; 18] = [
+const REQUIRED_SUBCOMMANDS: [&str; 19] = [
     "agent",
     "send",
     "stream",
     "task",
     "context",
     "group",
+    "route",
     "bcast",
     "barrier",
     "gather",
@@ -242,6 +244,16 @@ pub enum Commands {
         command: Option<group::GroupCommands>,
     },
 
+    /// Explain dry-run routing decisions for agents or groups.
+    #[command(
+        long_about = "Explain which registered agents a routing policy would select from an explicit candidate set or a stored group. This is a dry-run planning command: it reads local registry/group metadata and does not send A2A messages."
+    )]
+    Route {
+        /// Route operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<route::RouteCommands>,
+    },
+
     /// Broadcast one message to every member of a local group.
     #[command(
         long_about = "Send the same A2A SendMessage content to every registered member of a local group, create or reuse one shared context id, persist per-member message/task rows, and record broadcast collective events."
@@ -342,6 +354,7 @@ impl Commands {
             Self::Task { .. } => "task",
             Self::Context { .. } => "context",
             Self::Group { .. } => "group",
+            Self::Route { .. } => "route",
             Self::Bcast(_) => "bcast",
             Self::Barrier(_) => "barrier",
             Self::Gather(_) => "gather",
@@ -381,7 +394,7 @@ pub fn workspace_crates() -> [missive_core::CrateInfo; 8] {
 
 /// Returns the required top-level subcommands for tests and documentation checks.
 #[must_use]
-pub const fn required_subcommands() -> [&'static str; 18] {
+pub const fn required_subcommands() -> [&'static str; 19] {
     REQUIRED_SUBCOMMANDS
 }
 
@@ -490,6 +503,11 @@ where
             command: Some(group_command),
         }) => {
             group::execute_group_command(group_command, &loaded_config, environment, mode, writer)
+        }
+        Some(Commands::Route {
+            command: Some(route_command),
+        }) => {
+            route::execute_route_command(route_command, &loaded_config, environment, mode, writer)
         }
         Some(Commands::Bcast(args)) => bcast::execute_bcast_command(
             args,

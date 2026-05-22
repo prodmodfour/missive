@@ -9,7 +9,10 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use clap::{Args, Subcommand};
-use missive_core::{AgentAlias, GroupName, LoadedConfig, Metadata, MissiveError, RankName, Result};
+use missive_core::{
+    AgentAlias, GroupName, LoadedConfig, Metadata, MissiveError, RankName, Result,
+    parse_routing_policy as parse_core_routing_policy,
+};
 use missive_store::{GroupMemberRecord, GroupMemberUpsert, GroupRecord, GroupUpsert, Store};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -20,8 +23,7 @@ use crate::output::{OutputMode, redact_json, redact_text, render_success};
 
 const GROUP_NOTES_MAX_BYTES: usize = 8 * 1024;
 const GROUP_NOTES_HELP: &str = "Use concise non-secret group notes.";
-const ROUTING_POLICY_HELP: &str =
-    "Use a non-empty lowercase routing policy name such as direct, broadcast, or weighted.";
+const ROUTING_POLICY_HELP: &str = "Use one of: direct, capability-match, tag-match, round-robin, weighted, broadcast, first-success, quorum, fallback.";
 const NAMED_IDENTIFIER_MAX_BYTES: usize = 63;
 const NAMED_IDENTIFIER_HELP: &str =
     "Use lowercase ASCII letters or digits, with '-', '_' or '.' only in the middle.";
@@ -565,15 +567,14 @@ fn parse_rank_name(value: &str) -> Result<RankName> {
 }
 
 fn parse_routing_policy(value: &str) -> Result<String> {
-    let value = value.trim();
-    validate_named_cli_identifier("routing policy", value).map_err(|error| {
+    let policy = parse_core_routing_policy(value).map_err(|error| {
         if error.help().is_some() {
             error
         } else {
             error.with_help(ROUTING_POLICY_HELP)
         }
     })?;
-    Ok(value.to_owned())
+    Ok(policy.as_str().to_owned())
 }
 
 fn parse_notes(value: Option<&str>) -> Result<Option<String>> {

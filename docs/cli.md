@@ -487,9 +487,12 @@ MISSIVE_HOME=/tmp/missive-demo missive group delete demo-team
 ```
 
 `group create` refuses duplicate group names. `--routing-policy` defaults to
-`direct` and stores a policy label for router/collective commands; group CRUD
-commands do not execute routing decisions themselves. `--metadata KEY=VALUE`
-stores non-secret group metadata and parses `VALUE` as JSON when possible.
+`direct` and must be one of missive's built-in policy names: `direct`,
+`capability-match`, `tag-match`, `round-robin`, `weighted`, `broadcast`,
+`first-success`, `quorum`, or `fallback`. The group command stores the policy
+label for router/collective commands; group CRUD commands do not execute routing
+decisions themselves. `--metadata KEY=VALUE` stores non-secret group metadata
+and parses `VALUE` as JSON when possible.
 
 `group add` requires an existing group and an existing registered agent alias.
 Each member stores the alias, required `--rank RANK`, repeatable `--tag TAG`, a
@@ -508,6 +511,64 @@ Machine-readable group output uses `group_create`, `group_list`, `group_show`,
 `group_add`, `group_remove`, `group_rename`, and `group_delete` envelope kinds.
 Group views include the routing policy, notes, metadata, member count, timestamps,
 and member rows with rank, tags, weight, and routing metadata.
+
+## Route explain
+
+`missive route explain` dry-runs a routing decision without sending an A2A
+message. It reads the selected profile's local agent registry and, when
+`--group GROUP` is used, the stored group membership rows. It then applies a
+built-in policy and renders a deterministic explanation in human, JSON, or
+NDJSON mode.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive route explain --group team --json
+MISSIVE_HOME=/tmp/missive-demo missive route explain \
+  --group team \
+  --policy tag-match \
+  --tag writer \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive route explain \
+  --agent planner \
+  --agent writer \
+  --policy round-robin \
+  --cursor 3
+```
+
+Candidate sources are mutually exclusive: pass either `--group GROUP` or one or
+more repeatable `--agent ALIAS` values. When no `--policy` override is provided,
+route explain uses the group's stored routing policy; ad-hoc `--agent` routes
+use the selected config's effective `routing.default_policy`. `--preferred-agent`
+sets the primary/direct candidate for `direct` and `fallback` policies and must
+refer to a candidate in the route set.
+
+Policy behavior in this dry-run command:
+
+* `direct` selects one preferred or first candidate.
+* `capability-match` selects candidates whose local metadata capabilities match
+  all repeatable `--capability` labels. Current capability labels come only from
+  local agent/group metadata keys named `capability`, `capabilities`, `skill`,
+  or `skills`; richer A2A Agent Card capability extraction is reserved for a
+  later ticket.
+* `tag-match` selects candidates whose local agent/member tags satisfy all
+  repeatable `--tag` labels.
+* `round-robin` selects one candidate using `--cursor % candidate_count` and
+  reports `next_round_robin_cursor` for callers that persist their own cursor.
+* `weighted` selects the highest positive member weight, with deterministic
+  candidate-order tie-breaking.
+* `broadcast` selects every candidate.
+* `first-success` returns the ordered attempt set a caller would try until one
+  succeeds.
+* `quorum` selects the attempt set and reports the requested `--quorum` or the
+  default majority.
+* `fallback` orders the primary candidate followed by fallback candidates.
+
+Machine-readable output uses `kind: "route_explain"` and includes the profile,
+source kind, policy source, selected aliases, per-candidate decision reasons,
+matched tags/capabilities, optional quorum, and optional next round-robin cursor.
+The command is read-only except for the normal config-seeded agent sync that
+agent registry opening already performs.
 
 ## Broadcast collective
 
