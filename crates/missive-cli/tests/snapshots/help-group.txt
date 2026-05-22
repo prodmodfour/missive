@@ -1,15 +1,16 @@
-Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for collective operations.
+Create, list, show, rename, delete, and summarize capabilities for profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for collective operations.
 
 Usage: missive group [OPTIONS] [COMMAND]
 
 Commands:
-  create  Create a local group definition
-  list    List local groups
-  show    Show one group and its members
-  add     Add or update one registered agent membership
-  remove  Remove one agent membership from a group
-  rename  Rename a group while preserving membership
-  delete  Delete a group and its membership rows
+  create        Create a local group definition
+  list          List local groups
+  show          Show one group and its members
+  capabilities  Summarize member capabilities from cached/fetched Agent Cards
+  add           Add or update one registered agent membership
+  remove        Remove one agent membership from a group
+  rename        Rename a group while preserving membership
+  delete        Delete a group and its membership rows
 
 Options:
   -h, --help

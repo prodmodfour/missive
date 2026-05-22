@@ -26,12 +26,27 @@ pub struct RouteCandidate {
     /// Optional group rank name used for deterministic ordering.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rank: Option<RankName>,
-    /// Local selection tags from the agent row and/or group membership.
+    /// Local and Agent Card skill tags from the agent row and/or group membership.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-    /// Local capability labels used by the basic capability-match policy.
+    /// Local metadata labels plus Agent Card skill/capability labels.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<String>,
+    /// Input MIME/media modes advertised by the cached Agent Card.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_modes: Vec<String>,
+    /// Output MIME/media modes advertised by the cached Agent Card.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_modes: Vec<String>,
+    /// Whether the cached Agent Card advertises streaming support.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_streaming: Option<bool>,
+    /// Whether the cached Agent Card advertises push notification support.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_push_notifications: Option<bool>,
+    /// Cache/source status for capability data, for example `cached` or `missing`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability_cache_status: Option<String>,
     /// Positive routing weight.
     pub weight: f64,
     /// Non-secret routing metadata copied from local registry/group rows.
@@ -47,6 +62,11 @@ impl RouteCandidate {
             rank: None,
             tags: Vec::new(),
             capabilities: Vec::new(),
+            input_modes: Vec::new(),
+            output_modes: Vec::new(),
+            supports_streaming: None,
+            supports_push_notifications: None,
+            capability_cache_status: None,
             weight: 1.0,
             metadata: Metadata::new(),
         }
@@ -62,7 +82,9 @@ impl RouteCandidate {
         }
 
         validate_labels("tag", &self.tags)?;
-        validate_labels("capability", &self.capabilities)
+        validate_labels("capability", &self.capabilities)?;
+        validate_labels("input mode", &self.input_modes)?;
+        validate_labels("output mode", &self.output_modes)
     }
 }
 
@@ -79,9 +101,21 @@ pub struct RoutePlanInput {
     /// Required local tags for tag-match decisions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub required_tags: Vec<String>,
-    /// Required local capability labels for capability-match decisions.
+    /// Required local or Agent Card capability labels for capability-match decisions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub required_capabilities: Vec<String>,
+    /// Required input MIME/media modes for capability-match decisions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_input_modes: Vec<String>,
+    /// Required output MIME/media modes for capability-match decisions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_output_modes: Vec<String>,
+    /// Require A2A streaming support for capability-match decisions.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub require_streaming: bool,
+    /// Require A2A push notification support for capability-match decisions.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub require_push_notifications: bool,
     /// Deterministic cursor used by round-robin dry-runs.
     #[serde(default)]
     pub round_robin_cursor: u64,
@@ -104,6 +138,8 @@ impl RoutePlanInput {
         }
         validate_labels("required tag", &self.required_tags)?;
         validate_labels("required capability", &self.required_capabilities)?;
+        validate_labels("required input mode", &self.required_input_modes)?;
+        validate_labels("required output mode", &self.required_output_modes)?;
 
         if let Some(quorum) = self.quorum {
             validate_quorum(quorum, self.candidates.len())?;
@@ -136,6 +172,15 @@ pub struct RouteDecision {
     /// Candidate capability labels that satisfied requested capabilities.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub matched_capabilities: Vec<String>,
+    /// Candidate input modes that satisfied requested input modes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_input_modes: Vec<String>,
+    /// Candidate output modes that satisfied requested output modes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_output_modes: Vec<String>,
+    /// Missing requirements that kept the candidate from being selected.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_requirements: Vec<String>,
 }
 
 /// Dry-run route explanation output.
@@ -182,9 +227,9 @@ pub fn explain_route(input: &RoutePlanInput) -> Result<RoutePlan> {
 
 /// Extracts capability labels from non-secret metadata values.
 ///
-/// The basic router policy intentionally reads only local metadata keys named
-/// `capability`, `capabilities`, `skill`, or `skills`. Rich A2A Agent Card
-/// capability extraction belongs to the later capability-aware selection ticket.
+/// CLI-side Agent Card extraction augments these local labels with skill ids,
+/// skill names, skill tags, input/output modes, streaming support, and push
+/// support before calling the router.
 #[must_use]
 pub fn capabilities_from_metadata(metadata: &Metadata) -> Vec<String> {
     let mut labels = BTreeSet::new();
@@ -230,39 +275,61 @@ fn explain_direct(input: &RoutePlanInput) -> Result<RoutePlan> {
 }
 
 fn explain_capability_match(input: &RoutePlanInput) -> Result<RoutePlan> {
-    let required = normalized_set(&input.required_capabilities);
-    let mut order = 0usize;
-    let mut selected = Vec::new();
+    let outcomes: Vec<_> = input
+        .candidates
+        .iter()
+        .map(|candidate| candidate_capability_match(input, candidate))
+        .collect();
+    let has_requirements = capability_requirements_present(input);
+    let mut selected_indices: Vec<usize> = outcomes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, outcome)| outcome.matches.then_some(index))
+        .collect();
+
+    if has_requirements {
+        selected_indices.sort_by(|left, right| {
+            outcomes[*right]
+                .score
+                .cmp(&outcomes[*left].score)
+                .then_with(|| {
+                    input.candidates[*right]
+                        .weight
+                        .total_cmp(&input.candidates[*left].weight)
+                })
+                .then_with(|| left.cmp(right))
+        });
+    }
+
+    let selected = selected_indices
+        .iter()
+        .map(|index| input.candidates[*index].alias.clone())
+        .collect::<Vec<_>>();
     let decisions = input
         .candidates
         .iter()
-        .map(|candidate| {
-            let available = normalized_set(&candidate.capabilities);
-            let matched = intersection_in_required_order(&input.required_capabilities, &available);
-            let matches = required.is_empty() || required.is_subset(&available);
-            let decision_order = if matches {
-                selected.push(candidate.alias.clone());
-                let current = order;
-                order += 1;
-                Some(current)
-            } else {
-                None
-            };
-            decision(
+        .enumerate()
+        .map(|(index, candidate)| {
+            let outcome = &outcomes[index];
+            let decision_order = selected_indices
+                .iter()
+                .position(|selected_index| *selected_index == index);
+            decision_with_details(
                 candidate,
-                matches,
+                outcome.matches,
                 decision_order,
-                if matches {
-                    if required.is_empty() {
-                        "no required capabilities; candidate remains eligible"
-                    } else {
-                        "candidate satisfies required capabilities"
-                    }
-                } else {
-                    "candidate is missing one or more required capabilities"
+                capability_reason(
+                    outcome.matches,
+                    has_requirements,
+                    &outcome.missing_requirements,
+                ),
+                DecisionRequirementDetails {
+                    matched_tags: outcome.matched_tags.clone(),
+                    matched_capabilities: outcome.matched_capabilities.clone(),
+                    matched_input_modes: outcome.matched_input_modes.clone(),
+                    matched_output_modes: outcome.matched_output_modes.clone(),
+                    missing_requirements: outcome.missing_requirements.clone(),
                 },
-                Vec::new(),
-                matched,
             )
         })
         .collect();
@@ -275,6 +342,135 @@ fn explain_capability_match(input: &RoutePlanInput) -> Result<RoutePlan> {
     Ok(plan(
         input, "filter", status, selected, decisions, None, None,
     ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CapabilityMatchOutcome {
+    matches: bool,
+    matched_tags: Vec<String>,
+    matched_capabilities: Vec<String>,
+    matched_input_modes: Vec<String>,
+    matched_output_modes: Vec<String>,
+    missing_requirements: Vec<String>,
+    score: usize,
+}
+
+fn candidate_capability_match(
+    input: &RoutePlanInput,
+    candidate: &RouteCandidate,
+) -> CapabilityMatchOutcome {
+    let available_tags = normalized_set(&candidate.tags);
+    let available_capabilities = normalized_set(&candidate.capabilities);
+    let available_input_modes = normalized_set(&candidate.input_modes);
+    let available_output_modes = normalized_set(&candidate.output_modes);
+
+    let matched_tags = intersection_in_required_order(&input.required_tags, &available_tags);
+    let matched_capabilities =
+        intersection_in_required_order(&input.required_capabilities, &available_capabilities);
+    let matched_input_modes =
+        intersection_in_required_order(&input.required_input_modes, &available_input_modes);
+    let matched_output_modes =
+        intersection_in_required_order(&input.required_output_modes, &available_output_modes);
+
+    let mut missing_requirements = Vec::new();
+    push_missing_requirements(
+        "tag",
+        &input.required_tags,
+        &available_tags,
+        &mut missing_requirements,
+    );
+    push_missing_requirements(
+        "capability",
+        &input.required_capabilities,
+        &available_capabilities,
+        &mut missing_requirements,
+    );
+    push_missing_requirements(
+        "input_mode",
+        &input.required_input_modes,
+        &available_input_modes,
+        &mut missing_requirements,
+    );
+    push_missing_requirements(
+        "output_mode",
+        &input.required_output_modes,
+        &available_output_modes,
+        &mut missing_requirements,
+    );
+
+    if input.require_streaming && candidate.supports_streaming != Some(true) {
+        missing_requirements.push(match candidate.supports_streaming {
+            Some(false) => "streaming:false".to_owned(),
+            None => "streaming:unknown".to_owned(),
+            Some(true) => unreachable!("handled above"),
+        });
+    }
+    if input.require_push_notifications && candidate.supports_push_notifications != Some(true) {
+        missing_requirements.push(match candidate.supports_push_notifications {
+            Some(false) => "push_notifications:false".to_owned(),
+            None => "push_notifications:unknown".to_owned(),
+            Some(true) => unreachable!("handled above"),
+        });
+    }
+
+    let streaming_score =
+        usize::from(input.require_streaming && candidate.supports_streaming == Some(true));
+    let push_score = usize::from(
+        input.require_push_notifications && candidate.supports_push_notifications == Some(true),
+    );
+    let score = matched_tags.len()
+        + matched_capabilities.len()
+        + matched_input_modes.len()
+        + matched_output_modes.len()
+        + streaming_score
+        + push_score;
+
+    CapabilityMatchOutcome {
+        matches: missing_requirements.is_empty(),
+        matched_tags,
+        matched_capabilities,
+        matched_input_modes,
+        matched_output_modes,
+        missing_requirements,
+        score,
+    }
+}
+
+fn capability_requirements_present(input: &RoutePlanInput) -> bool {
+    !input.required_tags.is_empty()
+        || !input.required_capabilities.is_empty()
+        || !input.required_input_modes.is_empty()
+        || !input.required_output_modes.is_empty()
+        || input.require_streaming
+        || input.require_push_notifications
+}
+
+fn capability_reason(matches: bool, has_requirements: bool, missing: &[String]) -> &'static str {
+    if matches {
+        if has_requirements {
+            "candidate satisfies capability, tag, mode, streaming, and push requirements; ties use score, weight, then deterministic candidate order"
+        } else {
+            "no required capabilities, tags, modes, streaming, or push support; candidate remains eligible"
+        }
+    } else if missing.iter().any(|value| value.ends_with(":unknown")) {
+        "candidate is missing required Agent Card capability data; refresh the Agent Card cache and inspect missing_requirements"
+    } else {
+        "candidate is missing one or more capability requirements; inspect missing_requirements"
+    }
+}
+
+fn push_missing_requirements(
+    kind: &str,
+    required: &[String],
+    available: &BTreeSet<String>,
+    missing: &mut Vec<String>,
+) {
+    for requirement in required {
+        let normalized = normalize_label(requirement);
+        if !available.contains(&normalized) {
+            missing.push(format!("{kind}:{normalized}"));
+        }
+    }
 }
 
 fn explain_tag_match(input: &RoutePlanInput) -> Result<RoutePlan> {
@@ -557,6 +753,35 @@ fn decision(
     matched_tags: Vec<String>,
     matched_capabilities: Vec<String>,
 ) -> RouteDecision {
+    decision_with_details(
+        candidate,
+        selected,
+        order,
+        reason,
+        DecisionRequirementDetails {
+            matched_tags,
+            matched_capabilities,
+            ..DecisionRequirementDetails::default()
+        },
+    )
+}
+
+#[derive(Debug, Clone, Default)]
+struct DecisionRequirementDetails {
+    matched_tags: Vec<String>,
+    matched_capabilities: Vec<String>,
+    matched_input_modes: Vec<String>,
+    matched_output_modes: Vec<String>,
+    missing_requirements: Vec<String>,
+}
+
+fn decision_with_details(
+    candidate: &RouteCandidate,
+    selected: bool,
+    order: Option<usize>,
+    reason: &str,
+    details: DecisionRequirementDetails,
+) -> RouteDecision {
     RouteDecision {
         alias: candidate.alias.clone(),
         rank: candidate.rank.clone(),
@@ -564,8 +789,11 @@ fn decision(
         order,
         weight: candidate.weight,
         reason: reason.to_owned(),
-        matched_tags,
-        matched_capabilities,
+        matched_tags: details.matched_tags,
+        matched_capabilities: details.matched_capabilities,
+        matched_input_modes: details.matched_input_modes,
+        matched_output_modes: details.matched_output_modes,
+        missing_requirements: details.missing_requirements,
     }
 }
 
@@ -577,6 +805,10 @@ fn validate_quorum(quorum: usize, candidates: usize) -> Result<()> {
         .with_help("Lower --quorum or add more candidates to the group."));
     }
     Ok(())
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn validate_labels(kind: &str, labels: &[String]) -> Result<()> {
@@ -676,6 +908,10 @@ mod tests {
             preferred_agent: Some(alias("beta")),
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -699,6 +935,10 @@ mod tests {
             preferred_agent: None,
             required_tags: Vec::new(),
             required_capabilities: vec!["summarise".to_owned()],
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -722,6 +962,10 @@ mod tests {
             preferred_agent: None,
             required_tags: vec!["writer".to_owned()],
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -740,6 +984,10 @@ mod tests {
             preferred_agent: None,
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 4,
             quorum: None,
         };
@@ -764,6 +1012,10 @@ mod tests {
             preferred_agent: None,
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -785,6 +1037,10 @@ mod tests {
             preferred_agent: None,
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -803,6 +1059,10 @@ mod tests {
             preferred_agent: None,
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -821,6 +1081,10 @@ mod tests {
             preferred_agent: None,
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -843,6 +1107,10 @@ mod tests {
             preferred_agent: Some(alias("beta")),
             required_tags: Vec::new(),
             required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
             round_robin_cursor: 0,
             quorum: None,
         };
@@ -854,6 +1122,81 @@ mod tests {
             vec![alias("beta"), alias("alpha"), alias("gamma")]
         );
         assert_eq!(plan.decisions[1].order, Some(0));
+    }
+
+    #[test]
+    fn capability_match_uses_modes_streaming_push_tags_and_weight_tie_break() {
+        let mut alpha = candidate("alpha");
+        alpha.tags = vec!["research".to_owned()];
+        alpha.capabilities = vec!["summarise".to_owned()];
+        alpha.input_modes = vec!["text/plain".to_owned()];
+        alpha.output_modes = vec!["application/json".to_owned()];
+        alpha.supports_streaming = Some(true);
+        alpha.supports_push_notifications = Some(true);
+        alpha.weight = 1.0;
+        let mut beta = alpha.clone();
+        beta.alias = alias("beta");
+        beta.weight = 3.0;
+        let mut gamma = candidate("gamma");
+        gamma.tags = vec!["research".to_owned()];
+        gamma.capabilities = vec!["summarise".to_owned()];
+        gamma.input_modes = vec!["text/plain".to_owned()];
+        gamma.output_modes = vec!["text/plain".to_owned()];
+        gamma.supports_streaming = Some(true);
+        gamma.supports_push_notifications = Some(false);
+
+        let input = RoutePlanInput {
+            policy: RoutingPolicyKind::CapabilityMatch,
+            candidates: vec![alpha, beta, gamma],
+            preferred_agent: None,
+            required_tags: vec!["research".to_owned()],
+            required_capabilities: vec!["summarise".to_owned()],
+            required_input_modes: vec!["text/plain".to_owned()],
+            required_output_modes: vec!["application/json".to_owned()],
+            require_streaming: true,
+            require_push_notifications: true,
+            round_robin_cursor: 0,
+            quorum: None,
+        };
+
+        let plan = explain_route(&input).expect("plan");
+
+        assert_eq!(plan.selected, vec![alias("beta"), alias("alpha")]);
+        assert_eq!(plan.decisions[0].order, Some(1));
+        assert_eq!(plan.decisions[1].order, Some(0));
+        assert_eq!(plan.decisions[0].matched_input_modes, ["text/plain"]);
+        assert_eq!(plan.decisions[0].matched_output_modes, ["application/json"]);
+        assert_eq!(
+            plan.decisions[2].missing_requirements,
+            ["output_mode:application/json", "push_notifications:false"]
+        );
+    }
+
+    #[test]
+    fn capability_match_reports_unknown_agent_card_data_actionably() {
+        let input = RoutePlanInput {
+            policy: RoutingPolicyKind::CapabilityMatch,
+            candidates: vec![candidate("alpha")],
+            preferred_agent: None,
+            required_tags: Vec::new(),
+            required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: true,
+            require_push_notifications: false,
+            round_robin_cursor: 0,
+            quorum: None,
+        };
+
+        let plan = explain_route(&input).expect("plan");
+
+        assert_eq!(plan.status, "no_match");
+        assert!(plan.selected.is_empty());
+        assert_eq!(
+            plan.decisions[0].missing_requirements,
+            ["streaming:unknown"]
+        );
+        assert!(plan.decisions[0].reason.contains("refresh"));
     }
 
     #[test]

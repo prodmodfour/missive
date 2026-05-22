@@ -26,6 +26,9 @@ use serde_json::{Value, json};
 use url::Url;
 
 use crate::auth::auth_headers_for_agent;
+use crate::capabilities::{
+    AgentCapabilitySummary, CapabilityCacheView, summarize_agent_capabilities,
+};
 use crate::events::new_cli_event;
 use crate::output::{OutputMode, redact_json, redact_text, render_success};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
@@ -50,6 +53,8 @@ pub enum AgentCommands {
     Inspect(AgentInspectArgs),
     /// Refresh an agent's public A2A Agent Card cache.
     Refresh(AgentAliasArgs),
+    /// Summarize public A2A capabilities used for selection.
+    Capabilities(AgentCapabilitiesArgs),
     /// Rename one writable local agent registry entry.
     Rename(AgentRenameArgs),
 }
@@ -65,6 +70,7 @@ impl AgentCommands {
             Self::Show(_) => "show",
             Self::Inspect(_) => "inspect",
             Self::Refresh(_) => "refresh",
+            Self::Capabilities(_) => "capabilities",
             Self::Rename(_) => "rename",
         }
     }
@@ -102,6 +108,17 @@ pub struct AgentAddArgs {
 pub struct AgentAliasArgs {
     /// Agent alias.
     pub alias: String,
+}
+
+/// Arguments for `missive agent capabilities`.
+#[derive(Debug, Clone, Args)]
+pub struct AgentCapabilitiesArgs {
+    /// Optional agent alias. When omitted, all registered agents are summarized.
+    pub alias: Option<String>,
+
+    /// Revalidate/fetch Agent Cards before summarizing capabilities.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub refresh: bool,
 }
 
 /// Arguments for `missive agent inspect`.
@@ -224,6 +241,14 @@ struct AgentCardInspectionOutput {
     message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct AgentCapabilitiesOutput {
+    profile: String,
+    count: usize,
+    agents: Vec<AgentCapabilitySummary>,
+    message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct AgentCardCacheView {
     status: String,
@@ -328,6 +353,19 @@ where
             let service_parameters =
                 service_parameters_from_config_and_globals(loaded_config, globals)?;
             refresh_agent(
+                args,
+                registry,
+                globals,
+                environment,
+                &service_parameters,
+                mode,
+                writer,
+            )
+        }
+        AgentCommands::Capabilities(args) => {
+            let service_parameters =
+                service_parameters_from_config_and_globals(loaded_config, globals)?;
+            summarize_agent_capabilities_command(
                 args,
                 registry,
                 globals,
@@ -614,6 +652,147 @@ where
     )?;
 
     render_agent_card_inspection(writer, mode, "agent_refresh", &output)
+}
+
+fn summarize_agent_capabilities_command<W>(
+    args: &AgentCapabilitiesArgs,
+    registry: AgentRegistry,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &ServiceParameters,
+    mode: OutputMode,
+    writer: &mut W,
+) -> Result<()>
+where
+    W: Write,
+{
+    let records = if let Some(alias) = &args.alias {
+        vec![get_existing_agent(&registry.store, &parse_alias(alias)?)?]
+    } else {
+        registry.store.list_agents()?
+    };
+    let load_mode = if args.refresh {
+        AgentCardLoadMode::Refresh
+    } else {
+        AgentCardLoadMode::FetchIfMissing
+    };
+    let mut agents = Vec::with_capacity(records.len());
+    for record in records {
+        let loaded = load_agent_card_for_capabilities(
+            &registry.store,
+            &record,
+            load_mode,
+            globals,
+            environment,
+            service_parameters,
+        )?;
+        agents.push(summarize_agent_capabilities(
+            &loaded.record,
+            loaded.card.as_ref(),
+            loaded.cache,
+        ));
+    }
+
+    let output = AgentCapabilitiesOutput {
+        profile: registry.profile,
+        count: agents.len(),
+        message: format!("Summarized capabilities for {} agent(s)", agents.len()),
+        agents,
+    };
+    render_agent_capabilities(writer, mode, &output)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AgentCardLoadMode {
+    /// Read only the local cache; missing cards are reported without network access.
+    CacheOnly,
+    /// Fetch the public Agent Card only when no cached card exists.
+    FetchIfMissing,
+    /// Revalidate/fetch the public Agent Card even when a cached card exists.
+    Refresh,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AgentCapabilityCard {
+    pub(crate) record: AgentRecord,
+    pub(crate) card: Option<AgentCard>,
+    pub(crate) cache: CapabilityCacheView,
+}
+
+pub(crate) fn load_agent_card_for_capabilities(
+    store: &Store,
+    record: &AgentRecord,
+    mode: AgentCardLoadMode,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &ServiceParameters,
+) -> Result<AgentCapabilityCard> {
+    if matches!(
+        mode,
+        AgentCardLoadMode::CacheOnly | AgentCardLoadMode::FetchIfMissing
+    ) {
+        if let Some(raw_card) = record.agent_card_json.clone() {
+            let card = parse_cached_agent_card(record, raw_card)?;
+            return Ok(AgentCapabilityCard {
+                record: record.clone(),
+                card: Some(card),
+                cache: CapabilityCacheView::from_record(record, "cached"),
+            });
+        }
+        if matches!(mode, AgentCardLoadMode::CacheOnly) {
+            return Ok(AgentCapabilityCard {
+                record: record.clone(),
+                card: None,
+                cache: CapabilityCacheView::from_record(record, "missing"),
+            });
+        }
+    }
+
+    let auth_headers = auth_headers_for_agent(store, record, globals, environment)?;
+    let validators = validators_from_record(record);
+    let client = AgentCardClient::new()?;
+    let outcome = client.fetch_public_agent_card_with_service_parameters_and_auth(
+        &record.base_url,
+        validators.as_ref(),
+        service_parameters,
+        &auth_headers,
+    )?;
+
+    match outcome {
+        AgentCardFetchOutcome::Fetched(fetch) => {
+            let fetched_at = MissiveTimestamp::now_utc();
+            let updated_record =
+                cache_agent_card(store, record, fetch.raw_json, fetch.validators, fetched_at)?;
+            let status = if matches!(mode, AgentCardLoadMode::Refresh) {
+                "refreshed"
+            } else {
+                "fetched"
+            };
+            Ok(AgentCapabilityCard {
+                cache: CapabilityCacheView::from_record(&updated_record, status),
+                record: updated_record,
+                card: Some(fetch.card),
+            })
+        }
+        AgentCardFetchOutcome::NotModified(not_modified) => {
+            let raw_card = record.agent_card_json.clone().ok_or_else(|| {
+                MissiveError::protocol(format!(
+                    "agent {:?} Agent Card endpoint returned 304 Not Modified without a local cache",
+                    record.alias.as_str()
+                ))
+                .with_help("Run 'missive agent capabilities <alias> --refresh' after the remote endpoint returns a full card body.")
+            })?;
+            let card = parse_cached_agent_card(record, raw_card.clone())?;
+            let validators = merge_validators(record, not_modified.validators);
+            let fetched_at = MissiveTimestamp::now_utc();
+            let updated_record = cache_agent_card(store, record, raw_card, validators, fetched_at)?;
+            Ok(AgentCapabilityCard {
+                cache: CapabilityCacheView::from_record(&updated_record, "not_modified"),
+                record: updated_record,
+                card: Some(card),
+            })
+        }
+    }
 }
 
 fn rename_agent<W>(
@@ -1412,6 +1591,101 @@ where
     for (key, value) in values {
         writeln!(writer, "    {}: {}", redact_text(key), redact_text(value))
             .map_err(|error| MissiveError::io("writing agent show output", error))?;
+    }
+    Ok(())
+}
+
+fn render_agent_capabilities<W>(
+    writer: &mut W,
+    mode: OutputMode,
+    output: &AgentCapabilitiesOutput,
+) -> Result<()>
+where
+    W: Write,
+{
+    match mode {
+        OutputMode::Human => write_agent_capabilities_human(writer, output),
+        OutputMode::Json | OutputMode::Ndjson | OutputMode::Quiet => {
+            render_success(writer, mode, "agent_capabilities", output, &output.message)
+        }
+    }
+}
+
+fn write_agent_capabilities_human<W>(writer: &mut W, output: &AgentCapabilitiesOutput) -> Result<()>
+where
+    W: Write,
+{
+    if output.agents.is_empty() {
+        return writeln!(
+            writer,
+            "No agents registered for profile '{}'.",
+            redact_text(&output.profile)
+        )
+        .map_err(|error| MissiveError::io("writing agent capabilities output", error));
+    }
+
+    writeln!(
+        writer,
+        "Agent capabilities for profile '{}':",
+        redact_text(&output.profile)
+    )
+    .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+    for agent in &output.agents {
+        writeln!(
+            writer,
+            "  {}  source={}  cache={}  streaming={}  push={}",
+            redact_text(&agent.alias),
+            redact_text(&agent.source),
+            redact_text(&agent.cache.status),
+            agent
+                .supports_streaming
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_owned()),
+            agent
+                .supports_push_notifications
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_owned())
+        )
+        .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+        writeln!(writer, "    tags: {}", join_or_dash(&agent.tags))
+            .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+        writeln!(
+            writer,
+            "    capabilities: {}",
+            join_or_dash(&agent.capability_labels)
+        )
+        .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+        writeln!(
+            writer,
+            "    input_modes: {}",
+            join_or_dash(&agent.input_modes)
+        )
+        .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+        writeln!(
+            writer,
+            "    output_modes: {}",
+            join_or_dash(&agent.output_modes)
+        )
+        .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+        if agent.skills.is_empty() {
+            writeln!(writer, "    skills: -")
+                .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+        } else {
+            writeln!(writer, "    skills:")
+                .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+            for skill in &agent.skills {
+                writeln!(
+                    writer,
+                    "      {} ({}) tags={} input={} output={}",
+                    redact_text(&skill.id),
+                    redact_text(&skill.name),
+                    join_or_dash(&skill.tags),
+                    join_or_dash(&skill.input_modes),
+                    join_or_dash(&skill.output_modes)
+                )
+                .map_err(|error| MissiveError::io("writing agent capabilities output", error))?;
+            }
+        }
     }
     Ok(())
 }

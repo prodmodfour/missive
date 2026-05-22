@@ -1177,7 +1177,7 @@ Validation:
 
 ## 039 — Implement capability-aware agent selection
 
-Status: TODO
+Status: DONE
 
 Phase: Router
 

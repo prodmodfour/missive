@@ -5,7 +5,7 @@
 //! consume this state in later tickets; this module intentionally stops at
 //! group and membership CRUD.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use clap::{Args, Subcommand};
@@ -17,9 +17,13 @@ use missive_store::{GroupMemberRecord, GroupMemberUpsert, GroupRecord, GroupUpse
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::agent::{get_existing_agent, open_agent_registry};
+use crate::agent::{
+    AgentCardLoadMode, get_existing_agent, load_agent_card_for_capabilities, open_agent_registry,
+};
+use crate::capabilities::{AgentCapabilitySummary, string_set, summarize_agent_capabilities};
 use crate::events::new_cli_event;
 use crate::output::{OutputMode, redact_json, redact_text, render_success};
+use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
 const GROUP_NOTES_MAX_BYTES: usize = 8 * 1024;
 const GROUP_NOTES_HELP: &str = "Use concise non-secret group notes.";
@@ -37,6 +41,8 @@ pub enum GroupCommands {
     List,
     /// Show one group and its members.
     Show(GroupNameArgs),
+    /// Summarize member capabilities from cached/fetched Agent Cards.
+    Capabilities(GroupCapabilitiesArgs),
     /// Add or update one registered agent membership.
     Add(GroupAddArgs),
     /// Remove one agent membership from a group.
@@ -55,6 +61,7 @@ impl GroupCommands {
             Self::Create(_) => "create",
             Self::List => "list",
             Self::Show(_) => "show",
+            Self::Capabilities(_) => "capabilities",
             Self::Add(_) => "add",
             Self::Remove(_) => "remove",
             Self::Rename(_) => "rename",
@@ -91,6 +98,17 @@ pub struct GroupCreateArgs {
 pub struct GroupNameArgs {
     /// Group name.
     pub group: String,
+}
+
+/// Arguments for `missive group capabilities`.
+#[derive(Debug, Clone, Args)]
+pub struct GroupCapabilitiesArgs {
+    /// Group name.
+    pub group: String,
+
+    /// Revalidate/fetch Agent Cards before summarizing member capabilities.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub refresh: bool,
 }
 
 /// Arguments for `missive group add`.
@@ -190,6 +208,37 @@ struct GroupShowOutput {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+struct GroupCapabilitiesOutput {
+    profile: String,
+    group: String,
+    member_count: usize,
+    aggregate: GroupCapabilityAggregateView,
+    members: Vec<GroupMemberCapabilityView>,
+    message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct GroupCapabilityAggregateView {
+    tags: Vec<String>,
+    capability_labels: Vec<String>,
+    input_modes: Vec<String>,
+    output_modes: Vec<String>,
+    streaming_supported: usize,
+    push_supported: usize,
+    cache_statuses: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct GroupMemberCapabilityView {
+    agent: String,
+    rank: String,
+    weight: f64,
+    member_tags: Vec<String>,
+    routing_metadata: Metadata,
+    capabilities: AgentCapabilitySummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 struct GroupActionOutput {
     profile: String,
     action: String,
@@ -219,6 +268,7 @@ struct GroupMemberActionOutput {
 /// Executes one group subcommand.
 pub(crate) fn execute_group_command<W>(
     command: &GroupCommands,
+    globals: &GlobalArgs,
     loaded_config: &LoadedConfig,
     environment: &BTreeMap<String, String>,
     mode: OutputMode,
@@ -236,6 +286,22 @@ where
         GroupCommands::List => list_groups(registry.profile, registry.store, mode, writer),
         GroupCommands::Show(args) => {
             show_group(args, registry.profile, registry.store, mode, writer)
+        }
+        GroupCommands::Capabilities(args) => {
+            let service_parameters =
+                service_parameters_from_config_and_globals(loaded_config, globals)?;
+            group_capabilities(
+                args,
+                registry.profile,
+                registry.store,
+                CapabilityFetchContext {
+                    globals,
+                    environment,
+                    service_parameters: &service_parameters,
+                },
+                mode,
+                writer,
+            )
         }
         GroupCommands::Add(args) => {
             add_group_member(args, registry.profile, registry.store, mode, writer)
@@ -337,6 +403,123 @@ where
     };
 
     render_group_show(writer, mode, &output)
+}
+
+struct CapabilityFetchContext<'a> {
+    globals: &'a GlobalArgs,
+    environment: &'a BTreeMap<String, String>,
+    service_parameters: &'a missive_a2a::ServiceParameters,
+}
+
+fn group_capabilities<W>(
+    args: &GroupCapabilitiesArgs,
+    profile: String,
+    store: Store,
+    fetch: CapabilityFetchContext<'_>,
+    mode: OutputMode,
+    writer: &mut W,
+) -> Result<()>
+where
+    W: Write,
+{
+    let group_name = parse_group_name(&args.group)?;
+    get_existing_group(&store, &group_name)?;
+    let members = store.list_group_members(&group_name)?;
+    let load_mode = if args.refresh {
+        AgentCardLoadMode::Refresh
+    } else {
+        AgentCardLoadMode::FetchIfMissing
+    };
+
+    let mut member_views = Vec::with_capacity(members.len());
+    for member in members {
+        let agent = get_existing_agent(&store, &member.agent_alias)?;
+        let loaded = load_agent_card_for_capabilities(
+            &store,
+            &agent,
+            load_mode,
+            fetch.globals,
+            fetch.environment,
+            fetch.service_parameters,
+        )?;
+        let mut summary =
+            summarize_agent_capabilities(&loaded.record, loaded.card.as_ref(), loaded.cache);
+        merge_member_capability_hints(&mut summary, &member);
+        member_views.push(GroupMemberCapabilityView {
+            agent: member.agent_alias.as_str().to_owned(),
+            rank: member.rank_name.as_str().to_owned(),
+            weight: member.weight,
+            member_tags: member.tags.clone(),
+            routing_metadata: member.routing_metadata.clone(),
+            capabilities: summary,
+        });
+    }
+
+    let aggregate = aggregate_group_capabilities(&member_views);
+    let output = GroupCapabilitiesOutput {
+        profile,
+        group: group_name.as_str().to_owned(),
+        member_count: member_views.len(),
+        message: format!(
+            "Summarized capabilities for {} member(s) in group '{}'",
+            member_views.len(),
+            group_name.as_str()
+        ),
+        aggregate,
+        members: member_views,
+    };
+    render_group_capabilities(writer, mode, &output)
+}
+
+fn merge_member_capability_hints(summary: &mut AgentCapabilitySummary, member: &GroupMemberRecord) {
+    let tags = string_set(
+        summary
+            .tags
+            .iter()
+            .cloned()
+            .chain(member.tags.iter().cloned()),
+    );
+    summary.tags = tags.into_iter().collect();
+
+    let labels = string_set(summary.capability_labels.iter().cloned().chain(
+        missive_router::capabilities_from_metadata(&member.routing_metadata),
+    ));
+    summary.capability_labels = labels.into_iter().collect();
+}
+
+fn aggregate_group_capabilities(
+    members: &[GroupMemberCapabilityView],
+) -> GroupCapabilityAggregateView {
+    let mut tags = BTreeSet::new();
+    let mut labels = BTreeSet::new();
+    let mut input_modes = BTreeSet::new();
+    let mut output_modes = BTreeSet::new();
+    let mut cache_statuses = BTreeMap::new();
+    let mut streaming_supported = 0usize;
+    let mut push_supported = 0usize;
+
+    for member in members {
+        let capabilities = &member.capabilities;
+        tags.extend(capabilities.tags.iter().cloned());
+        labels.extend(capabilities.capability_labels.iter().cloned());
+        input_modes.extend(capabilities.input_modes.iter().cloned());
+        output_modes.extend(capabilities.output_modes.iter().cloned());
+        *cache_statuses
+            .entry(capabilities.cache.status.clone())
+            .or_insert(0) += 1;
+        streaming_supported += usize::from(capabilities.supports_streaming == Some(true));
+        push_supported += usize::from(capabilities.supports_push_notifications == Some(true));
+    }
+
+    GroupCapabilityAggregateView {
+        tags: tags.into_iter().collect(),
+        capability_labels: labels.into_iter().collect(),
+        input_modes: input_modes.into_iter().collect(),
+        output_modes: output_modes.into_iter().collect(),
+        streaming_supported,
+        push_supported,
+        cache_statuses,
+    }
 }
 
 fn add_group_member<W>(
@@ -842,6 +1025,22 @@ where
     }
 }
 
+fn render_group_capabilities<W>(
+    writer: &mut W,
+    mode: OutputMode,
+    output: &GroupCapabilitiesOutput,
+) -> Result<()>
+where
+    W: Write,
+{
+    match mode {
+        OutputMode::Human => write_group_capabilities_human(writer, output),
+        OutputMode::Json | OutputMode::Ndjson | OutputMode::Quiet => {
+            render_success(writer, mode, "group_capabilities", output, &output.message)
+        }
+    }
+}
+
 fn render_group_action<W>(
     writer: &mut W,
     mode: OutputMode,
@@ -930,6 +1129,90 @@ where
     Ok(())
 }
 
+fn write_group_capabilities_human<W>(writer: &mut W, output: &GroupCapabilitiesOutput) -> Result<()>
+where
+    W: Write,
+{
+    writeln!(
+        writer,
+        "Group capability summary for '{}' in profile '{}':",
+        redact_text(&output.group),
+        redact_text(&output.profile)
+    )
+    .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(writer, "  members: {}", output.member_count)
+        .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(
+        writer,
+        "  streaming_supported: {}",
+        output.aggregate.streaming_supported
+    )
+    .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(
+        writer,
+        "  push_supported: {}",
+        output.aggregate.push_supported
+    )
+    .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(writer, "  tags: {}", join_or_dash(&output.aggregate.tags))
+        .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(
+        writer,
+        "  capabilities: {}",
+        join_or_dash(&output.aggregate.capability_labels)
+    )
+    .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(
+        writer,
+        "  input_modes: {}",
+        join_or_dash(&output.aggregate.input_modes)
+    )
+    .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(
+        writer,
+        "  output_modes: {}",
+        join_or_dash(&output.aggregate.output_modes)
+    )
+    .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    writeln!(writer, "  members:")
+        .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    for member in &output.members {
+        writeln!(
+            writer,
+            "    {}  agent={}  weight={}  cache={}  streaming={}  push={}",
+            redact_text(&member.rank),
+            redact_text(&member.agent),
+            member.weight,
+            redact_text(&member.capabilities.cache.status),
+            member
+                .capabilities
+                .supports_streaming
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_owned()),
+            member
+                .capabilities
+                .supports_push_notifications
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_owned())
+        )
+        .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+        writeln!(
+            writer,
+            "      capabilities: {}",
+            join_or_dash(&member.capabilities.capability_labels)
+        )
+        .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+        writeln!(
+            writer,
+            "      input_modes: {}  output_modes: {}",
+            join_or_dash(&member.capabilities.input_modes),
+            join_or_dash(&member.capabilities.output_modes)
+        )
+        .map_err(|error| MissiveError::io("writing group capabilities output", error))?;
+    }
+    Ok(())
+}
+
 fn write_group_human<W>(writer: &mut W, group: &GroupView, message: Option<&str>) -> Result<()>
 where
     W: Write,
@@ -980,6 +1263,14 @@ where
         .map_err(|error| MissiveError::io("writing group output", error))?;
     writeln!(writer, "  updated_at: {}", redact_text(&group.updated_at))
         .map_err(|error| MissiveError::io("writing group output", error))
+}
+
+fn join_or_dash(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_owned()
+    } else {
+        redact_text(&values.join(","))
+    }
 }
 
 fn metadata_json(metadata: &Metadata) -> Result<String> {

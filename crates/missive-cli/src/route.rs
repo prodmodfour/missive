@@ -3,11 +3,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
-use crate::agent::{get_existing_agent, open_agent_registry};
+use crate::agent::{
+    AgentCardLoadMode, get_existing_agent, load_agent_card_for_capabilities, open_agent_registry,
+};
+use crate::capabilities::{string_set, summarize_agent_capabilities};
 use crate::output::{OutputMode, redact_text, render_success};
+use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 use clap::{Args, Subcommand};
 use missive_core::{
-    AgentAlias, GroupName, LoadedConfig, MissiveError, Result, parse_routing_policy,
+    AgentAlias, GroupName, LoadedConfig, MissiveError, Result, RoutingPolicyKind,
+    parse_routing_policy,
 };
 use missive_router::{
     RouteCandidate, RouteDecision, RoutePlan, RoutePlanInput, capabilities_from_metadata,
@@ -52,13 +57,33 @@ pub struct RouteExplainArgs {
     #[arg(long = "preferred-agent", value_name = "ALIAS")]
     pub preferred_agent: Option<String>,
 
-    /// Required local tag for tag-match explanations; repeat for multiple tags.
+    /// Required local or Agent Card skill tag for tag-match/capability-match explanations.
     #[arg(long = "tag", value_name = "TAG")]
     pub required_tags: Vec<String>,
 
-    /// Required local capability label for capability-match explanations; repeat for multiple labels.
+    /// Required local or Agent Card capability label for capability-match explanations; repeat for multiple labels.
     #[arg(long = "capability", value_name = "CAPABILITY")]
     pub required_capabilities: Vec<String>,
+
+    /// Required Agent Card input MIME/media mode for capability-match explanations.
+    #[arg(long = "input-mode", value_name = "MODE")]
+    pub required_input_modes: Vec<String>,
+
+    /// Required Agent Card output MIME/media mode for capability-match explanations.
+    #[arg(long = "output-mode", value_name = "MODE")]
+    pub required_output_modes: Vec<String>,
+
+    /// Require Agent Card streaming support for capability-match explanations.
+    #[arg(long = "streaming", action = clap::ArgAction::SetTrue)]
+    pub require_streaming: bool,
+
+    /// Require Agent Card push notification support for capability-match explanations.
+    #[arg(long = "push-notifications", visible_alias = "push", action = clap::ArgAction::SetTrue)]
+    pub require_push_notifications: bool,
+
+    /// Revalidate/fetch Agent Cards before extracting capability data.
+    #[arg(long = "refresh-capabilities", action = clap::ArgAction::SetTrue)]
+    pub refresh_capabilities: bool,
 
     /// Deterministic cursor for round-robin dry runs.
     #[arg(long = "cursor", value_name = "N", default_value_t = 0)]
@@ -89,6 +114,7 @@ struct RouteSourceView {
 /// Executes one route subcommand.
 pub(crate) fn execute_route_command<W>(
     command: &RouteCommands,
+    globals: &GlobalArgs,
     loaded_config: &LoadedConfig,
     environment: &BTreeMap<String, String>,
     mode: OutputMode,
@@ -99,13 +125,14 @@ where
 {
     match command {
         RouteCommands::Explain(args) => {
-            explain_route_command(args, loaded_config, environment, mode, writer)
+            explain_route_command(args, globals, loaded_config, environment, mode, writer)
         }
     }
 }
 
 fn explain_route_command<W>(
     args: &RouteExplainArgs,
+    globals: &GlobalArgs,
     loaded_config: &LoadedConfig,
     environment: &BTreeMap<String, String>,
     mode: OutputMode,
@@ -116,7 +143,14 @@ where
 {
     validate_candidate_source(args)?;
     let registry = open_agent_registry(loaded_config, environment)?;
-    let (source, stored_policy, candidates) = route_candidates(args, &registry.store)?;
+    let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
+    let (source, stored_policy, candidates) = route_candidates(
+        args,
+        &registry.store,
+        globals,
+        environment,
+        &service_parameters,
+    )?;
     let (policy, policy_source) = resolve_policy(args, loaded_config, stored_policy.as_deref())?;
     let preferred_agent = args
         .preferred_agent
@@ -129,6 +163,10 @@ where
         preferred_agent,
         required_tags: args.required_tags.clone(),
         required_capabilities: args.required_capabilities.clone(),
+        required_input_modes: args.required_input_modes.clone(),
+        required_output_modes: args.required_output_modes.clone(),
+        require_streaming: args.require_streaming,
+        require_push_notifications: args.require_push_notifications,
         round_robin_cursor: args.cursor,
         quorum: args.quorum,
     };
@@ -142,10 +180,15 @@ where
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let message = format!(
-        "Route explain selected {selected_text} using {} policy",
-        policy.as_str()
-    );
+    let message = if plan.status == "no_match" && plan.policy == RoutingPolicyKind::CapabilityMatch
+    {
+        "No route candidates matched the requested capabilities; inspect missing_requirements or rerun with --refresh-capabilities".to_owned()
+    } else {
+        format!(
+            "Route explain selected {selected_text} using {} policy",
+            policy.as_str()
+        )
+    };
     let output = RouteExplainOutput {
         profile: registry.profile,
         source,
@@ -174,6 +217,9 @@ fn validate_candidate_source(args: &RouteExplainArgs) -> Result<()> {
 fn route_candidates(
     args: &RouteExplainArgs,
     store: &Store,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &missive_a2a::ServiceParameters,
 ) -> Result<(RouteSourceView, Option<String>, Vec<RouteCandidate>)> {
     if let Some(group) = &args.group {
         let group_name = GroupName::new(group.clone())?;
@@ -185,7 +231,15 @@ fn route_candidates(
         let mut candidates = Vec::with_capacity(members.len());
         for member in &members {
             let agent = get_existing_agent(store, &member.agent_alias)?;
-            candidates.push(candidate_from_group_member(&agent, member));
+            candidates.push(candidate_from_group_member(
+                store,
+                &agent,
+                member,
+                args.refresh_capabilities,
+                globals,
+                environment,
+                service_parameters,
+            )?);
         }
         let source = RouteSourceView {
             kind: "group".to_owned(),
@@ -206,7 +260,14 @@ fn route_candidates(
                 .with_help("Pass each --agent candidate at most once."));
             }
             let agent = get_existing_agent(store, &alias)?;
-            candidates.push(candidate_from_agent(&agent));
+            candidates.push(candidate_from_agent(
+                store,
+                &agent,
+                args.refresh_capabilities,
+                globals,
+                environment,
+                service_parameters,
+            )?);
         }
         let source = RouteSourceView {
             kind: "agents".to_owned(),
@@ -235,37 +296,102 @@ fn resolve_policy(
     ))
 }
 
-fn candidate_from_agent(agent: &AgentRecord) -> RouteCandidate {
+fn candidate_from_agent(
+    store: &Store,
+    agent: &AgentRecord,
+    refresh_capabilities: bool,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &missive_a2a::ServiceParameters,
+) -> Result<RouteCandidate> {
+    let summary = candidate_capability_summary(
+        store,
+        agent,
+        refresh_capabilities,
+        globals,
+        environment,
+        service_parameters,
+    )?;
     let mut candidate = RouteCandidate::new(agent.alias.clone());
-    candidate.tags = stable_unique_strings(agent.tags.iter().cloned());
-    candidate.capabilities = capabilities_from_metadata(&agent.metadata);
+    candidate.tags = summary.tags.clone();
+    candidate.capabilities = summary.capability_labels.clone();
+    candidate.input_modes = summary.input_modes.clone();
+    candidate.output_modes = summary.output_modes.clone();
+    candidate.supports_streaming = summary.supports_streaming;
+    candidate.supports_push_notifications = summary.supports_push_notifications;
+    candidate.capability_cache_status = Some(summary.cache.status);
     candidate.metadata = agent.metadata.clone();
-    candidate
+    Ok(candidate)
 }
 
-fn candidate_from_group_member(agent: &AgentRecord, member: &GroupMemberRecord) -> RouteCandidate {
+fn candidate_from_group_member(
+    store: &Store,
+    agent: &AgentRecord,
+    member: &GroupMemberRecord,
+    refresh_capabilities: bool,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &missive_a2a::ServiceParameters,
+) -> Result<RouteCandidate> {
+    let summary = candidate_capability_summary(
+        store,
+        agent,
+        refresh_capabilities,
+        globals,
+        environment,
+        service_parameters,
+    )?;
     let mut metadata = agent.metadata.clone();
     metadata.merge(member.routing_metadata.clone());
 
-    let mut capabilities = capabilities_from_metadata(&agent.metadata);
-    capabilities.extend(capabilities_from_metadata(&member.routing_metadata));
+    let mut tags = string_set(summary.tags);
+    tags.extend(string_set(member.tags.iter().cloned()));
+    let mut capabilities = string_set(summary.capability_labels);
+    capabilities.extend(string_set(capabilities_from_metadata(
+        &member.routing_metadata,
+    )));
 
-    RouteCandidate {
+    Ok(RouteCandidate {
         alias: member.agent_alias.clone(),
         rank: Some(member.rank_name.clone()),
-        tags: stable_unique_strings(agent.tags.iter().chain(member.tags.iter()).cloned()),
-        capabilities: stable_unique_strings(capabilities),
+        tags: tags.into_iter().collect(),
+        capabilities: capabilities.into_iter().collect(),
+        input_modes: summary.input_modes,
+        output_modes: summary.output_modes,
+        supports_streaming: summary.supports_streaming,
+        supports_push_notifications: summary.supports_push_notifications,
+        capability_cache_status: Some(summary.cache.status),
         weight: member.weight,
         metadata,
-    }
+    })
 }
 
-fn stable_unique_strings(values: impl IntoIterator<Item = String>) -> Vec<String> {
-    values
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
+fn candidate_capability_summary(
+    store: &Store,
+    agent: &AgentRecord,
+    refresh_capabilities: bool,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &missive_a2a::ServiceParameters,
+) -> Result<crate::capabilities::AgentCapabilitySummary> {
+    let load_mode = if refresh_capabilities {
+        AgentCardLoadMode::Refresh
+    } else {
+        AgentCardLoadMode::CacheOnly
+    };
+    let loaded = load_agent_card_for_capabilities(
+        store,
+        agent,
+        load_mode,
+        globals,
+        environment,
+        service_parameters,
+    )?;
+    Ok(summarize_agent_capabilities(
+        &loaded.record,
+        loaded.card.as_ref(),
+        loaded.cache,
+    ))
 }
 
 fn parse_agent_alias(value: &str) -> Result<AgentAlias> {
@@ -379,5 +505,37 @@ where
         decision.weight,
         redact_text(&decision.reason)
     )
-    .map_err(|error| MissiveError::io("writing route explain output", error))
+    .map_err(|error| MissiveError::io("writing route explain output", error))?;
+    if !decision.matched_tags.is_empty()
+        || !decision.matched_capabilities.is_empty()
+        || !decision.matched_input_modes.is_empty()
+        || !decision.matched_output_modes.is_empty()
+    {
+        writeln!(
+            writer,
+            "      matched: tags={} capabilities={} input_modes={} output_modes={}",
+            join_or_dash(&decision.matched_tags),
+            join_or_dash(&decision.matched_capabilities),
+            join_or_dash(&decision.matched_input_modes),
+            join_or_dash(&decision.matched_output_modes)
+        )
+        .map_err(|error| MissiveError::io("writing route explain output", error))?;
+    }
+    if !decision.missing_requirements.is_empty() {
+        writeln!(
+            writer,
+            "      missing_requirements: {}",
+            join_or_dash(&decision.missing_requirements)
+        )
+        .map_err(|error| MissiveError::io("writing route explain output", error))?;
+    }
+    Ok(())
+}
+
+fn join_or_dash(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_owned()
+    } else {
+        redact_text(&values.join(","))
+    }
 }

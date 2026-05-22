@@ -189,13 +189,27 @@ transport errors, while invalid or schema-incompatible Agent Card JSON is a
 protocol error. If the remote error body reports A2A `VERSION_NOT_SUPPORTED`,
 missive returns a protocol error with exit code `76`.
 
+### Agent capability summaries
+
+`missive agent capabilities [alias]` renders the public selection capabilities
+that missive can derive for one registered agent or, when `alias` is omitted,
+for every registered agent. The command uses a cached Agent Card when one is
+available, fetches and caches the public Agent Card when the cache is missing,
+and revalidates the cache when `--refresh` is passed. The summary includes local
+registry tags, Agent Card skill ids/names/tags, default and skill input/output
+modes, `capabilities.streaming`, and `capabilities.pushNotifications`. These
+fields are the same public/non-secret fields used by capability-aware
+`missive route explain`.
+
 Human output is concise text. Machine output uses command-specific envelope
 kinds such as `agent_add`, `agent_list`, `agent_show`, `agent_inspect`,
-`agent_refresh`, `agent_remove`, and `agent_rename`:
+`agent_refresh`, `agent_capabilities`, `agent_remove`, and `agent_rename`:
 
 ```bash
 MISSIVE_HOME=/tmp/missive-demo missive agent add echo http://127.0.0.1:8080 --tag local
 MISSIVE_HOME=/tmp/missive-demo missive agent inspect echo --json
+MISSIVE_HOME=/tmp/missive-demo missive agent capabilities echo --json
+MISSIVE_HOME=/tmp/missive-demo missive agent capabilities --refresh --json
 MISSIVE_HOME=/tmp/missive-demo missive agent refresh echo --bearer-token-env MISSIVE_AGENT_TOKEN
 MISSIVE_HOME=/tmp/missive-demo missive agent list --json
 ```
@@ -466,8 +480,9 @@ counts.
 `missive group` manages local groups of registered agent aliases for collective
 and later routing commands. Groups live in the selected profile's SQLite store
 and contain only local control-plane metadata: a group name, routing policy
-label, notes, metadata, and member rows. No A2A network calls are made by group
-commands.
+label, notes, metadata, and member rows. Group CRUD commands do not make A2A
+network calls; `group capabilities` may fetch or revalidate public Agent Cards
+for member agents.
 
 Implemented commands:
 
@@ -480,6 +495,7 @@ MISSIVE_HOME=/tmp/missive-demo missive group create team \
 MISSIVE_HOME=/tmp/missive-demo missive group add team planner --rank rank-0 --tag planner --weight 2
 MISSIVE_HOME=/tmp/missive-demo missive group add team writer --rank rank-1 --tag writer --routing-metadata lane=blue
 MISSIVE_HOME=/tmp/missive-demo missive group show team --json
+MISSIVE_HOME=/tmp/missive-demo missive group capabilities team --json
 MISSIVE_HOME=/tmp/missive-demo missive group list
 MISSIVE_HOME=/tmp/missive-demo missive group remove team writer
 MISSIVE_HOME=/tmp/missive-demo missive group rename team demo-team
@@ -502,23 +518,30 @@ agents fails before writing. Re-running `group add` for the same agent updates
 that member when the requested rank is available.
 
 `group show` displays the routing policy and members in deterministic rank/name
-order. `group rename` changes the group primary key and preserves membership.
-`group remove` removes one member by agent alias. `group delete` deletes the
-group and cascades its member rows. Group mutation commands append redacted
-`missive.group.*` rows to the local event journal for audit and later replay.
+order. `group capabilities <group>` summarizes each member's local tags/routing
+metadata plus cached/fetched public Agent Card skills, input/output modes,
+streaming support, and push notification support; it fetches missing cards and
+revalidates all member cards when `--refresh` is passed. `group rename` changes
+the group primary key and preserves membership. `group remove` removes one member
+by agent alias. `group delete` deletes the group and cascades its member rows.
+Group mutation commands append redacted `missive.group.*` rows to the local event
+journal for audit and later replay.
 
 Machine-readable group output uses `group_create`, `group_list`, `group_show`,
-`group_add`, `group_remove`, `group_rename`, and `group_delete` envelope kinds.
-Group views include the routing policy, notes, metadata, member count, timestamps,
-and member rows with rank, tags, weight, and routing metadata.
+`group_capabilities`, `group_add`, `group_remove`, `group_rename`, and
+`group_delete` envelope kinds. Group views include the routing policy, notes,
+metadata, member count, timestamps, and member rows with rank, tags, weight, and
+routing metadata; capability summaries also include aggregate tags, labels,
+media modes, cache status counts, and streaming/push support counts.
 
 ## Route explain
 
 `missive route explain` dry-runs a routing decision without sending an A2A
 message. It reads the selected profile's local agent registry and, when
-`--group GROUP` is used, the stored group membership rows. It then applies a
-built-in policy and renders a deterministic explanation in human, JSON, or
-NDJSON mode.
+`--group GROUP` is used, the stored group membership rows. For
+`capability-match`, it reads cached Agent Cards by default and can revalidate or
+fetch them with `--refresh-capabilities`. It then applies a built-in policy and
+renders a deterministic explanation in human, JSON, or NDJSON mode.
 
 Examples:
 
@@ -528,6 +551,16 @@ MISSIVE_HOME=/tmp/missive-demo missive route explain \
   --group team \
   --policy tag-match \
   --tag writer \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive route explain \
+  --group team \
+  --policy capability-match \
+  --capability echo \
+  --input-mode application/json \
+  --output-mode text/plain \
+  --streaming \
+  --push-notifications \
+  --refresh-capabilities \
   --json
 MISSIVE_HOME=/tmp/missive-demo missive route explain \
   --agent planner \
@@ -546,13 +579,22 @@ refer to a candidate in the route set.
 Policy behavior in this dry-run command:
 
 * `direct` selects one preferred or first candidate.
-* `capability-match` selects candidates whose local metadata capabilities match
-  all repeatable `--capability` labels. Current capability labels come only from
-  local agent/group metadata keys named `capability`, `capabilities`, `skill`,
-  or `skills`; richer A2A Agent Card capability extraction is reserved for a
-  later ticket.
-* `tag-match` selects candidates whose local agent/member tags satisfy all
-  repeatable `--tag` labels.
+* `capability-match` selects candidates whose local metadata and cached/fetched
+  Agent Card capabilities satisfy all requested capability filters. Repeatable
+  `--capability` labels match local metadata keys named `capability`,
+  `capabilities`, `skill`, or `skills`, plus Agent Card skill ids, skill names,
+  skill tags, and boolean labels such as `streaming` and `push-notifications`.
+  Repeatable `--tag` labels match local agent/member tags plus Agent Card skill
+  tags. Repeatable `--input-mode` and `--output-mode` values match Agent Card
+  default and skill media modes. `--streaming` requires
+  `capabilities.streaming = true`; `--push-notifications` (alias `--push`)
+  requires `capabilities.pushNotifications = true`. Matching candidates are
+  ordered by match score, member weight, then deterministic input/rank order.
+  Unknown card-derived requirements appear as `*:unknown` in
+  `missing_requirements`; run `missive agent capabilities <alias> --refresh` or
+  rerun route explain with `--refresh-capabilities` to update the cache.
+* `tag-match` selects candidates whose local agent/member tags and cached Agent
+  Card skill tags satisfy all repeatable `--tag` labels.
 * `round-robin` selects one candidate using `--cursor % candidate_count` and
   reports `next_round_robin_cursor` for callers that persist their own cursor.
 * `weighted` selects the highest positive member weight, with deterministic
@@ -566,9 +608,10 @@ Policy behavior in this dry-run command:
 
 Machine-readable output uses `kind: "route_explain"` and includes the profile,
 source kind, policy source, selected aliases, per-candidate decision reasons,
-matched tags/capabilities, optional quorum, and optional next round-robin cursor.
-The command is read-only except for the normal config-seeded agent sync that
-agent registry opening already performs.
+matched tags/capabilities/input modes/output modes, `missing_requirements`,
+optional quorum, and optional next round-robin cursor. The command is read-only
+except for normal config-seeded agent sync and, when `--refresh-capabilities` is
+used, Agent Card cache updates for the considered candidates.
 
 ## Broadcast collective
 

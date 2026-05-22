@@ -153,9 +153,14 @@ A2A SendMessage, persisted local reduced-output messages, `missive.reduce.*`
 event rows, and the no-gathered-input validation failure. The route explain
 integration test uses isolated local registry/group rows to cover weighted,
 tag-match, capability-match, and round-robin dry-run explanations, human/JSON
-output, candidate-source validation, and invalid routing policy config
-failures; `crates/missive-router` unit tests cover every built-in policy's
-deterministic decision path. The gateway command integration test spawns the
+output, candidate-source validation, and invalid routing policy config failures.
+The capability-selection integration test uses reusable mock A2A servers to cover
+`agent capabilities` cache fetch/reuse, `group capabilities` aggregation,
+`route explain --refresh-capabilities` Agent Card refresh, matching by skill
+label/input mode/output mode/streaming/push support, missing cached capability
+data diagnostics, and weight tie-breaking; `crates/missive-router` unit tests
+cover every built-in policy's deterministic decision path plus capability-mode
+matching. The gateway command integration test spawns the
 `missive` binary, waits for the local `/healthz` endpoint, checks `/status`
 component JSON over loopback HTTP, verifies graceful `--timeout` shutdown,
 checks NDJSON lifecycle output, and inspects persisted `missive.gateway.*` event

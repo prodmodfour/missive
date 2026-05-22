@@ -14,6 +14,7 @@ pub(crate) mod artifact;
 pub(crate) mod auth;
 pub(crate) mod barrier;
 pub(crate) mod bcast;
+pub(crate) mod capabilities;
 pub mod context;
 pub mod events;
 pub mod gateway;
@@ -194,7 +195,7 @@ pub struct GlobalArgs {
 pub enum Commands {
     /// Manage configured A2A agents and cached Agent Cards.
     #[command(
-        long_about = "Manage configured A2A agent aliases in the local SQLite registry, inspect public A2A Agent Cards, and refresh the local Agent Card cache."
+        long_about = "Manage configured A2A agent aliases in the local SQLite registry, inspect public A2A Agent Cards, refresh the local Agent Card cache, and summarize public capabilities for selection."
     )]
     Agent {
         /// Agent registry operation to run. With no operation, missive emits a parsed command status.
@@ -236,7 +237,7 @@ pub enum Commands {
 
     /// Manage groups of agents for collective operations.
     #[command(
-        long_about = "Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for collective operations."
+        long_about = "Create, list, show, rename, delete, and summarize capabilities for profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for collective operations."
     )]
     Group {
         /// Group operation to run. With no operation, missive emits a parsed command status.
@@ -246,7 +247,7 @@ pub enum Commands {
 
     /// Explain dry-run routing decisions for agents or groups.
     #[command(
-        long_about = "Explain which registered agents a routing policy would select from an explicit candidate set or a stored group. This is a dry-run planning command: it reads local registry/group metadata and does not send A2A messages."
+        long_about = "Explain which registered agents a routing policy would select from an explicit candidate set or a stored group. This is a dry-run planning command: it reads local registry/group metadata and cached Agent Cards by default, and fetches Agent Cards only when --refresh-capabilities is requested."
     )]
     Route {
         /// Route operation to run. With no operation, missive emits a parsed command status.
@@ -501,14 +502,24 @@ where
         ),
         Some(Commands::Group {
             command: Some(group_command),
-        }) => {
-            group::execute_group_command(group_command, &loaded_config, environment, mode, writer)
-        }
+        }) => group::execute_group_command(
+            group_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
         Some(Commands::Route {
             command: Some(route_command),
-        }) => {
-            route::execute_route_command(route_command, &loaded_config, environment, mode, writer)
-        }
+        }) => route::execute_route_command(
+            route_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
         Some(Commands::Bcast(args)) => bcast::execute_bcast_command(
             args,
             &cli.globals,

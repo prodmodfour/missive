@@ -35,11 +35,16 @@ card and updates the cache validation timestamp.
 The current parser deserializes into the official `a2a-lf` `AgentCard` type and
 extracts the fields needed for human and machine inspection: provider, agent
 version, protocol versions, capabilities, supported interfaces, default
-input/output modes, and skills. A small compatibility layer normalizes known
-snake_case fixture aliases and inserts an empty `supportedInterfaces` array for
-older/pre-release cards that omit the field, preserving the negotiation fallback
-introduced earlier. The raw public card JSON remains cached and rendered for
-inspection.
+input/output modes, and skills. The same public fields feed capability-aware
+selection: `missive agent capabilities`, `missive group capabilities`, and
+`missive route explain --policy capability-match` derive labels from skill ids,
+skill names, skill tags, local metadata, input/output modes, streaming support,
+and push notification support. Route explain reads cached cards by default and
+updates the cache only when `--refresh-capabilities` is passed. A small
+compatibility layer normalizes known snake_case fixture aliases and inserts an
+empty `supportedInterfaces` array for older/pre-release cards that omit the
+field, preserving the negotiation fallback introduced earlier. The raw public
+card JSON remains cached and rendered for inspection.
 
 ## A2A service parameters
 

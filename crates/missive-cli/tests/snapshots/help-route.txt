@@ -1,4 +1,4 @@
-Explain which registered agents a routing policy would select from an explicit candidate set or a stored group. This is a dry-run planning command: it reads local registry/group metadata and does not send A2A messages.
+Explain which registered agents a routing policy would select from an explicit candidate set or a stored group. This is a dry-run planning command: it reads local registry/group metadata and cached Agent Cards by default, and fetches Agent Cards only when --refresh-capabilities is requested.
 
 Usage: missive route [OPTIONS] [COMMAND]
 

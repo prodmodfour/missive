@@ -7,8 +7,13 @@ Options:
       --agent <ALIAS>            Use one registered agent as a route candidate; repeat for multiple candidates
       --policy <POLICY>          Override the group/config routing policy for this dry run
       --preferred-agent <ALIAS>  Preferred primary/direct agent. The alias must be in the candidate set
-      --tag <TAG>                Required local tag for tag-match explanations; repeat for multiple tags
-      --capability <CAPABILITY>  Required local capability label for capability-match explanations; repeat for multiple labels
+      --tag <TAG>                Required local or Agent Card skill tag for tag-match/capability-match explanations
+      --capability <CAPABILITY>  Required local or Agent Card capability label for capability-match explanations; repeat for multiple labels
+      --input-mode <MODE>        Required Agent Card input MIME/media mode for capability-match explanations
+      --output-mode <MODE>       Required Agent Card output MIME/media mode for capability-match explanations
+      --streaming                Require Agent Card streaming support for capability-match explanations
+      --push-notifications       Require Agent Card push notification support for capability-match explanations [aliases: --push]
+      --refresh-capabilities     Revalidate/fetch Agent Cards before extracting capability data
       --cursor <N>               Deterministic cursor for round-robin dry runs [default: 0]
       --quorum <N>               Required successful member count for quorum dry runs
   -h, --help                     Print help
