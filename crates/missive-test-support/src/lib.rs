@@ -481,7 +481,7 @@ impl MockStateInner {
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| format!("ctx-{task_id}"));
-        let task = task_json(task_id, &context_id, "TASK_STATE_CANCELLED", "cancelled");
+        let task = task_json(task_id, &context_id, "TASK_STATE_CANCELED", "cancelled");
         self.tasks
             .insert(task_id.to_owned(), VecDeque::from([task.clone()]));
         task

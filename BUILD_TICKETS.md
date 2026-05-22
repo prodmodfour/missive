@@ -1266,7 +1266,7 @@ Validation:
 
 ## 042 — Implement background communication jobs
 
-Status: TODO
+Status: DONE
 
 Phase: Gateway
 

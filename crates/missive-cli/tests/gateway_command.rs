@@ -192,7 +192,8 @@ fn gateway_run_serves_status_and_shuts_down_cleanly() {
         component["name"] == "health_http" && component["state"] == "running"
     }));
     assert!(components.iter().any(|component| {
-        component["name"] == "background_jobs" && component["state"] == "idle"
+        component["name"] == "background_jobs"
+            && matches!(component["state"].as_str(), Some("running" | "idle"))
     }));
 
     let (status, stdout, stderr) = wait_for_child(child, Duration::from_secs(10));

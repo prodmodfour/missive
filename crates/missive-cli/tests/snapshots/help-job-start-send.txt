@@ -1,0 +1,41 @@
+Enqueue a background A2A SendMessage operation
+
+Usage: missive job start send [OPTIONS] <AGENT> [MESSAGE]
+
+Arguments:
+  <AGENT>    Registered agent alias to call
+  [MESSAGE]  Text message to send. Omit when using --stdin, --file, --file-bytes, --json-part, or --part
+
+Options:
+      --stdin                        Read one UTF-8 text message part from standard input
+      --file <PATH>                  Attach one safe local file reference part without embedding bytes; repeatable
+      --file-bytes <PATH>            Embed one safe local file as an A2A raw byte part; repeatable
+      --json-part <JSON>             Add one A2A structured data part from an inline JSON value; repeatable
+      --mime <MIME>                  Apply MIME/media type metadata to file, byte, JSON, or text parts
+      --part <text=VALUE>            Add a message text part as text=VALUE; repeatable
+      --metadata <KEY=VALUE>         Add non-secret A2A request metadata as KEY=VALUE; VALUE may be JSON
+      --context <CONTEXT_ID>         Continue or create this A2A context id
+      --task <TASK_ID>               Continue this A2A task id when the remote protocol state allows it
+      --accepted-output-mode <MIME>  Accepted response MIME/output mode; repeatable
+      --max-attempts <N>             Maximum attempts before the gateway marks the job failed [default: 1]
+      --attach                       Wait for the queued job to reach a terminal state and print the final row
+      --attach-timeout <DURATION>    Timeout for --attach, for example 30s, 2m, or 1h
+      --cancel-remote-on-cancel      Request remote A2A task cancellation when this job is cancelled and a task id is known
+  -h, --help                         Print help
+  -V, --version                      Print version
+
+Global options:
+      --json                        Emit a single JSON document for command output when the command supports it
+      --ndjson                      Emit newline-delimited JSON events when the command supports streaming output
+  -q, --quiet                       Suppress non-error output
+      --no-color                    Disable colored terminal output and diagnostics
+      --config <PATH>               Read configuration from this file path
+      --profile <PROFILE>           Select a named configuration profile
+      --timeout <DURATION>          Set an overall command timeout such as 30s, 2m, or 1h
+      --protocol-version <VERSION>  Override the A2A protocol version sent as the A2A-Version service parameter
+      --a2a-extension <EXTENSION>   Request an A2A extension through the A2A-Extensions service parameter; repeatable
+      --service-param <NAME=VALUE>  Add an arbitrary A2A service parameter as NAME=VALUE; repeatable
+      --bearer-token-env <ENV>      Read a bearer token from this environment variable and send it as Authorization
+      --header <NAME:VALUE>         Add an outbound HTTP header as Name:Value; repeatable and never persisted
+      --trace                       Enable trace-oriented diagnostics for this invocation
+  -v, --verbose...                  Increase human diagnostic verbosity; repeat for more detail

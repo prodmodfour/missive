@@ -125,6 +125,7 @@ cargo test -p missive-cli --test bcast_command --all-features
 cargo test -p missive-cli --test barrier_command --all-features
 cargo test -p missive-cli --test gather_command --all-features
 cargo test -p missive-cli --test reduce_command --all-features
+cargo test -p missive-cli --test job_command --all-features
 cargo test -p missive-cli --test gateway_command --all-features
 cargo test -p missive-cli --test webhook_command --all-features
 ```
@@ -160,7 +161,11 @@ The capability-selection integration test uses reusable mock A2A servers to cove
 label/input mode/output mode/streaming/push support, missing cached capability
 data diagnostics, and weight tie-breaking; `crates/missive-router` unit tests
 cover every built-in policy's deterministic decision path plus capability-mode
-matching. The gateway command integration test spawns the
+matching. The background job integration test covers `job start/list/show/cancel`
+JSON output, raw-request omission from job views, gateway execution of a queued
+send job through the reusable mock A2A server, persisted `gateway_jobs` result
+state, `missive.gateway.job.*` events, and `job cancel --remote` issuing A2A
+`CancelTask`. The gateway command integration test spawns the
 `missive` binary, waits for the local `/healthz` endpoint, checks `/status`
 component JSON over loopback HTTP, verifies graceful `--timeout` shutdown,
 checks NDJSON lifecycle output, and inspects persisted `missive.gateway.*` event
@@ -170,13 +175,14 @@ secret-looking environment variables, and the safety requirement that `--system`
 installs provide an explicit `MISSIVE_HOME`. The `missive-gateway` crate tests
 also exercise service file generation for systemd and launchd, subscription
 resume by seeding an in-flight task plus a persisted `task_subscription` job,
-serving local mock `SubscribeToTask` SSE updates, verifying terminal cleanup, and
-checking bounded retry/backoff metadata for malformed streams. Gateway session
-unit tests additionally use fixed clocks to cover daily, idle, and combined reset
-policy boundaries without wall-clock sleeps. Gateway busy-input unit tests cover
-queue, interrupt, steer, unsupported-steer fallback to queue/interrupt,
-queue-depth limits, and the no-active-operation start path without needing live
-adapters. The webhook
+serving local mock `SubscribeToTask` SSE updates, verifying terminal cleanup,
+checking bounded retry/backoff metadata for malformed streams, and background
+job helpers for public job-kind recognition plus restart pickup of expired
+running jobs. Gateway session unit tests additionally use fixed clocks to cover
+daily, idle, and combined reset policy boundaries without wall-clock sleeps.
+Gateway busy-input unit tests cover queue, interrupt, steer, unsupported-steer
+fallback to queue/interrupt, queue-depth limits, and the no-active-operation
+start path without needing live adapters. The webhook
 command integration test similarly spawns the binary, waits for local
 `/healthz`, posts unauthorized, malformed, and valid A2A `StreamResponse`
 payloads over loopback HTTP, verifies graceful `--max-events` shutdown, checks

@@ -20,6 +20,7 @@ pub mod events;
 pub mod gateway;
 pub(crate) mod gather;
 pub mod group;
+pub mod job;
 pub mod output;
 pub mod push;
 pub(crate) mod reduce;
@@ -43,7 +44,7 @@ pub const BINARY_NAME: &str = missive_core::PROJECT_NAME;
 /// Short description of this crate's target responsibility.
 pub const CRATE_PURPOSE: &str = "command parsing, output rendering, and exit codes";
 
-const REQUIRED_SUBCOMMANDS: [&str; 19] = [
+const REQUIRED_SUBCOMMANDS: [&str; 20] = [
     "agent",
     "send",
     "stream",
@@ -58,6 +59,7 @@ const REQUIRED_SUBCOMMANDS: [&str; 19] = [
     "gateway",
     "webhook",
     "push",
+    "job",
     "doctor",
     "logs",
     "events",
@@ -309,6 +311,16 @@ pub enum Commands {
         command: Option<push::PushCommands>,
     },
 
+    /// Enqueue, inspect, and cancel gateway-managed background communication jobs.
+    #[command(
+        long_about = "Enqueue send, stream, wait, and local reduce operations for the gateway daemon, list/show durable job rows, attach to a queued job until it completes, and cancel local or remote task-backed jobs."
+    )]
+    Job {
+        /// Job operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<job::JobCommands>,
+    },
+
     /// Diagnose local configuration, storage, gateway, and endpoint health.
     #[command(
         long_about = "Diagnose local configuration, storage, gateway status, tool availability, and A2A endpoint reachability. Diagnostic checks are implemented by a later observability ticket."
@@ -363,6 +375,7 @@ impl Commands {
             Self::Gateway { .. } => "gateway",
             Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
+            Self::Job { .. } => "job",
             Self::Doctor => "doctor",
             Self::Logs => "logs",
             Self::Events { .. } => "events",
@@ -395,7 +408,7 @@ pub fn workspace_crates() -> [missive_core::CrateInfo; 8] {
 
 /// Returns the required top-level subcommands for tests and documentation checks.
 #[must_use]
-pub const fn required_subcommands() -> [&'static str; 19] {
+pub const fn required_subcommands() -> [&'static str; 20] {
     REQUIRED_SUBCOMMANDS
 }
 
@@ -577,6 +590,17 @@ where
             &loaded_config,
             environment,
             mode,
+            writer,
+        ),
+        Some(Commands::Job {
+            command: Some(job_command),
+        }) => job::execute_job_command(
+            job_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            input,
             writer,
         ),
         Some(command) => {

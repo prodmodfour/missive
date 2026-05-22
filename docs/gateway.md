@@ -1,6 +1,6 @@
 # Gateway daemon
 
-`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, and the first A2A task subscription/resume worker. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
+`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, A2A task subscription/resume, and gateway-managed background communication jobs. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
 
 ## Run
 
@@ -106,7 +106,7 @@ The daemon exposes unauthenticated local JSON endpoints:
 
 The paths can be changed with `--health-path`, `--ready-path`, and `--status-path`; they must be distinct non-root HTTP paths.
 
-A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, plus idle placeholders for `webhook_receiver`, `background_jobs`, and `adapters`.
+A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, active or idle `background_jobs`, plus idle placeholders for `webhook_receiver` and `adapters`.
 
 ## Task subscriptions and resume
 
@@ -121,6 +121,53 @@ On startup and then periodically while running, the `subscriptions` component sc
 If a subscription stream fails or closes before the task reaches a terminal state, the gateway leaves the `task_subscription` job in `retrying` state, increments `retry_count`, records `gateway.subscription.backoff_ms`, stores `next_run_at`, and appends `missive.gateway.subscription.retrying`. Backoff is bounded between 1s and 30s and is visible in `/status`, NDJSON `gateway_component` output, the `gateway_jobs` row, and the event journal.
 
 This provides restart resume: after a daemon restart, any still-in-flight task and persisted subscription job are discovered from SQLite and monitored again once their backoff permits.
+
+## Background communication jobs
+
+`missive job start` enqueues durable rows in `gateway_jobs` with kind `send`,
+`stream`, `wait`, or `reduce`. While the daemon is running, the
+`background_jobs` component periodically scans queued/retrying rows, claims due
+jobs with a short worker lock, executes the operation, stores redacted
+`result_json`, sets terminal state (`succeeded`, `failed`, or `cancelled`) or a
+bounded retry backoff, and appends `missive.gateway.job.*` lifecycle events.
+Running jobs with expired locks are eligible for pickup by a later gateway
+process, so queued/retrying work and crash-stale running rows survive daemon
+restart where the operation is idempotent enough to retry.
+
+Typical non-interactive flow:
+
+```bash
+job_id=$(missive job start send echo "background work" --json \
+  | jq -r '.data.job.job_id')
+missive gateway run --timeout 30s --ndjson
+missive job show "$job_id" --json
+```
+
+Supported operations:
+
+* `send` — sends a stored A2A `SendMessageRequest` and records direct Message or
+  Task result metadata. Task responses update the local task row.
+* `stream` — sends a stored A2A `SendStreamingMessage` request, records each SSE
+  event as `a2a.job.stream.*`, and updates local task state for task/status
+  updates.
+* `wait` — polls local or remote task state until `completed`, `failed`,
+  `cancelled`, `input_required`, or timeout. Timeout marks the job failed;
+  decisive states mark the wait operation succeeded with the observed task
+  state in result JSON.
+* `reduce` — performs a deterministic local reduction over already persisted
+  group outputs for a context. It does not call reducer agents or shell
+  pipelines in the gateway worker.
+
+`missive job cancel <job-id>` always marks the local job cancelled. With
+`--remote`, or when the job was started with `--cancel-remote-on-cancel`, the CLI
+also requests A2A `CancelTask` if the job has a known agent/task id. Remote
+cancellation is done by the foreground CLI using the usual auth resolver so raw
+secrets are not persisted in the job row.
+
+Current gateway workers use configured A2A service parameters but do not resolve
+outbound auth refs, keyring values, `--bearer-token-env`, or one-shot `--header`
+values. Use foreground commands for authenticated job-like operations until a
+later hardening ticket wires gateway-safe auth resolution.
 
 ## Sessions and reset policies
 
@@ -160,18 +207,21 @@ records an explicit fallback action. The effective policy comes from the selecte
 profile's `[gateway.busy_input]` block; a configured adapter/source can override
 it with `[adapters.<name>.busy_input]`. The current daemon exposes the policy
 library and config validation, while later background-job and adapter workers
-will execute the returned actions as they add user-visible inbound sources.
+will execute the returned actions as they add user-visible inbound sources. The
+current job cancellation path marks local job rows and can request remote task
+cancellation from the foreground CLI, but there is not yet an adapter-driven busy
+input source that invokes this evaluator automatically.
 
 ## State and locking
 
-`gateway run` resolves the selected profile's state paths, creates required directories, acquires the profile `gateway.lock`, opens/migrates the SQLite store, appends redacted `missive.gateway.started` and `missive.gateway.stopped` event-journal rows, and uses short state-mutation locks from blocking subscription/lifecycle tasks. Only one gateway or standalone webhook receiver can hold the profile gateway lock at a time.
+`gateway run` resolves the selected profile's state paths, creates required directories, acquires the profile `gateway.lock`, opens/migrates the SQLite store, appends redacted `missive.gateway.started` and `missive.gateway.stopped` event-journal rows, and uses short state-mutation locks from blocking subscription/job/lifecycle tasks. Only one gateway or standalone webhook receiver can hold the profile gateway lock at a time.
 
 ## Output
 
-Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_component`, and `gateway_stopped` envelopes as the runtime progresses. Subscription progress and retry/backoff details are reported as `gateway_component` updates for the `subscriptions` component. `--json` emits one final `gateway_stopped` summary after shutdown. `--quiet` suppresses non-error output.
+Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_component`, and `gateway_stopped` envelopes as the runtime progresses. Subscription progress and retry/backoff details are reported as `gateway_component` updates for the `subscriptions` component; background job queue, success, failure, retry, and cancellation summaries are reported through the `background_jobs` component. `--json` emits one final `gateway_stopped` summary after shutdown. `--quiet` suppresses non-error output.
 
 ## Current limitations
 
 The subscription worker uses cached Agent Cards already stored in SQLite; run `missive agent inspect <alias>` or use an implemented send/stream/task command first if an agent row has no card cache. It currently sends configured A2A service parameters but does not resolve outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values for subscription calls, so authenticated remote subscriptions remain a later hardening item. It updates task state and event journal rows but does not yet persist subscribed messages or artifacts as dedicated message/artifact rows.
 
-The daemon still does not embed `missive webhook run`, execute user-visible background jobs, run adapters, or expose an authenticated control API. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current user-facing adapter path invokes it until the later job and adapter tickets add inbound workers. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.
+The daemon still does not embed `missive webhook run`, run adapters, or expose an authenticated control API. Background jobs execute send/stream/wait/local-reduce work but do not yet persist every streamed message/artifact as dedicated rows, call reducer agents or command pipelines for reduce, expose a remote job control socket, or resolve gateway-safe outbound auth refs. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current adapter path invokes it automatically. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.

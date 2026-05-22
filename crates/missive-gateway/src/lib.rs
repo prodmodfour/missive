@@ -2,6 +2,7 @@
 
 pub mod busy;
 pub mod daemon;
+pub mod jobs;
 pub mod service;
 pub mod session;
 mod subscription;
@@ -16,6 +17,10 @@ pub use daemon::{
     DEFAULT_GATEWAY_HEALTH_PATH, DEFAULT_GATEWAY_READY_PATH, DEFAULT_GATEWAY_STATUS_PATH,
     GatewayComponentStatus, GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent,
     GatewayStarted, GatewayStatusResponse, run_gateway_daemon,
+};
+pub use jobs::{
+    BACKGROUND_JOB_KIND_REDUCE, BACKGROUND_JOB_KIND_SEND, BACKGROUND_JOB_KIND_STREAM,
+    BACKGROUND_JOB_KIND_WAIT, is_background_job_kind,
 };
 pub use service::{
     DEFAULT_LAUNCHD_LABEL, DEFAULT_SERVICE_PATH, DEFAULT_SYSTEMD_UNIT, GatewayServiceAction,

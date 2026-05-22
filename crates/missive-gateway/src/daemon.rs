@@ -1,10 +1,10 @@
 //! Local gateway daemon skeleton.
 //!
 //! This module owns the first long-running `missive gateway run` runtime.  The
-//! daemon intentionally supervises only inert component placeholders in this
-//! ticket; later gateway tickets can replace those placeholders with real
-//! subscription, webhook, job, and adapter workers without changing the CLI
-//! lifecycle contract.
+//! daemon supervises gateway components such as the event bus, task
+//! subscriptions, and background communication jobs. Later tickets can add
+//! embedded webhook and adapter workers without changing the CLI lifecycle
+//! contract.
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -24,6 +24,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio::time::sleep;
 
+use crate::jobs::{JobManagerConfig, run_job_manager};
 use crate::subscription::{SubscriptionManagerConfig, run_subscription_manager};
 
 /// Default health endpoint for the local gateway daemon.
@@ -43,7 +44,7 @@ const COMPONENT_SESSIONS: &str = "sessions";
 const COMPONENT_HEALTH_HTTP: &str = "health_http";
 pub(crate) const COMPONENT_SUBSCRIPTIONS: &str = "subscriptions";
 const COMPONENT_WEBHOOK_RECEIVER: &str = "webhook_receiver";
-const COMPONENT_BACKGROUND_JOBS: &str = "background_jobs";
+pub(crate) const COMPONENT_BACKGROUND_JOBS: &str = "background_jobs";
 const COMPONENT_ADAPTERS: &str = "adapters";
 
 /// Runtime configuration for `missive gateway run`.
@@ -417,6 +418,17 @@ pub async fn run_gateway_daemon(
         bus_tx.clone(),
         shutdown_rx.clone(),
     ));
+    let job_config = JobManagerConfig {
+        profile: config.profile.clone(),
+        state_paths: config.state_paths.clone(),
+        service_parameters: config.service_parameters.clone(),
+        job_concurrency: config.job_concurrency,
+    };
+    let job_handle = tokio::spawn(run_job_manager(
+        job_config,
+        bus_tx.clone(),
+        shutdown_rx.clone(),
+    ));
 
     let app = Router::new()
         .route(&config.health_path, get(health))
@@ -444,6 +456,10 @@ pub async fn run_gateway_daemon(
     )));
     subscription_handle.await.map_err(|error| {
         MissiveError::orchestration("joining gateway subscription manager task").with_source(error)
+    })??;
+    job_handle.await.map_err(|error| {
+        MissiveError::orchestration("joining gateway background job manager task")
+            .with_source(error)
     })??;
     drop(bus_tx);
     supervisor_handle.await.map_err(|error| {
@@ -616,7 +632,7 @@ fn initial_components(job_concurrency: u16) -> Vec<GatewayComponentStatus> {
         GatewayComponentStatus::idle(
             COMPONENT_BACKGROUND_JOBS,
             format!(
-                "background job workers are reserved for a later ticket; configured concurrency is {job_concurrency}"
+                "background job workers will scan queued send/stream/wait/reduce jobs; configured concurrency is {job_concurrency}"
             ),
         ),
         GatewayComponentStatus::idle(

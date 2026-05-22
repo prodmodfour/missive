@@ -8,7 +8,8 @@ commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive context create/list/show/fork/close/export`, `missive group
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
 `missive gather`, `missive reduce`, `missive push create/get/list/delete`,
-`missive webhook run`, `missive gateway run`, and `missive gateway install/start/stop/status/uninstall`;
+`missive webhook run`, `missive gateway run`, `missive gateway install/start/stop/status/uninstall`,
+and `missive job start/list/show/cancel` for gateway-managed background work;
 other top-level commands still emit skeletal parsed status until their ordered
 tickets land.
 
@@ -27,6 +28,8 @@ missive barrier --help
 missive gather --help
 missive reduce --help
 missive push --help
+missive job --help
+missive job start send --help
 missive gateway --help
 missive gateway run --help
 missive gateway install --help
@@ -89,6 +92,7 @@ reduce      Reduce gathered group outputs into one source-attributed result
 gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
+job         Enqueue, inspect, and cancel gateway-managed background communication jobs
 doctor      Diagnose local configuration, storage, gateway, and endpoint health
 logs        Inspect local missive logs
 events      Inspect, tail, replay, or export the local event journal
@@ -855,6 +859,44 @@ persists each returned config. `push delete` calls the remote delete endpoint an
 soft-deletes any active local row by setting `deleted_at`; the event journal
 keeps the redacted delete response for audit. Machine-readable output uses
 `push_create`, `push_get`, `push_list`, and `push_delete` envelope kinds.
+
+## Background job commands
+
+`missive job` manages durable gateway jobs for non-interactive communication.
+`job start` enqueues work in SQLite; `missive gateway run` executes due
+`send`, `stream`, `wait`, and local `reduce` jobs, records results on the
+`gateway_jobs` row, and appends redacted `missive.gateway.job.*`/`a2a.job.*`
+events.
+
+Examples for agent/subprocess callers:
+
+```bash
+job_id=$(missive job start send echo "run this in the gateway" --json \
+  | jq -r '.data.job.job_id')
+missive gateway run --timeout 30s --ndjson
+missive job show "$job_id" --json
+
+missive job start wait task-123 --agent echo --timeout 2m --attach --json
+missive job cancel "$job_id" --remote --json
+missive job list --state succeeded --json
+```
+
+`job start send` and `job start stream` reuse the same text/stdin/file/JSON part
+parser as the foreground `send`/`stream` commands, but they store only a redacted
+summary in job output. `job start wait` stores the task id, optional agent, poll
+interval, and timeout; `--attach` polls the job row until the gateway completes
+it or the attach timeout expires. `job start reduce <group> --context <id>` runs
+a deterministic local reduction over already persisted group outputs when the
+gateway executes it. `--max-attempts` enables bounded retry for transient gateway
+worker errors, and `--cancel-remote-on-cancel` lets `job cancel` request remote
+A2A `CancelTask` when a task id is known.
+
+Machine-readable output uses `job_start`, `job_list`, `job_show`, and
+`job_cancel` envelope kinds. Job rows survive daemon restarts; running jobs whose
+worker lock expires are eligible for pickup by the next gateway process. Gateway
+workers currently execute outbound A2A job requests without resolving auth refs
+or one-shot CLI auth flags, so authenticated agents should be used from
+foreground commands until a later gateway-auth hardening ticket.
 
 ## Gateway daemon
 

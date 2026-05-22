@@ -117,6 +117,18 @@ fn key_subcommand_help_snapshots_are_stable() {
             include_str!("snapshots/help-push.txt"),
         ),
         (
+            &["missive", "job", "--help"],
+            include_str!("snapshots/help-job.txt"),
+        ),
+        (
+            &["missive", "job", "start", "--help"],
+            include_str!("snapshots/help-job-start.txt"),
+        ),
+        (
+            &["missive", "job", "start", "send", "--help"],
+            include_str!("snapshots/help-job-start-send.txt"),
+        ),
+        (
             &["missive", "events", "--help"],
             include_str!("snapshots/help-events.txt"),
         ),

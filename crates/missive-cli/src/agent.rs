@@ -147,6 +147,7 @@ pub struct AgentRenameArgs {
 pub(crate) struct AgentRegistry {
     pub(crate) store: Store,
     pub(crate) profile: String,
+    pub(crate) state_paths: missive_store::StatePaths,
     _lock: ProcessLock,
 }
 
@@ -398,6 +399,7 @@ pub(crate) fn open_agent_registry(
     Ok(AgentRegistry {
         store,
         profile: loaded_config.selected_profile.clone(),
+        state_paths: paths,
         _lock: lock,
     })
 }

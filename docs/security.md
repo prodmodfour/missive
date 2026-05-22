@@ -165,7 +165,10 @@ supervision. Keep the listener bound to `127.0.0.1` unless you intentionally
 place it behind trusted local infrastructure; do not expose it as a public
 control API. The subscription worker makes outbound `SubscribeToTask` calls only
 for cached streaming-capable agents and redacts subscription event payloads
-before journal insertion.
+before journal insertion. The background job worker executes queued send,
+stream, wait, and local-reduce jobs from local SQLite state; job command output
+shows only summarized request fields rather than raw A2A message bodies, and
+job lifecycle events are redacted before insertion. The durable `gateway_jobs.request_json` row must still contain the full protocol request so the daemon can execute it later; if a job is started with `--file-bytes` or sensitive message text, that content is present in local SQLite runtime state even though normal CLI output summarizes it.
 
 `missive gateway install` writes local service-manager files. Dry-run mode is
 available and should be used before installation to inspect generated systemd
@@ -191,15 +194,16 @@ fetching or dereferencing remote/local URLs.
 
 Authentication is wired into implemented Agent Card fetch/refresh,
 non-streaming send, broadcast send, streaming send, reduce reducer-agent send,
-task get/list/wait/cancel, push config requests, and the inbound webhook
-header-token hook. Gateway subscriptions
-currently send A2A service parameters but do not yet resolve outbound auth refs,
-keyring entries, `--bearer-token-env`, or `--header` values, so authenticated
-remote subscription resume remains a known limitation. Future gateway worker and
-adapter tickets must reuse the same resolution and redaction path when they add
-broader outbound requests.
+task get/list/wait/cancel, push config requests, `missive job cancel --remote`,
+and the inbound webhook header-token hook. Gateway subscriptions and background
+job workers currently send A2A service parameters but do not yet resolve
+outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values,
+so authenticated remote subscription resume and authenticated gateway-executed
+jobs remain known limitations. Future gateway worker and adapter tickets must
+reuse the same resolution and redaction path when they add broader outbound
+requests.
 
 Webhook signature/JWT verification, adapter trust boundaries, trace/log sinks,
-rate limits beyond busy-input `max_queue_depth`, gateway subscription auth
+rate limits beyond busy-input `max_queue_depth`, gateway subscription/job auth
 resolution, user-facing session management commands, and insecure local token
 storage policy are not implemented yet.
