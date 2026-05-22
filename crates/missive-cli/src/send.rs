@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, Args};
 use missive_a2a::{
@@ -38,25 +38,39 @@ use crate::output::{OutputMode, render_success};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
 const TEXT_PART_PREFIX: &str = "text=";
-const MAX_TEXT_INPUT_BYTES: usize = 1024 * 1024;
+#[cfg(test)]
+const DEFAULT_MESSAGE_INPUT_LIMIT_BYTES: u64 = 1024 * 1024;
+const JSON_PART_DEFAULT_MEDIA_TYPE: &str = "application/json";
 
 /// Arguments for `missive send`.
 #[derive(Debug, Clone, Args)]
 pub struct SendArgs {
     /// Registered agent alias to call.
     pub agent: String,
-    /// Text message to send. Omit when using --stdin, --file, or --part.
+    /// Text message to send. Omit when using --stdin, --file, --file-bytes, --json-part, or --part.
     pub message: Option<String>,
 
-    /// Read one text message part from standard input.
+    /// Read one UTF-8 text message part from standard input.
     #[arg(long = "stdin", action = ArgAction::SetTrue)]
     pub stdin: bool,
 
-    /// Read one UTF-8 text message part from this file; repeatable.
+    /// Attach one safe local file reference part without embedding bytes; repeatable.
     #[arg(long = "file", value_name = "PATH")]
     pub files: Vec<PathBuf>,
 
-    /// Add a message part, currently text=VALUE; repeatable.
+    /// Embed one safe local file as an A2A raw byte part; repeatable.
+    #[arg(long = "file-bytes", value_name = "PATH")]
+    pub file_bytes: Vec<PathBuf>,
+
+    /// Add one A2A structured data part from an inline JSON value; repeatable.
+    #[arg(long = "json-part", value_name = "JSON")]
+    pub json_parts: Vec<String>,
+
+    /// Apply MIME/media type metadata to file, byte, JSON, or text parts.
+    #[arg(long = "mime", value_name = "MIME", action = ArgAction::Append)]
+    pub mime: Vec<String>,
+
+    /// Add a message text part as text=VALUE; repeatable.
     #[arg(long = "part", value_name = "text=VALUE")]
     pub parts: Vec<String>,
 
@@ -85,6 +99,20 @@ pub(crate) struct PreparedSend {
     pub(crate) requested_task_id: Option<TaskId>,
     pub(crate) local_metadata: Metadata,
     pub(crate) accepted_output_modes: Vec<String>,
+    pub(crate) part_summaries: Vec<MessagePartSummary>,
+    pub(crate) local_input_bytes: u64,
+    pub(crate) request_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct MessagePartSummary {
+    kind: String,
+    source: String,
+    local_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -106,6 +134,9 @@ struct SendRequestView {
     #[serde(skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
     part_count: usize,
+    parts: Vec<MessagePartSummary>,
+    local_input_bytes: u64,
+    request_bytes: u64,
     accepted_output_modes: Vec<String>,
     metadata: Metadata,
 }
@@ -171,7 +202,8 @@ where
     W: Write,
 {
     let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
-    let prepared = prepare_send_request(args, &service_parameters, input)?;
+    let max_request_bytes = message_part_limit_bytes(loaded_config)?;
+    let prepared = prepare_send_request(args, &service_parameters, max_request_bytes, input)?;
     let mut registry = open_agent_registry(loaded_config, environment)?;
     let alias = AgentAlias::new(args.agent.clone())?;
     let agent = get_existing_agent(&registry.store, &alias)?;
@@ -201,12 +233,13 @@ where
 pub(crate) fn prepare_send_request<R>(
     args: &SendArgs,
     service_parameters: &ServiceParameters,
+    max_request_bytes: u64,
     input: &mut R,
 ) -> Result<PreparedSend>
 where
     R: Read,
 {
-    let parts = read_text_parts(args, input)?;
+    let built_parts = read_message_parts(args, max_request_bytes, input)?;
     let request_metadata = parse_metadata(&args.metadata)?;
     let requested_context_id = args
         .context
@@ -220,7 +253,7 @@ where
         .transpose()?;
     let accepted_output_modes = validate_output_modes(&args.accepted_output_modes)?;
 
-    let mut message = Message::new(Role::User, parts);
+    let mut message = Message::new(Role::User, built_parts.parts);
     message.context_id = requested_context_id
         .as_ref()
         .map(|context_id| context_id.as_str().to_owned());
@@ -241,6 +274,12 @@ where
         metadata: (!request_metadata.is_empty()).then(|| metadata_hash_map(&request_metadata)),
         tenant: None,
     };
+    let request_bytes = serialized_request_bytes(&request)?;
+    enforce_size_limit(
+        "serialized A2A SendMessage request",
+        request_bytes,
+        max_request_bytes,
+    )?;
 
     let mut local_metadata = request_metadata.clone();
     local_metadata.merge(service_parameters.to_metadata()?);
@@ -252,84 +291,388 @@ where
         requested_task_id,
         local_metadata,
         accepted_output_modes,
+        part_summaries: built_parts.summaries,
+        local_input_bytes: built_parts.local_input_bytes,
+        request_bytes,
     })
 }
 
-fn read_text_parts<R>(args: &SendArgs, input: &mut R) -> Result<Vec<Part>>
+pub(crate) fn message_part_limit_bytes(loaded_config: &LoadedConfig) -> Result<u64> {
+    let profile = loaded_config.selected_profile_config()?;
+    Ok(profile
+        .qos
+        .as_ref()
+        .map_or(loaded_config.config.qos.max_request_bytes, |qos| {
+            qos.max_request_bytes
+        }))
+}
+
+#[derive(Debug)]
+struct BuiltMessageParts {
+    parts: Vec<Part>,
+    summaries: Vec<MessagePartSummary>,
+    local_input_bytes: u64,
+}
+
+#[derive(Debug)]
+struct PartSpec {
+    part: Part,
+    summary: MessagePartSummary,
+    default_mime_target: bool,
+}
+
+#[derive(Debug)]
+struct LocalFileInput {
+    canonical_path: PathBuf,
+    file_url: String,
+    filename: String,
+    len: u64,
+}
+
+#[derive(Debug)]
+struct InputBudget {
+    limit: u64,
+    used: u64,
+}
+
+impl InputBudget {
+    const fn new(limit: u64) -> Self {
+        Self { limit, used: 0 }
+    }
+
+    fn add(&mut self, source: &str, bytes: u64) -> Result<()> {
+        enforce_size_limit(source, bytes, self.limit)?;
+        let next = self
+            .used
+            .checked_add(bytes)
+            .ok_or_else(|| MissiveError::validation("message input byte accounting overflowed"))?;
+        if next > self.limit {
+            return Err(MissiveError::validation(format!(
+                "message inputs are {next} bytes in total, exceeding the selected profile qos.max_request_bytes limit of {} bytes",
+                self.limit
+            ))
+            .with_help("Use smaller inputs, lower fidelity attachments, file references, or raise qos.max_request_bytes in the selected profile."));
+        }
+        self.used = next;
+        Ok(())
+    }
+
+    fn remaining_with_sentinel(&self) -> u64 {
+        self.limit.saturating_sub(self.used).saturating_add(1)
+    }
+}
+
+fn read_message_parts<R>(
+    args: &SendArgs,
+    max_request_bytes: u64,
+    input: &mut R,
+) -> Result<BuiltMessageParts>
 where
     R: Read,
 {
-    let mut parts = Vec::new();
+    let mut budget = InputBudget::new(max_request_bytes);
+    let mut specs = Vec::new();
 
     if let Some(message) = args.message.as_deref() {
-        parts.push(text_part("message", message)?);
+        specs.push(text_part_spec("message", message, &mut budget)?);
     }
 
     if args.stdin {
         let mut text = String::new();
         input
-            .take((MAX_TEXT_INPUT_BYTES + 1) as u64)
+            .take(budget.remaining_with_sentinel())
             .read_to_string(&mut text)
             .map_err(|error| MissiveError::io("reading --stdin text", error))?;
-        parts.push(text_part("--stdin", &text)?);
+        specs.push(text_part_spec("--stdin", &text, &mut budget)?);
     }
 
     for path in &args.files {
-        let bytes = fs::read(path).map_err(|error| {
-            MissiveError::io(format!("reading --file {}", path.display()), error)
-        })?;
-        if bytes.len() > MAX_TEXT_INPUT_BYTES {
-            return Err(MissiveError::validation(format!(
-                "--file {} is {} bytes, but the current text input limit is {MAX_TEXT_INPUT_BYTES} bytes",
-                path.display(),
-                bytes.len()
-            ))
-            .with_help("Use a smaller UTF-8 text file for this ticket; richer file parts land in a later message-parts ticket."));
-        }
-        let text = String::from_utf8(bytes).map_err(|error| {
-            MissiveError::validation(format!(
-                "--file {} must contain UTF-8 text for this send implementation",
-                path.display()
-            ))
-            .with_source(error)
-            .with_help("Binary/file-byte parts are implemented by a later message-parts ticket.")
-        })?;
-        parts.push(text_part(&format!("--file {}", path.display()), &text)?);
+        specs.push(file_reference_part_spec(path, &mut budget)?);
+    }
+
+    for path in &args.file_bytes {
+        specs.push(file_bytes_part_spec(path, &mut budget)?);
+    }
+
+    for raw_json in &args.json_parts {
+        specs.push(json_part_spec(raw_json, &mut budget)?);
     }
 
     for part in &args.parts {
         let text = part.strip_prefix(TEXT_PART_PREFIX).ok_or_else(|| {
-            MissiveError::validation(format!(
-                "--part value {part:?} is not supported by this ticket"
-            ))
-            .with_help("Use --part text=VALUE. File, JSON, and byte parts are implemented by a later message-parts ticket.")
+            MissiveError::validation(format!("--part value {part:?} is not supported"))
+                .with_help("Use --part text=VALUE, or use --json-part/--file/--file-bytes for structured and file content.")
         })?;
-        parts.push(text_part("--part text=", text)?);
+        specs.push(text_part_spec("--part text=", text, &mut budget)?);
     }
 
-    if parts.is_empty() {
+    if specs.is_empty() {
         return Err(MissiveError::validation(
-            "missive send requires a message, --stdin, --file, or --part text=VALUE",
+            "missive send requires a message, --stdin, --file, --file-bytes, --json-part, or --part text=VALUE",
         ));
     }
 
-    Ok(parts)
+    apply_mime_assignments(&mut specs, &args.mime)?;
+
+    let mut parts = Vec::with_capacity(specs.len());
+    let mut summaries = Vec::with_capacity(specs.len());
+    for spec in specs {
+        parts.push(spec.part);
+        summaries.push(spec.summary);
+    }
+
+    Ok(BuiltMessageParts {
+        parts,
+        summaries,
+        local_input_bytes: budget.used,
+    })
 }
 
-fn text_part(source: &str, text: &str) -> Result<Part> {
+fn text_part_spec(source: &str, text: &str, budget: &mut InputBudget) -> Result<PartSpec> {
     if text.is_empty() {
         return Err(MissiveError::validation(format!(
-            "{source} cannot be empty for missive send"
+            "{source} cannot be empty for message input"
         )));
     }
-    if text.len() > MAX_TEXT_INPUT_BYTES {
-        return Err(MissiveError::validation(format!(
-            "{source} is {} bytes, but the current text input limit is {MAX_TEXT_INPUT_BYTES} bytes",
-            text.len()
-        ))
-        .with_help("Use smaller text input for this ticket; streaming and richer file parts land later."));
+    let bytes = usize_to_u64(text.len(), source)?;
+    budget.add(source, bytes)?;
+    Ok(PartSpec {
+        part: Part::text(text.to_owned()),
+        summary: MessagePartSummary {
+            kind: "text".to_owned(),
+            source: source.to_owned(),
+            local_bytes: bytes,
+            filename: None,
+            media_type: None,
+        },
+        default_mime_target: false,
+    })
+}
+
+fn file_reference_part_spec(path: &Path, budget: &mut InputBudget) -> Result<PartSpec> {
+    let file = validate_local_file("--file", path, budget.limit)?;
+    budget.add(&format!("--file {}", path.display()), file.len)?;
+    let filename = file.filename;
+    Ok(PartSpec {
+        part: Part::url(file.file_url).with_filename(filename.clone()),
+        summary: MessagePartSummary {
+            kind: "file_reference".to_owned(),
+            source: "--file".to_owned(),
+            local_bytes: file.len,
+            filename: Some(filename),
+            media_type: None,
+        },
+        default_mime_target: true,
+    })
+}
+
+fn file_bytes_part_spec(path: &Path, budget: &mut InputBudget) -> Result<PartSpec> {
+    let file = validate_local_file("--file-bytes", path, budget.limit)?;
+    let bytes = fs::read(&file.canonical_path).map_err(|error| {
+        MissiveError::io(
+            format!("reading --file-bytes {}", file.canonical_path.display()),
+            error,
+        )
+    })?;
+    let byte_count = usize_to_u64(bytes.len(), "--file-bytes")?;
+    budget.add(&format!("--file-bytes {}", path.display()), byte_count)?;
+    let filename = file.filename;
+    Ok(PartSpec {
+        part: Part::raw(bytes).with_filename(filename.clone()),
+        summary: MessagePartSummary {
+            kind: "file_bytes".to_owned(),
+            source: "--file-bytes".to_owned(),
+            local_bytes: byte_count,
+            filename: Some(filename),
+            media_type: None,
+        },
+        default_mime_target: true,
+    })
+}
+
+fn json_part_spec(raw_json: &str, budget: &mut InputBudget) -> Result<PartSpec> {
+    if raw_json.trim().is_empty() {
+        return Err(MissiveError::validation("--json-part cannot be empty"));
     }
-    Ok(Part::text(text.to_owned()))
+    let byte_count = usize_to_u64(raw_json.len(), "--json-part")?;
+    budget.add("--json-part", byte_count)?;
+    let value = serde_json::from_str::<Value>(raw_json).map_err(|error| {
+        MissiveError::validation("--json-part must be valid JSON")
+            .with_source(error)
+            .with_help("Pass an inline JSON value such as '{\"kind\":\"example\"}' or '[1,2,3]'.")
+    })?;
+    Ok(PartSpec {
+        part: Part::data(value).with_media_type(JSON_PART_DEFAULT_MEDIA_TYPE),
+        summary: MessagePartSummary {
+            kind: "data".to_owned(),
+            source: "--json-part".to_owned(),
+            local_bytes: byte_count,
+            filename: None,
+            media_type: Some(JSON_PART_DEFAULT_MEDIA_TYPE.to_owned()),
+        },
+        default_mime_target: true,
+    })
+}
+
+fn validate_local_file(flag: &str, path: &Path, max_request_bytes: u64) -> Result<LocalFileInput> {
+    if path.as_os_str().is_empty() {
+        return Err(MissiveError::validation(format!(
+            "{flag} path cannot be empty"
+        )));
+    }
+    let canonical_path = fs::canonicalize(path).map_err(|error| {
+        MissiveError::io(format!("resolving {flag} {}", path.display()), error).with_help(
+            "Use an existing local file path. Directories and missing paths are rejected.",
+        )
+    })?;
+    let metadata = fs::metadata(&canonical_path).map_err(|error| {
+        MissiveError::io(
+            format!("reading metadata for {flag} {}", canonical_path.display()),
+            error,
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(MissiveError::validation(format!(
+            "{flag} {} is not a regular file",
+            canonical_path.display()
+        ))
+        .with_help(
+            "Use a regular local file; directories, sockets, and special files are rejected.",
+        ));
+    }
+    enforce_size_limit(
+        &format!("{flag} {}", canonical_path.display()),
+        metadata.len(),
+        max_request_bytes,
+    )?;
+    let filename = canonical_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty() && !value.chars().any(char::is_control))
+        .ok_or_else(|| {
+            MissiveError::validation(format!(
+                "{flag} {} does not have a safe UTF-8 filename",
+                canonical_path.display()
+            ))
+            .with_help(
+                "Use a file whose final path component is valid UTF-8 without control characters.",
+            )
+        })?
+        .to_owned();
+    let file_url = url::Url::from_file_path(&canonical_path)
+        .map_err(|()| {
+            MissiveError::validation(format!(
+                "{flag} {} cannot be represented as a file:// URL",
+                canonical_path.display()
+            ))
+        })?
+        .to_string();
+
+    Ok(LocalFileInput {
+        canonical_path,
+        file_url,
+        filename,
+        len: metadata.len(),
+    })
+}
+
+fn apply_mime_assignments(specs: &mut [PartSpec], values: &[String]) -> Result<()> {
+    let media_types = values
+        .iter()
+        .map(|value| validate_mime_value(value))
+        .collect::<Result<Vec<_>>>()?;
+    if media_types.is_empty() {
+        return Ok(());
+    }
+
+    let default_targets = specs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, spec)| spec.default_mime_target.then_some(index))
+        .collect::<Vec<_>>();
+    let target_indices = if default_targets.is_empty() {
+        (0..specs.len()).collect::<Vec<_>>()
+    } else {
+        default_targets
+    };
+
+    if media_types.len() == 1 {
+        let media_type = &media_types[0];
+        for index in target_indices {
+            set_part_media_type(&mut specs[index], media_type);
+        }
+        return Ok(());
+    }
+
+    if media_types.len() == target_indices.len() {
+        for (index, media_type) in target_indices.into_iter().zip(media_types.iter()) {
+            set_part_media_type(&mut specs[index], media_type);
+        }
+        return Ok(());
+    }
+
+    if media_types.len() == specs.len() {
+        for (spec, media_type) in specs.iter_mut().zip(media_types.iter()) {
+            set_part_media_type(spec, media_type);
+        }
+        return Ok(());
+    }
+
+    Err(MissiveError::validation(format!(
+        "--mime was provided {} times for {} message parts and {} file/JSON parts",
+        media_types.len(),
+        specs.len(),
+        target_indices.len()
+    ))
+    .with_help("Pass one --mime value for all file/JSON parts, one value per file/JSON part, or one value per message part."))
+}
+
+fn set_part_media_type(spec: &mut PartSpec, media_type: &str) {
+    spec.part.media_type = Some(media_type.to_owned());
+    spec.summary.media_type = Some(media_type.to_owned());
+}
+
+fn validate_mime_value(value: &str) -> Result<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(MissiveError::validation("--mime values cannot be empty"));
+    }
+    if value.len() > 128
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+        || !value.contains('/')
+    {
+        return Err(MissiveError::validation(format!(
+            "--mime value {value:?} is not a valid compact MIME media type"
+        ))
+        .with_help("Use values such as text/plain, application/json, image/png, or application/octet-stream."));
+    }
+    Ok(value.to_owned())
+}
+
+fn enforce_size_limit(source: &str, bytes: u64, limit: u64) -> Result<()> {
+    if bytes > limit {
+        return Err(MissiveError::validation(format!(
+            "{source} is {bytes} bytes, exceeding the selected profile qos.max_request_bytes limit of {limit} bytes"
+        ))
+        .with_help("Use a smaller input or raise qos.max_request_bytes in the selected profile. Streaming/chunked file upload is not implemented yet."));
+    }
+    Ok(())
+}
+
+fn serialized_request_bytes(request: &SendMessageRequest) -> Result<u64> {
+    let bytes = serde_json::to_vec(request).map_err(|error| {
+        MissiveError::protocol("encoding A2A SendMessage request for size validation")
+            .with_source(error)
+    })?;
+    usize_to_u64(bytes.len(), "serialized A2A SendMessage request")
+}
+
+fn usize_to_u64(value: usize, source: &str) -> Result<u64> {
+    u64::try_from(value).map_err(|error| {
+        MissiveError::validation(format!("{source} byte count does not fit into u64"))
+            .with_source(error)
+    })
 }
 
 fn parse_metadata(values: &[String]) -> Result<Metadata> {
@@ -730,6 +1073,9 @@ impl SendRequestView {
                 .as_ref()
                 .map(|task_id| task_id.as_str().to_owned()),
             part_count: prepared.request.message.parts.len(),
+            parts: prepared.part_summaries.clone(),
+            local_input_bytes: prepared.local_input_bytes,
+            request_bytes: prepared.request_bytes,
             accepted_output_modes: prepared.accepted_output_modes.clone(),
             metadata: prepared.local_metadata.clone(),
         }
@@ -860,6 +1206,9 @@ mod tests {
             message: None,
             stdin: false,
             files: Vec::new(),
+            file_bytes: Vec::new(),
+            json_parts: Vec::new(),
+            mime: Vec::new(),
             parts: Vec::new(),
             metadata: Vec::new(),
             context: None,
@@ -867,7 +1216,12 @@ mod tests {
             accepted_output_modes: Vec::new(),
         };
 
-        let error = read_text_parts(&args, &mut std::io::empty()).expect_err("missing input");
+        let error = read_message_parts(
+            &args,
+            DEFAULT_MESSAGE_INPUT_LIMIT_BYTES,
+            &mut std::io::empty(),
+        )
+        .expect_err("missing input");
 
         assert!(error.to_string().contains("requires a message"));
     }

@@ -193,16 +193,29 @@ Basic examples:
 MISSIVE_HOME=/tmp/missive-demo missive agent add echo http://127.0.0.1:8080
 MISSIVE_HOME=/tmp/missive-demo missive send echo "Say hello" --json
 printf 'hello from stdin' | MISSIVE_HOME=/tmp/missive-demo missive send echo --stdin
-MISSIVE_HOME=/tmp/missive-demo missive send echo --file ./prompt.txt --accepted-output-mode text/plain
+MISSIVE_HOME=/tmp/missive-demo missive send echo --file ./prompt.txt --mime text/plain
+MISSIVE_HOME=/tmp/missive-demo missive send echo --file-bytes ./image.png --mime image/png
+MISSIVE_HOME=/tmp/missive-demo missive send echo --json-part '{"kind":"example","ok":true}'
 MISSIVE_HOME=/tmp/missive-demo missive send echo --part text='first part' --part text='second part'
 ```
 
-Supported inputs for this ticket are text-only:
+Supported inputs now cover A2A text, file, raw-byte, and structured-data parts:
 
-* positional `[MESSAGE]` creates one text part
+* positional `[MESSAGE]` creates one A2A text part
 * `--stdin` reads one UTF-8 text part from standard input
-* repeatable `--file PATH` reads each file as one UTF-8 text part
 * repeatable `--part text=VALUE` adds explicit text parts
+* repeatable `--file PATH` validates a safe local regular file and sends an A2A
+  file-reference part using a canonical `file://` URL plus the safe filename;
+  file bytes are not embedded
+* repeatable `--file-bytes PATH` validates and embeds a safe local regular file
+  as an A2A raw byte part; the official A2A JSON serialization base64-encodes
+  the `raw` field and preserves the safe filename
+* repeatable `--json-part JSON` parses inline JSON into an A2A structured
+  `data` part; `mediaType` defaults to `application/json`
+* repeatable `--mime MIME` assigns `mediaType` metadata. One value applies to
+  all non-text file/JSON parts; multiple values map to non-text parts in the
+  command's deterministic part-building order, or to every part when the count
+  equals the total part count.
 * repeatable `--metadata KEY=VALUE` adds non-secret A2A request metadata, parsing
   `VALUE` as JSON when possible and otherwise treating it as a string
 * `--context CONTEXT_ID` and `--task TASK_ID` set A2A continuity fields on the
@@ -210,9 +223,11 @@ Supported inputs for this ticket are text-only:
 * repeatable `--accepted-output-mode MIME` populates
   `configuration.acceptedOutputModes`
 
-Binary file bytes, MIME-specific file parts, JSON structured-data parts,
-task subscription/resume, and artifact export are intentionally deferred to later
-ordered tickets.
+Local file paths are canonicalized, must point at regular files, and contribute
+to the selected profile's `qos.max_request_bytes` limit. The serialized A2A
+`SendMessageRequest` is also checked against that limit. Oversized local inputs
+fail locally with a validation error; streaming/chunked file upload is not
+implemented yet.
 
 `send` resolves auth the same way as Agent Card commands: agent auth refs,
 `--bearer-token-env`, and repeatable `--header Name:Value` are applied to both
@@ -222,9 +237,10 @@ are never persisted or printed. A2A service parameters (`A2A-Version`,
 and recorded in local message/task metadata.
 
 Machine-readable output uses `kind: "send_result"` and includes the selected
-interface, outbound request summary, response shape (`message` or `task`), raw
-redacted response JSON, and local persistence ids. Task responses include
-`task_id`, `context_id`, and mapped state when the remote server returns them.
+interface, outbound request summary, part summaries (`kind`, source, filename,
+media type, local byte count), response shape (`message` or `task`), raw redacted
+response JSON, and local persistence ids. Task responses include `task_id`,
+`context_id`, and mapped state when the remote server returns them.
 Human output is a concise one-line send summary. Request and response rows are
 stored in SQLite `messages`; returned task responses are stored or updated in
 `tasks` and linked to the messages.
@@ -233,8 +249,9 @@ stored in SQLite `messages`; returned task responses are stored or updated in
 
 `missive stream` sends an A2A `SendStreamingMessage` request to a registered
 agent and reads the server's Server-Sent Events (SSE) response. It shares the
-same text-only input flags as `send`: positional `[MESSAGE]`, `--stdin`,
-repeatable `--file PATH`, repeatable `--part text=VALUE`, repeatable
+same rich input parser as `send`: positional `[MESSAGE]`, `--stdin`, repeatable
+`--part text=VALUE`, repeatable `--file PATH`, repeatable `--file-bytes PATH`,
+repeatable `--json-part JSON`, repeatable `--mime MIME`, repeatable
 `--metadata KEY=VALUE`, `--context`, `--task`, and repeatable
 `--accepted-output-mode`.
 
@@ -259,7 +276,8 @@ Examples:
 MISSIVE_HOME=/tmp/missive-demo missive stream echo "Show progress"
 MISSIVE_HOME=/tmp/missive-demo missive stream echo "Show progress" --ndjson
 printf 'stream from stdin' | MISSIVE_HOME=/tmp/missive-demo missive stream echo --stdin --json
-MISSIVE_HOME=/tmp/missive-demo missive stream echo --file ./prompt.txt --accepted-output-mode text/plain
+MISSIVE_HOME=/tmp/missive-demo missive stream echo --json-part '{"phase":"draft"}' --force --json
+MISSIVE_HOME=/tmp/missive-demo missive stream echo --file-bytes ./frame.png --mime image/png --force --ndjson
 ```
 
 Human output prints one redacted status line per stream event as it arrives, then

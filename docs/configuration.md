@@ -99,7 +99,9 @@ Supported sections in this ticket:
 * `adapters` — adapter kind, enablement, profile mapping, and non-secret settings
   for later adapter tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
-  bytes, and concurrency defaults.
+  bytes, and concurrency defaults. `qos.max_request_bytes` is currently enforced
+  by `missive send` and `missive stream` while parsing local text, file-reference,
+  file-byte, and JSON parts and while checking the serialized A2A request size.
 
 Unknown fields are rejected so configuration typos fail early.
 

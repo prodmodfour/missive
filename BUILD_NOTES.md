@@ -2,9 +2,9 @@
 
 ## Current state
 
-Tickets 000 through 022 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000 through 023 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
-* `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, A2A service-parameter CLI overrides, authentication input resolution for implemented Agent Card/send/stream/task requests, output rendering and redaction helpers, help snapshots, implemented `missive agent add/list/show/inspect/refresh/remove/rename`, implemented non-streaming `missive send`, implemented streaming `missive stream`, implemented `missive task get/list/wait/cancel`, implemented `missive context create/list/show/fork/close/export`, and placeholder execution status for later commands
+* `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, A2A service-parameter CLI overrides, authentication input resolution for implemented Agent Card/send/stream/task requests, output rendering and redaction helpers, help snapshots, implemented `missive agent add/list/show/inspect/refresh/remove/rename`, implemented non-streaming `missive send` with rich text/file-reference/file-bytes/JSON-data message parts, implemented streaming `missive stream` with the same rich input parser, implemented `missive task get/list/wait/cancel`, implemented `missive context create/list/show/fork/close/export`, and placeholder execution status for later commands
 * `crates/missive-core` — core domain primitive scaffolding, including shared error/result types, strongly typed IDs, timestamps, metadata maps and A2A metadata keys, envelopes, configuration schema, protocol service-parameter defaults, config auth-ref schema, config discovery, profile validation, redacted config rendering, and deterministic task-wait exit-code variants
 * `crates/missive-a2a` — A2A protocol/client integration scaffolding, official `a2a-lf` protocol type re-exports, Agent Card discovery/parsing helpers for `/.well-known/agent-card.json`, A2A service-parameter request handling, resolved auth-header request handling, A2A interface negotiation helpers, non-streaming SendMessage HTTP+JSON/JSON-RPC client support, streaming SendStreamingMessage HTTP+JSON/JSON-RPC SSE client support, task GetTask/ListTasks/CancelTask HTTP+JSON/JSON-RPC client support, and A2A serde fixture/parser tests
 * `crates/missive-store` — persistence scaffolding with local state path resolution, profile-specific data/state/cache directories, SQLite database path resolution, process locks for state mutation and gateway operation, embedded SQLite schema migrations, a blocking typed repository facade for non-secret auth refs, agents, contexts, tasks, messages, events, groups, group members, and gateway jobs, plus helpers to record A2A protocol versions in task/event metadata and message rows that can carry protocol metadata
@@ -19,13 +19,13 @@ Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-
 
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
 
-Architecture decision records live under `docs/adr/`, with a template and accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, CLI-first UX, and the official A2A Rust protocol type strategy. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command/agent-registry/Agent-Card/send/stream/task/context/service-parameter/auth contract, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, typed repository contract, and A2A type boundary. `docs/protocol.md` documents the current official Rust type boundary, Agent Card discovery, non-streaming SendMessage mapping, streaming SendStreamingMessage mapping, task GetTask/ListTasks/CancelTask mapping, local context continuity mapping, service-parameter handling, auth-header handling, interface negotiation mapping, error mapping, and fixture update process. `docs/security.md` documents current auth inputs, keyring support, storage tradeoffs, redaction, context export redaction, and limitations.
+Architecture decision records live under `docs/adr/`, with a template and accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, CLI-first UX, and the official A2A Rust protocol type strategy. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command/agent-registry/Agent-Card/send/stream/task/context/service-parameter/auth contract, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, typed repository contract, and A2A type boundary. `docs/protocol.md` documents the current official Rust type boundary, Agent Card discovery, rich SendMessage/SendStreamingMessage message-part mapping, task GetTask/ListTasks/CancelTask mapping, local context continuity mapping, service-parameter handling, auth-header handling, interface negotiation mapping, error mapping, and fixture update process. `docs/security.md` documents current auth inputs, keyring support, storage tradeoffs, local file-input path disclosure tradeoffs, redaction, context export redaction, and limitations.
 
 `missive-core` exposes `MissiveError`, `Result<T>`, `ErrorCategory`, `MissiveExitCode`, and `ErrorReport`. The error taxonomy covers I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures. Each category has a stable diagnostic code, deterministic exit code mapping for CLI use, human `Display` rendering, `miette::Diagnostic` metadata, and a serializable JSON/NDJSON report shape. `MissiveError::with_exit_code` allows command-specific deterministic exit codes, currently used by task wait: failed `80`, cancelled `81`, timeout `82`, and input-required `83`.
 
 `missive-core` also exposes `AgentAlias`, `GroupName`, `RankName`, `TransportName`, `ContextId`, `TaskId`, `MessageId`, `EventId`, `MissiveTimestamp`, `Metadata`, `Envelope<T>`, and A2A metadata keys such as `a2a.protocol_version`. Named identifiers validate lowercase CLI-safe forms; opaque A2A/local IDs preserve server-provided text while rejecting empty, whitespace, control, or unbounded values. `Metadata` uses deterministic JSON object ordering, and `MissiveTimestamp` uses canonical RFC3339 UTC rendering.
 
-The core configuration layer exposes `MissiveConfig`, `ConfigDiscovery`, `LoadedConfig`, and schema structs for profiles, agents, auth refs, storage, output, protocol service parameters, gateway, adapters, and quality of service. Discovery precedence is `--config`, `MISSIVE_CONFIG`, repository-local config when `MISSIVE_REPO_CONFIG=1`, XDG config locations, then built-in defaults. Config parsing rejects unknown fields, validates cross references, rejects embedded credentials in URLs, rejects attempts to redefine reserved `A2A-Version`/`A2A-Extensions` service-parameter names in arbitrary parameter maps, validates env/keyring auth refs without accepting raw token values, and provides redacted JSON rendering.
+The core configuration layer exposes `MissiveConfig`, `ConfigDiscovery`, `LoadedConfig`, and schema structs for profiles, agents, auth refs, storage, output, protocol service parameters, gateway, adapters, and quality of service. Discovery precedence is `--config`, `MISSIVE_CONFIG`, repository-local config when `MISSIVE_REPO_CONFIG=1`, XDG config locations, then built-in defaults. Config parsing rejects unknown fields, validates cross references, rejects embedded credentials in URLs, rejects attempts to redefine reserved `A2A-Version`/`A2A-Extensions` service-parameter names in arbitrary parameter maps, validates env/keyring auth refs without accepting raw token values, provides redacted JSON rendering, and now has its selected profile `qos.max_request_bytes` enforced by send/stream message-part parsing and serialized A2A request-size validation.
 
 The store path layer exposes `StatePathResolver`, `StatePaths`, `StatePlatform`, `StatePathSource`, `ProcessLockKind`, and `ProcessLock`. Runtime state defaults to XDG-compatible roots on Linux/Unix-like platforms, macOS `~/Library` fallbacks when XDG variables are absent, or `MISSIVE_HOME` when explicitly set. Paths include `profiles/<profile>`, relative database paths resolve under the selected profile state directory, and lock files live under `<state-dir>/locks/`.
 
@@ -41,9 +41,9 @@ The `agent` command has implemented `add`, `remove`, `list`, `show`, `inspect`, 
 
 `missive agent inspect <alias>` fetches and caches an A2A Agent Card when needed, applies configured and CLI-overridden A2A service parameters to the fetch, resolves and sends auth headers from agent config auth refs, `--bearer-token-env`, and repeatable `--header Name:Value`, negotiates the selected interface from `supportedInterfaces` and the agent binding preference, then renders the parsed provider, capabilities, skills, versions, supported interfaces, selected interface, and raw card JSON in machine output. `missive agent inspect <alias> --binding <binding>` requires a specific locally supported binding for advanced users/tests, `missive agent inspect <alias> --refresh` bypasses/revalidates the cache, and `missive agent refresh <alias>` explicitly refreshes the cached card.
 
-`missive send <agent> [message]` sends one non-streaming A2A message to a registered agent. It supports positional text, `--stdin`, repeatable UTF-8 text `--file`, repeatable `--part text=...`, repeatable non-secret `--metadata KEY=VALUE`, `--context`, `--task`, repeatable `--accepted-output-mode`, and the existing global output/auth/service-parameter flags. It uses the cached Agent Card when present, otherwise fetches and caches the public card before negotiation. It persists request and response rows in `messages`; direct `Message` responses are stored as response messages, and `Task` responses are upserted in `tasks` with remote task JSON, state, context/task linkage, protocol-version metadata, and a linked response row. Machine output uses `kind: "send_result"` and includes request, response, selected-interface, and persistence summaries.
+`missive send <agent> [message]` sends one non-streaming A2A message to a registered agent. It supports positional text, `--stdin`, repeatable `--part text=...`, repeatable local file references through `--file`, repeatable raw byte attachments through `--file-bytes`, repeatable structured data parts through `--json-part`, repeatable MIME metadata through `--mime`, repeatable non-secret `--metadata KEY=VALUE`, `--context`, `--task`, repeatable `--accepted-output-mode`, and the existing global output/auth/service-parameter flags. Local file inputs are canonicalized to regular files with safe UTF-8 filenames, `--file` serializes as an A2A `url` file-reference part, `--file-bytes` serializes as an A2A `raw` part, JSON data parts default to `mediaType: application/json`, and both local inputs plus the serialized `SendMessageRequest` are bounded by the selected profile's `qos.max_request_bytes`. It uses the cached Agent Card when present, otherwise fetches and caches the public card before negotiation. It persists request and response rows in `messages`; direct `Message` responses are stored as response messages, and `Task` responses are upserted in `tasks` with remote task JSON, state, context/task linkage, protocol-version metadata, and a linked response row. Machine output uses `kind: "send_result"` and includes request part summaries, response, selected-interface, and persistence summaries.
 
-`missive stream <agent> [message]` sends one A2A streaming message to a registered agent. It shares the current text-only input flags with `send`, validates the Agent Card's `capabilities.streaming` unless `--force` is passed, negotiates HTTP+JSON or JSON-RPC, opens an SSE response, renders one human/NDJSON update per parsed event as it arrives, and emits a final `stream_result` summary. Each parsed `task`, `message`, `statusUpdate`, or `artifactUpdate` is appended to the SQLite event journal with event types under `a2a.stream.*`, stored as a `messages` row with direction `stream_event`, and linked to task/context rows where IDs are present. Status and task events update the local task state and completion timestamp for completed/failed/cancelled states.
+`missive stream <agent> [message]` sends one A2A streaming message to a registered agent. It shares the rich send input parser for text, file references, file bytes, JSON data, MIME metadata, and profile request-size limits, validates the Agent Card's `capabilities.streaming` unless `--force` is passed, negotiates HTTP+JSON or JSON-RPC, opens an SSE response, renders one human/NDJSON update per parsed event as it arrives, and emits a final `stream_result` summary. Each parsed `task`, `message`, `statusUpdate`, or `artifactUpdate` is appended to the SQLite event journal with event types under `a2a.stream.*`, stored as a `messages` row with direction `stream_event`, and linked to task/context rows where IDs are present. Status and task events update the local task state and completion timestamp for completed/failed/cancelled states.
 
 `missive task` now implements `get`, `list`, `wait`, and `cancel`. Local `task list` filters SQLite task rows by agent, context, state, updated-after timestamp, and source (`remote`, `local`, or `gateway`). `task get` reads a local row by default or refreshes it with A2A `GetTask` when `--remote` is passed. Remote `task list --remote --agent <alias>` calls A2A `ListTasks`, sends supported filters to the remote agent, persists each returned task, and renders the updated local task view. `task wait` polls remote `GetTask` by default with global `--timeout` and `--interval`, or polls only the SQLite row with `--local`; completed exits `0`, failed exits `80`, cancelled exits `81`, timeout exits `82`, and input-required exits `83`. `task cancel` calls A2A `CancelTask`, persists the returned task, and renders `kind: "task_cancel"` output.
 
@@ -51,7 +51,7 @@ The `agent` command has implemented `add`, `remove`, `list`, `show`, `inspect`, 
 
 The CLI auth resolver reads bearer tokens from environment variables, resolves config env/keyring auth refs, accepts one-off `--header Name:Value` values, and returns `missive::auth` errors with exit code 77 when required auth material is unavailable. CLI-supplied header values and resolved tokens are kept in memory for outbound requests only and are not persisted. `AuthHeaders` debug rendering is redacted, reqwest header values are marked sensitive, and normal output rendering redacts authorization, token, API key, password, cookie, and secret-like fields.
 
-The current CLI output contract supports human, JSON, NDJSON, and quiet renderers. Implemented agent commands emit command-specific kinds such as `agent_add`, `agent_list`, `agent_show`, `agent_inspect`, `agent_refresh`, `agent_remove`, and `agent_rename`; send emits `send_result`; stream emits `stream_event` and `stream_result` in NDJSON and one `stream_result` in JSON; task emits `task_get`, `task_list`, `task_wait`, and `task_cancel`; context emits `context_create`, `context_list`, `context_show`, `context_fork`, `context_close`, and `context_export`. Skeletal commands load/validate config, then emit a stable `missive.output.v1` `command_status` envelope in machine-readable modes. Structured execution errors render as `kind: "error"` envelopes when `--json` or `--ndjson` is active. The renderer recursively redacts secret-like JSON fields and HTTP-style authorization headers before writing output.
+The current CLI output contract supports human, JSON, NDJSON, and quiet renderers. Implemented agent commands emit command-specific kinds such as `agent_add`, `agent_list`, `agent_show`, `agent_inspect`, `agent_refresh`, `agent_remove`, and `agent_rename`; send emits `send_result` with stable request part summaries and byte counts; stream emits `stream_event` and `stream_result` in NDJSON and one `stream_result` in JSON with the same request part summaries; task emits `task_get`, `task_list`, `task_wait`, and `task_cancel`; context emits `context_create`, `context_list`, `context_show`, `context_fork`, `context_close`, and `context_export`. Skeletal commands load/validate config, then emit a stable `missive.output.v1` `command_status` envelope in machine-readable modes. Structured execution errors render as `kind: "error"` envelopes when `--json` or `--ndjson` is active. The renderer recursively redacts secret-like JSON fields and HTTP-style authorization headers before writing output.
 
 ## Quality gates
 
@@ -86,38 +86,33 @@ Checks run by the default gate included:
 Additional targeted validation run during this cycle:
 
 ```bash
-cargo test -p missive-cli --test context_command --all-features
-cargo test -p missive-cli --test help_snapshots --all-features
+cargo test -p missive-cli --test send_command --all-features
 cargo test -p missive-cli --all-targets --all-features
-cargo fmt --all -- --check
-cargo check -p missive-a2a -p missive-cli --all-targets --all-features
-cargo clippy -p missive-a2a -p missive-cli --all-targets --all-features -- -D warnings
-cargo test -p missive-cli --all-targets --all-features
+cargo clippy -p missive-cli --all-targets --all-features -- -D warnings
 cargo check -p missive-cli --all-targets --no-default-features
 scripts/quality-gate.sh
 ```
 
-The targeted checks covered the new context command parser, help snapshot, context create/list/show/fork/close/export JSON output, human-friendly name resolution, generated/explicit A2A context id persistence, agent-backed context rows, list filters, fork parent metadata, local close timestamps, redacted context export of linked tasks/messages/events, no-default CLI compilation, and CLI regression coverage.
+The targeted checks covered the rich send/stream shared message-part parser, file-reference request bodies, raw file-byte A2A parts, JSON data parts, MIME/mediaType preservation, profile `qos.max_request_bytes` failures for oversized local files, updated help snapshots, no-default CLI compilation, and CLI regression coverage.
 
 Environment/tooling notes: no new cargo subcommands, Rust components, OS packages, or Rust dependencies were installed during this cycle.
 
 ## Latest cycle notes
 
-Implemented ticket 022 — Implement context/session commands.
+Implemented ticket 023 — Implement message parts for text, files, and structured data.
 
 Included:
 
-* added `missive context create/list/show/fork/close/export` with clap subcommands and a context help snapshot
-* added local A2A context id generation through the `missive-a2a` protocol boundary while preserving explicit user-supplied context ids
-* implemented profile-scoped context creation with optional unique human-friendly names, owning agent aliases, summaries, and non-secret metadata
-* implemented context selectors by exact id or unique name, with clear diagnostics for missing or ambiguous names
-* implemented context listing filters by agent, exact name, lifecycle state, and parent context id
-* implemented context show/list views with linked task/message/event counts
-* implemented context forking that records `parent_context_id` plus parent metadata such as `missive.context.parent_id`
-* implemented local context close state with preserved `closed_at` timestamp and optional final summary
-* implemented redacted context export containing the context row plus linked task, message, and event records without printing raw secret-like payload values
-* added integration tests covering create/show/list, name resolution, persistence, fork parent metadata, close state, redacted export, and relation counts
-* updated README plus CLI, protocol, architecture, storage, and security docs
+* extended `missive send` and the shared `missive stream` input parser beyond text-only parts
+* kept positional text, `--stdin`, and `--part text=...` as A2A text parts
+* changed repeatable `--file PATH` to validate regular local files and send canonical A2A `url` file-reference parts with safe filenames
+* added repeatable `--file-bytes PATH` to embed local files as A2A `raw` byte parts with filenames
+* added repeatable `--json-part JSON` to send structured A2A `data` parts with default `mediaType: application/json`
+* added repeatable `--mime MIME` handling with deterministic media-type assignment and request summary output
+* enforced selected-profile `qos.max_request_bytes` for local message inputs and serialized A2A `SendMessageRequest` bodies
+* added request part summaries and byte counts to `send_result` and `stream_result` machine output
+* added integration tests for text, file-reference, file-byte, JSON, MIME, persistence, request body, and oversized-file validation paths
+* updated send help snapshots plus README and CLI, protocol, configuration, architecture, and security docs
 
 ## Known blockers
 
@@ -145,7 +140,9 @@ Context names are accepted by `context show/fork/close/export` only when they un
 
 `missive stream` implements initial A2A `SendStreamingMessage` only. It does not implement task resubscription/`SubscribeToTask`, gateway-managed streaming jobs, background resume after process restart, or local user-triggered cancellation of an active stream.
 
-Streaming and send input remain text-only for now: positional text, stdin text, UTF-8 file text, and `--part text=...` are supported. Binary file bytes, MIME-specific file references, JSON structured-data parts, size-limit profiles, and richer part parsing remain for ticket 023.
+`missive send` and `missive stream` now support text, local file-reference, raw file-byte, JSON data, and MIME-aware message parts, but they still do not implement streaming/chunked file upload. Local file inputs larger than selected-profile `qos.max_request_bytes` fail locally instead of being streamed. `--file` sends a canonical `file://` URL and can reveal the local path to the remote agent and in local SQLite request-message rows; use `--file-bytes` only for content you are willing to embed in the A2A request.
+
+`--mime` assignment is deterministic but grouped by missive's part-building order rather than the user's shell flag order across different repeatable flag kinds. One value applies to all non-text file/JSON parts; multiple values must match either the non-text part count or total part count.
 
 Stream events update local task rows and append event journal rows, but there is still no event replay/list/tail/export command. Event journal read/tail/replay/export behavior remains for ticket 025.
 
@@ -165,7 +162,7 @@ The store layer resolves state paths, provides process locks, migrates fresh SQL
 
 The store repository is synchronous because it uses `rusqlite`; async gateway/adapter code should call it through a blocking task or store worker when those tickets wire runtime behaviour.
 
-The config schema includes protocol, auth refs, gateway, adapter, and QoS defaults, but gateway/adapter/QoS values do not yet start a gateway, enforce send/stream timeouts, run adapters, or manage background jobs.
+The config schema includes protocol, auth refs, gateway, adapter, and QoS defaults. Selected-profile `qos.max_request_bytes` is enforced by send/stream message-part parsing and serialized request-size validation, but other gateway/adapter/QoS values do not yet start a gateway, enforce send/stream HTTP timeouts, run adapters, or manage background jobs.
 
 The `--json`, `--ndjson`, and `--quiet` flags override config output defaults. `--config`, `--profile`, `--protocol-version`, `--a2a-extension`, `--service-param`, `--bearer-token-env`, and `--header` are active for implemented Agent Card, send, stream, and remote task paths. The `--trace`, `--verbose`, and `--no-color` flags are still parsed but do not yet drive tracing, verbose diagnostics, or color control.
 
@@ -177,4 +174,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 023 — Implement message parts for text, files, and structured data.
+Ticket 024 — Implement artifact handling and export.

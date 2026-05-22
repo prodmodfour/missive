@@ -91,6 +91,17 @@ SQLite state can contain raw remote protocol payloads from tasks/messages before
 export-time redaction, so keep profile state directories outside the repository
 and protect them like local application data.
 
+## Local file inputs
+
+`missive send` and `missive stream` validate `--file` and `--file-bytes` paths by
+canonicalizing them and requiring regular local files with safe UTF-8 filenames.
+`--file` sends a canonical `file://` reference, so it can reveal the local path to
+the remote A2A agent and in local SQLite request-message rows. Use
+`--file-bytes` when the remote agent needs the content embedded instead, and only
+attach files you are willing to send to that agent. Both forms are bounded by the
+selected profile's `qos.max_request_bytes`; streaming/chunked upload is not
+implemented yet.
+
 ## Current limitations
 
 Authentication is wired into implemented Agent Card fetch/refresh,

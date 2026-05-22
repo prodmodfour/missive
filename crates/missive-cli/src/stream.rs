@@ -33,8 +33,8 @@ use crate::agent::{
 use crate::auth::auth_headers_for_agent;
 use crate::output::{OutputMode, redact_json, render_stream_item, render_success};
 use crate::send::{
-    PreparedSend, SendArgs, new_local_message_id, prepare_send_request, store_message_role,
-    store_task_state,
+    MessagePartSummary, PreparedSend, SendArgs, message_part_limit_bytes, new_local_message_id,
+    prepare_send_request, store_message_role, store_task_state,
 };
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
@@ -43,18 +43,30 @@ use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 pub struct StreamArgs {
     /// Registered agent alias to call.
     pub agent: String,
-    /// Text message to send. Omit when using --stdin, --file, or --part.
+    /// Text message to send. Omit when using --stdin, --file, --file-bytes, --json-part, or --part.
     pub message: Option<String>,
 
-    /// Read one text message part from standard input.
+    /// Read one UTF-8 text message part from standard input.
     #[arg(long = "stdin", action = ArgAction::SetTrue)]
     pub stdin: bool,
 
-    /// Read one UTF-8 text message part from this file; repeatable.
+    /// Attach one safe local file reference part without embedding bytes; repeatable.
     #[arg(long = "file", value_name = "PATH")]
     pub files: Vec<PathBuf>,
 
-    /// Add a message part, currently text=VALUE; repeatable.
+    /// Embed one safe local file as an A2A raw byte part; repeatable.
+    #[arg(long = "file-bytes", value_name = "PATH")]
+    pub file_bytes: Vec<PathBuf>,
+
+    /// Add one A2A structured data part from an inline JSON value; repeatable.
+    #[arg(long = "json-part", value_name = "JSON")]
+    pub json_parts: Vec<String>,
+
+    /// Apply MIME/media type metadata to file, byte, JSON, or text parts.
+    #[arg(long = "mime", value_name = "MIME", action = ArgAction::Append)]
+    pub mime: Vec<String>,
+
+    /// Add a message text part as text=VALUE; repeatable.
     #[arg(long = "part", value_name = "text=VALUE")]
     pub parts: Vec<String>,
 
@@ -104,6 +116,9 @@ struct StreamRequestView {
     #[serde(skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
     part_count: usize,
+    parts: Vec<MessagePartSummary>,
+    local_input_bytes: u64,
+    request_bytes: u64,
     accepted_output_modes: Vec<String>,
     metadata: Metadata,
 }
@@ -192,8 +207,9 @@ where
     W: Write,
 {
     let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
+    let max_request_bytes = message_part_limit_bytes(loaded_config)?;
     let send_args = args.to_send_args();
-    let prepared = prepare_send_request(&send_args, &service_parameters, input)?;
+    let prepared = prepare_send_request(&send_args, &service_parameters, max_request_bytes, input)?;
     let mut registry = open_agent_registry(loaded_config, environment)?;
     let profile = registry.profile.clone();
     let alias = AgentAlias::new(args.agent.clone())?;
@@ -254,6 +270,9 @@ impl StreamArgs {
             message: self.message.clone(),
             stdin: self.stdin,
             files: self.files.clone(),
+            file_bytes: self.file_bytes.clone(),
+            json_parts: self.json_parts.clone(),
+            mime: self.mime.clone(),
             parts: self.parts.clone(),
             metadata: self.metadata.clone(),
             context: self.context.clone(),
@@ -754,6 +773,9 @@ impl StreamRequestView {
                 .as_ref()
                 .map(|task_id| task_id.as_str().to_owned()),
             part_count: prepared.request.message.parts.len(),
+            parts: prepared.part_summaries.clone(),
+            local_input_bytes: prepared.local_input_bytes,
+            request_bytes: prepared.request_bytes,
             accepted_output_modes: prepared.accepted_output_modes.clone(),
             metadata: prepared.local_metadata.clone(),
         }
@@ -1023,6 +1045,9 @@ mod tests {
             message: Some("hello".to_owned()),
             stdin: false,
             files: Vec::new(),
+            file_bytes: Vec::new(),
+            json_parts: vec!["{\"ok\":true}".to_owned()],
+            mime: vec!["application/json".to_owned()],
             parts: vec!["text=extra".to_owned()],
             metadata: vec!["purpose=test".to_owned()],
             context: Some("ctx-1".to_owned()),
@@ -1036,6 +1061,8 @@ mod tests {
         assert_eq!(send_args.agent, "echo");
         assert_eq!(send_args.message.as_deref(), Some("hello"));
         assert_eq!(send_args.parts, ["text=extra"]);
+        assert_eq!(send_args.json_parts, ["{\"ok\":true}"]);
+        assert_eq!(send_args.mime, ["application/json"]);
         assert_eq!(send_args.metadata, ["purpose=test"]);
         assert_eq!(send_args.context.as_deref(), Some("ctx-1"));
         assert_eq!(send_args.task.as_deref(), Some("task-1"));

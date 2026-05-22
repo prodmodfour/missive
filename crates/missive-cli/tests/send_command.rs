@@ -358,7 +358,7 @@ fn send_positional_message_persists_direct_message_response() {
 }
 
 #[test]
-fn send_file_input_persists_task_response_and_linkage() {
+fn send_file_reference_persists_task_response_and_linkage() {
     let temp = tempdir().expect("tempdir");
     let home = temp.path().join("missive-home");
     let environment = isolated_env(&home);
@@ -393,6 +393,8 @@ fn send_file_input_persists_task_response_and_linkage() {
             "echo",
             "--file",
             input_path.to_str().expect("input path"),
+            "--mime",
+            "text/plain",
             "--context",
             "ctx-requested",
             "--accepted-output-mode",
@@ -416,7 +418,16 @@ fn send_file_input_persists_task_response_and_linkage() {
     assert_eq!(requests.len(), 2);
     let body: Value = serde_json::from_str(&requests[1].body).expect("request body");
     assert_eq!(body["message"]["contextId"], "ctx-requested");
-    assert_eq!(body["message"]["parts"][0]["text"], "file based hello");
+    let file_url = url::Url::from_file_path(fs::canonicalize(&input_path).expect("canonical path"))
+        .expect("file url")
+        .to_string();
+    assert_eq!(body["message"]["parts"][0]["url"], file_url);
+    assert_eq!(body["message"]["parts"][0]["filename"], "message.txt");
+    assert_eq!(body["message"]["parts"][0]["mediaType"], "text/plain");
+    assert_eq!(
+        value["data"]["request"]["parts"][0]["kind"],
+        "file_reference"
+    );
     assert_eq!(
         body["configuration"]["acceptedOutputModes"],
         json!(["application/json"])
@@ -481,4 +492,106 @@ fn send_stdin_input_reaches_remote_agent() {
     assert_eq!(requests.len(), 2);
     let body: Value = serde_json::from_str(&requests[1].body).expect("request body");
     assert_eq!(body["message"]["parts"][0]["text"], "hello from stdin");
+}
+
+#[test]
+fn send_json_and_file_bytes_parts_reach_remote_agent() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let environment = isolated_env(&home);
+    let server = MockServer::start(|base_url| {
+        vec![
+            MockResponse::ok_a2a_json(agent_card(base_url)),
+            MockResponse::ok_a2a_json(json!({
+                "message": {
+                    "messageId": "msg-rich-response",
+                    "contextId": "ctx-rich",
+                    "role": "ROLE_AGENT",
+                    "parts": [{"text": "rich ack"}]
+                }
+            })),
+        ]
+    });
+    add_agent("echo", &server.base_url, &environment, temp.path());
+    let bytes_path = temp.path().join("payload.bin");
+    fs::write(&bytes_path, [1_u8, 2, 3, 4]).expect("write bytes");
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "send",
+            "echo",
+            "text hello",
+            "--file-bytes",
+            bytes_path.to_str().expect("bytes path"),
+            "--json-part",
+            r#"{"kind":"sample","n":2}"#,
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    let value = json_success(&stdout, "send_result");
+    assert_eq!(value["data"]["request"]["part_count"], 3);
+    assert_eq!(value["data"]["request"]["parts"][0]["kind"], "text");
+    assert_eq!(value["data"]["request"]["parts"][1]["kind"], "file_bytes");
+    assert_eq!(value["data"]["request"]["parts"][2]["kind"], "data");
+
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    let body: Value = serde_json::from_str(&requests[1].body).expect("request body");
+    assert_eq!(body["message"]["parts"][0]["text"], "text hello");
+    assert_eq!(body["message"]["parts"][1]["raw"], "AQIDBA==");
+    assert_eq!(body["message"]["parts"][1]["filename"], "payload.bin");
+    assert_eq!(
+        body["message"]["parts"][2]["data"],
+        json!({"kind": "sample", "n": 2})
+    );
+    assert_eq!(body["message"]["parts"][2]["mediaType"], "application/json");
+}
+
+#[test]
+fn send_large_file_bytes_respects_profile_size_limit() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let mut environment = isolated_env(&home);
+    environment.insert("MISSIVE_REPO_CONFIG".to_owned(), "0".to_owned());
+    let config_path = temp.path().join("small-limit.toml");
+    fs::write(
+        &config_path,
+        r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+
+[profiles.default.qos]
+max_request_bytes = 4
+"#,
+    )
+    .expect("write config");
+    let bytes_path = temp.path().join("too-large.bin");
+    fs::write(&bytes_path, [1_u8, 2, 3, 4, 5]).expect("write bytes");
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "send",
+            "echo",
+            "--file-bytes",
+            bytes_path.to_str().expect("bytes path"),
+            "--config",
+            config_path.to_str().expect("config path"),
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Usage.as_i32(), "stderr: {stderr}");
+    assert!(stdout.is_empty(), "stdout: {stdout}");
+    assert!(stderr.contains("qos.max_request_bytes"), "stderr: {stderr}");
+    assert!(stderr.contains("too-large.bin"), "stderr: {stderr}");
 }

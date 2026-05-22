@@ -699,7 +699,7 @@ Validation:
 
 ## 023 — Implement message parts for text, files, and structured data
 
-Status: TODO
+Status: DONE
 
 Phase: Messaging
 
