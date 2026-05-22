@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 
-use missive_core::{MissiveError, Result};
+use missive_core::{LoadedConfig, MissiveError, OutputFormat, Result};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
@@ -36,6 +36,15 @@ pub enum OutputMode {
 impl OutputMode {
     /// Resolves global CLI flags into one output mode.
     pub fn from_globals(globals: &GlobalArgs) -> Result<Self> {
+        Self::from_globals_and_config(globals, OutputFormat::Human)
+    }
+
+    /// Resolves global CLI flags and a validated config output default into one
+    /// output mode. Explicit flags always override configuration defaults.
+    pub fn from_globals_and_config(
+        globals: &GlobalArgs,
+        default_format: OutputFormat,
+    ) -> Result<Self> {
         if globals.quiet {
             return Ok(Self::Quiet);
         }
@@ -54,7 +63,12 @@ impl OutputMode {
         } else if globals.json {
             Ok(Self::Json)
         } else {
-            Ok(Self::Human)
+            Ok(match default_format {
+                OutputFormat::Human => Self::Human,
+                OutputFormat::Json => Self::Json,
+                OutputFormat::Ndjson => Self::Ndjson,
+                OutputFormat::Quiet => Self::Quiet,
+            })
         }
     }
 
@@ -69,6 +83,48 @@ impl OutputMode {
     }
 }
 
+/// Secret-free summary of the configuration selected for this invocation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConfigLoadStatus {
+    /// Discovery source, for example `explicit_path`, `environment`, `xdg`, or
+    /// `built_in_default`.
+    pub source: String,
+    /// Config file path when a file was loaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Selected profile after applying `--profile` or `default_profile`.
+    pub profile: String,
+    /// Effective default output format from the selected config file.
+    pub output_format: String,
+    /// Number of config-seeded agent entries.
+    pub agent_count: usize,
+    /// Number of named auth references. Raw secrets are never part of this summary.
+    pub auth_ref_count: usize,
+}
+
+impl ConfigLoadStatus {
+    /// Builds a summary from a loaded, validated configuration.
+    #[must_use]
+    pub fn from_loaded(loaded: &LoadedConfig) -> Self {
+        Self {
+            source: loaded.source.kind.as_str().to_owned(),
+            path: loaded
+                .source
+                .path
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            profile: loaded.selected_profile.clone(),
+            output_format: loaded
+                .output_format()
+                .unwrap_or(loaded.config.output.format)
+                .as_str()
+                .to_owned(),
+            agent_count: loaded.config.agents.len(),
+            auth_ref_count: loaded.config.auth_refs.len(),
+        }
+    }
+}
+
 /// Stable status record emitted by the currently implemented command skeleton.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandStatus {
@@ -78,6 +134,9 @@ pub struct CommandStatus {
     pub status: String,
     /// Whether this command has operational behavior beyond parser/rendering work.
     pub implemented: bool,
+    /// Secret-free configuration source summary for this invocation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<ConfigLoadStatus>,
     /// Human-readable status text.
     pub message: String,
 }
@@ -91,6 +150,7 @@ impl CommandStatus {
             command: command.to_owned(),
             status: "parsed".to_owned(),
             implemented: false,
+            config: None,
             message: format!(
                 "missive: '{command}' command parsed; implementation lands in a later ticket"
             ),
@@ -105,8 +165,16 @@ impl CommandStatus {
             command: "root".to_owned(),
             status: "help_available".to_owned(),
             implemented: true,
+            config: None,
             message: "missive: no command supplied; run 'missive --help' for usage".to_owned(),
         }
+    }
+
+    /// Attaches a secret-free loaded configuration summary.
+    #[must_use]
+    pub fn with_config(mut self, loaded: &LoadedConfig) -> Self {
+        self.config = Some(ConfigLoadStatus::from_loaded(loaded));
+        self
     }
 }
 

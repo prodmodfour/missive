@@ -33,7 +33,9 @@ Human-facing rendering uses normal `Display` text plus `miette::Diagnostic` code
 
 `crates/missive-cli` owns the clap-derived `Cli`, `GlobalArgs`, and `Commands` types. The skeleton currently exposes top-level commands for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`.
 
-Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`. The flags establish a stable invocation contract before later tickets implement configuration discovery, timeout enforcement, and tracing.
+Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`. `--config` and `--profile` now feed the core configuration loader; timeout enforcement and tracing remain for later tickets.
+
+`crates/missive-core` owns configuration discovery and schema validation. Discovery precedence is explicit `--config`, `MISSIVE_CONFIG`, repository-local config when `MISSIVE_REPO_CONFIG=1`, XDG config locations, then built-in defaults. The schema covers profiles, config-seeded agents, auth refs, storage defaults, output defaults, gateway defaults, adapters, and quality-of-service settings. Config parsing and redacted rendering live in core so future CLI, gateway, adapter, and diagnostic code can share the same validation and secret-handling contract.
 
 `crates/missive-cli` also owns the initial output rendering contract:
 
@@ -42,7 +44,7 @@ Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`,
 * `--ndjson` writes one compact JSON envelope per line and adds `sequence`
 * `--quiet` suppresses non-error output
 
-The current envelope schema marker is `missive.output.v1`. Successful skeletal commands emit `kind: "command_status"`; structured errors emit `kind: "error"` with `missive-core`'s `ErrorReport` under `data`. The renderer recursively redacts secret-like JSON fields and HTTP-style auth headers before writing machine output.
+If no explicit output flag is present, the loaded config's effective `output.format` selects the default renderer. The current envelope schema marker is `missive.output.v1`. Successful skeletal commands emit `kind: "command_status"` with a secret-free config source summary; structured errors emit `kind: "error"` with `missive-core`'s `ErrorReport` under `data`. The renderer recursively redacts secret-like JSON fields and HTTP-style auth headers before writing machine output.
 
 Help output for the top-level CLI and key commands is covered by snapshot tests under `crates/missive-cli/tests/snapshots/`. JSON, NDJSON, quiet-mode, error-shape, and redaction behavior is covered by output contract tests under `crates/missive-cli/tests/output_contract.rs`.
 
@@ -55,8 +57,9 @@ Help output for the top-level CLI and key commands is covered by snapshot tests 
 * `MissiveTimestamp` renders and parses RFC3339 timestamps for durable records and machine-readable output.
 * `Metadata` is a deterministic JSON object backed by an ordered map, with helper methods for insertion, lookup, merge, and key validation.
 * `Envelope<T>` combines an event id, timestamp, metadata, and typed payload for later event journals, gateway jobs, and adapter streams.
+* `MissiveConfig`, `ConfigDiscovery`, and `LoadedConfig` define configuration discovery, validated schema objects, selected-profile handling, output defaults, and redacted config rendering.
 
-Validation failures use `MissiveError::validation` so CLI and JSON renderers can produce consistent diagnostics.
+Identifier and metadata validation failures use `MissiveError::validation`; configuration discovery, parsing, and schema failures use `MissiveError::config` so CLI and JSON renderers can produce consistent diagnostics and exit codes.
 
 ## Architecture decision records
 

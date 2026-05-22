@@ -279,7 +279,7 @@ Validation:
 
 ## 009 — Implement configuration discovery and profiles
 
-Status: TODO
+Status: DONE
 
 Phase: Core
 

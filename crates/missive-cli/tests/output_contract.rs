@@ -1,13 +1,26 @@
+use std::collections::BTreeMap;
+use std::path::Path;
+
 use missive_cli::{
-    OUTPUT_SCHEMA_VERSION, REDACTED, redact_header, redact_json, required_subcommands, run_from,
+    OUTPUT_SCHEMA_VERSION, REDACTED, redact_header, redact_json, required_subcommands,
+    run_from_with_environment,
 };
 use missive_core::MissiveExitCode;
 use serde_json::{Value, json};
+use tempfile::tempdir;
 
 fn run(args: &[&str]) -> (i32, String, String) {
+    run_with_env(args, &BTreeMap::new(), Path::new("."))
+}
+
+fn run_with_env(
+    args: &[&str],
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+) -> (i32, String, String) {
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
-    let code = run_from(args, &mut stdout, &mut stderr);
+    let code = run_from_with_environment(args, environment, current_dir, &mut stdout, &mut stderr);
 
     (
         code,
@@ -67,6 +80,112 @@ fn quiet_mode_suppresses_success_output() {
     assert_eq!(code, MissiveExitCode::Success.as_i32());
     assert!(stdout.is_empty());
     assert!(stderr.is_empty());
+}
+
+#[test]
+fn explicit_config_file_loads_and_reports_secret_free_summary() {
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("examples/config/minimal.toml");
+    let config_arg = config_path.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run(&["missive", "agent", "--config", &config_arg, "--json"]);
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32());
+    assert!(stderr.is_empty(), "stderr: {stderr}");
+
+    let value: Value = serde_json::from_str(&stdout).expect("JSON output should parse");
+    assert_eq!(value["data"]["config"]["source"], "explicit_path");
+    assert_eq!(value["data"]["config"]["profile"], "default");
+    assert_eq!(value["data"]["config"]["agent_count"], 1);
+    assert_eq!(value["data"]["config"]["auth_ref_count"], 1);
+    assert!(!stdout.contains("MISSIVE_EXAMPLE_BEARER_TOKEN_VALUE"));
+}
+
+#[test]
+fn config_output_default_selects_machine_readable_mode() {
+    let temp = tempdir().expect("tempdir");
+    let config_path = temp.path().join("missive.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[output]
+format = "json"
+
+[profiles.default]
+"#,
+    )
+    .expect("write config");
+    let config_arg = config_path.to_string_lossy().into_owned();
+
+    let (code, stdout, stderr) = run(&["missive", "agent", "--config", &config_arg]);
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32());
+    assert!(stderr.is_empty(), "stderr: {stderr}");
+    let value: Value = serde_json::from_str(&stdout).expect("config default should choose JSON");
+    assert_eq!(value["data"]["config"]["output_format"], "json");
+}
+
+#[test]
+fn missive_config_environment_path_is_honored() {
+    let temp = tempdir().expect("tempdir");
+    let config_path = temp.path().join("missive.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+"#,
+    )
+    .expect("write config");
+    let environment = BTreeMap::from([(
+        "MISSIVE_CONFIG".to_owned(),
+        config_path.to_string_lossy().into_owned(),
+    )]);
+
+    let (code, stdout, stderr) =
+        run_with_env(&["missive", "doctor", "--json"], &environment, temp.path());
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32());
+    assert!(stderr.is_empty(), "stderr: {stderr}");
+    let value: Value = serde_json::from_str(&stdout).expect("JSON output should parse");
+    assert_eq!(value["data"]["config"]["source"], "environment");
+}
+
+#[test]
+fn invalid_config_fails_with_actionable_machine_readable_diagnostics() {
+    let temp = tempdir().expect("tempdir");
+    let config_path = temp.path().join("bad.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+schema_version = "missive.config.v1"
+default_profile = "missing"
+
+[profiles.default]
+"#,
+    )
+    .expect("write config");
+    let config_arg = config_path.to_string_lossy().into_owned();
+
+    let (code, stdout, stderr) = run(&["missive", "agent", "--config", &config_arg, "--json"]);
+
+    assert_eq!(code, MissiveExitCode::Config.as_i32());
+    assert!(stdout.is_empty());
+    let value: Value = serde_json::from_str(&stderr).expect("JSON error should parse");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["data"]["code"], "missive::config");
+    assert!(
+        value["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("default_profile")
+    );
+    assert!(value["data"]["help"].as_str().is_some());
 }
 
 #[test]

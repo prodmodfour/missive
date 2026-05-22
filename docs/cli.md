@@ -1,8 +1,9 @@
 # CLI reference
 
 `missive` currently exposes a clap-based command skeleton. The command tree,
-shared flags, and output rendering contract are stable enough for help and
-machine-output tests, but operational behaviour is implemented by later tickets.
+shared flags, configuration discovery, profile validation, and output rendering
+contract are stable enough for help and machine-output tests, but operational
+behaviour is implemented by later tickets.
 
 Run help with:
 
@@ -26,9 +27,12 @@ The following flags are accepted at the top level and after subcommands:
 * `--trace` — request trace-oriented diagnostics.
 * `--verbose` / `-v` — increase human diagnostic verbosity; repeat as needed.
 
-The flags are parsed now so scripts can converge on a stable invocation shape.
-Configuration discovery, timeout enforcement, tracing, and command-specific
-semantics are intentionally left to their ordered implementation tickets.
+Configuration discovery now supports `--config`, `MISSIVE_CONFIG`, XDG config
+locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
+requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
+profile. See [`configuration.md`](configuration.md) for the schema and discovery
+order. Timeout enforcement, tracing, and command-specific semantics are
+intentionally left to their ordered implementation tickets.
 
 ## Top-level commands
 
@@ -51,24 +55,28 @@ completion  Generate shell completion scripts
 manpage     Generate manual pages
 ```
 
-Each command has a help page. Running a command other than help currently emits
-a command-status record through the selected renderer.
+Each command has a help page. Running a command other than help currently loads
+and validates configuration, then emits a command-status record through the
+selected renderer.
 
 ## Output contract
 
 The current renderer supports four modes:
 
 * default human output — one redacted status line for a parsed command
-* `--json` — one JSON document using stable top-level fields
-* `--ndjson` — one JSON object per line, currently one command-status event for
-  skeletal commands and reserved for future event streams
-* `--quiet` / `-q` — no non-error output
+* config `output.format = "json"` or `--json` — one JSON document using stable
+  top-level fields
+* config `output.format = "ndjson"` or `--ndjson` — one JSON object per line,
+  currently one command-status event for skeletal commands and reserved for
+  future event streams
+* config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are
 provided, `missive` returns usage exit code `64` and renders a structured error;
 when `--ndjson` is present, that error is one JSON object on stderr.
 
-Current successful machine-readable output has this envelope:
+Current successful machine-readable output has this envelope. The `config`
+summary is secret-free and reports only discovery/source metadata and counts:
 
 ```json
 {
@@ -79,6 +87,13 @@ Current successful machine-readable output has this envelope:
     "command": "agent",
     "status": "parsed",
     "implemented": false,
+    "config": {
+      "source": "built_in_default",
+      "profile": "default",
+      "output_format": "human",
+      "agent_count": 0,
+      "auth_ref_count": 0
+    },
     "message": "missive: 'agent' command parsed; implementation lands in a later ticket"
   }
 }
@@ -87,7 +102,7 @@ Current successful machine-readable output has this envelope:
 NDJSON uses the same envelope and adds a numeric `sequence` field:
 
 ```json
-{"schema_version":"missive.output.v1","ok":true,"kind":"command_status","sequence":0,"data":{"command":"events","status":"parsed","implemented":false,"message":"missive: 'events' command parsed; implementation lands in a later ticket"}}
+{"schema_version":"missive.output.v1","ok":true,"kind":"command_status","sequence":0,"data":{"command":"events","status":"parsed","implemented":false,"config":{"source":"built_in_default","profile":"default","output_format":"human","agent_count":0,"auth_ref_count":0},"message":"missive: 'events' command parsed; implementation lands in a later ticket"}}
 ```
 
 Structured errors use `ok: false`, `kind: "error"`, and the shared

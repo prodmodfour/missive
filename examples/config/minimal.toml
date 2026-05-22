@@ -1,0 +1,26 @@
+# Minimal local missive configuration example.
+# This file is safe to commit because it stores only an environment-variable
+# reference for auth material, not the token itself.
+
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+description = "Local mock-agent defaults."
+default_agent = "echo"
+
+[agents.echo]
+base_url = "http://127.0.0.1:8080"
+auth_ref = "example-env"
+tags = ["local", "mock"]
+notes = "Example local A2A-compatible mock agent."
+
+[agents.echo.interface_urls]
+"http+json" = "http://127.0.0.1:8080/a2a"
+"json-rpc" = "http://127.0.0.1:8080/rpc"
+
+[auth_refs.example-env]
+kind = "env"
+env = "MISSIVE_EXAMPLE_TOKEN"
+header = "Authorization"
+scheme = "Bearer"

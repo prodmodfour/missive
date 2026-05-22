@@ -18,12 +18,14 @@ The repository includes lightweight guardrails for:
 * generated/private/runtime files
 * avoiding committed local state such as databases, logs, sockets, and PID files
 * CLI output redaction helpers for secret-like JSON fields and HTTP authorization headers
+* configuration schema validation that rejects raw secret fields and supports redacted config rendering
 
 These guardrails are not a substitute for full security review. Later tickets add authentication input handling, storage hardening, webhook validation, adapter trust boundaries, tracing/log redaction, and supply-chain checks.
 
 ## Local development expectations
 
 * Keep runtime state outside the repository by default.
+* Keep real local `missive.toml` and `.missive.toml` files out of version control; this repository ignores those filenames by default.
 * Use local mock services for protocol tests.
 * Do not attack, scan, fuzz, or load-test third-party services.
 * Redact authentication material in logs, traces, fixtures, and documentation.

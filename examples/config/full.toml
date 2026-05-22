@@ -1,0 +1,86 @@
+# Full schema example for missive configuration.
+# Keep real secrets out of this file. Auth refs point to environment variables
+# or keyring entries that are resolved at runtime by later tickets.
+
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[output]
+format = "human"
+color = "auto"
+redact_secrets = true
+
+[storage]
+backend = "sqlite"
+database_path = "~/.local/state/missive/default.sqlite3"
+
+[gateway]
+enabled = false
+bind_address = "127.0.0.1:7347"
+public_base_url = "http://127.0.0.1:7347"
+job_concurrency = 4
+
+[qos]
+timeout = "30s"
+connect_timeout = "10s"
+retry_attempts = 2
+retry_backoff = "250ms"
+max_request_bytes = 1048576
+concurrency = 4
+
+[profiles.default]
+description = "Default local profile."
+default_agent = "echo"
+
+[profiles.default.output]
+format = "human"
+color = "auto"
+redact_secrets = true
+
+[profiles.default.qos]
+timeout = "45s"
+connect_timeout = "10s"
+retry_attempts = 1
+retry_backoff = "500ms"
+max_request_bytes = 1048576
+concurrency = 2
+
+[profiles.ci]
+description = "CI profile for local mock agents."
+default_agent = "echo"
+
+[agents.echo]
+base_url = "http://127.0.0.1:8080"
+auth_ref = "example-env"
+binding_preference = ["http+json", "json-rpc"]
+tags = ["local", "mock"]
+notes = "Example local A2A-compatible mock agent."
+
+[agents.echo.interface_urls]
+"http+json" = "http://127.0.0.1:8080/a2a"
+"json-rpc" = "http://127.0.0.1:8080/rpc"
+
+[agents.echo.metadata]
+owner = "local-dev"
+purpose = "documentation-example"
+
+[auth_refs.example-env]
+kind = "env"
+env = "MISSIVE_EXAMPLE_TOKEN"
+header = "Authorization"
+scheme = "Bearer"
+
+[auth_refs.example-keyring]
+kind = "keyring"
+keyring_service = "missive-example"
+keyring_account = "echo"
+header = "Authorization"
+scheme = "Bearer"
+
+[adapters.stdio]
+kind = "stdio"
+enabled = true
+session_profile = "default"
+
+[adapters.stdio.settings]
+framing = "ndjson"

@@ -1,11 +1,18 @@
 #![doc = "Core domain primitives for the missive command-line tool and control plane."]
 
+pub mod config;
 pub mod envelope;
 pub mod error;
 pub mod ids;
 pub mod metadata;
 pub mod timestamp;
 
+pub use config::{
+    AuthRefConfig, AuthRefKind, CONFIG_REDACTED, CONFIG_SCHEMA_VERSION, ColorMode, ConfigDiscovery,
+    ConfigSource, ConfigSourceKind, ENV_CONFIG, ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig,
+    MissiveConfig, OutputConfig, OutputFormat, ProfileConfig, QosConfig, StorageBackend,
+    StorageConfig,
+};
 pub use envelope::Envelope;
 pub use error::{ErrorCategory, ErrorReport, MissiveError, MissiveExitCode, Result};
 pub use ids::{

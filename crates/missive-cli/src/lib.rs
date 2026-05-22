@@ -1,17 +1,18 @@
 #![doc = "Command-line skeleton for missive."]
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
-use missive_core::{MissiveError, MissiveExitCode, Result};
+use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
 
 pub mod output;
 
 pub use output::{
-    CommandStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header, redact_headers,
-    redact_json, redact_text, render_error, render_success,
+    CommandStatus, ConfigLoadStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header,
+    redact_headers, redact_json, redact_text, render_error, render_success,
 };
 
 /// Cargo package name for this crate.
@@ -260,11 +261,29 @@ pub fn execute<W>(cli: &Cli, writer: &mut W) -> Result<()>
 where
     W: Write,
 {
-    let mode = OutputMode::from_globals(&cli.globals)?;
+    let environment = process_environment();
+    let current_dir = std::env::current_dir()
+        .map_err(|error| MissiveError::io("reading current directory", error))?;
+
+    execute_with_environment(cli, &environment, &current_dir, writer)
+}
+
+/// Executes an already parsed CLI command with deterministic environment inputs.
+pub fn execute_with_environment<W>(
+    cli: &Cli,
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+    writer: &mut W,
+) -> Result<()>
+where
+    W: Write,
+{
+    let loaded_config = load_config(&cli.globals, environment, current_dir)?;
+    let mode = OutputMode::from_globals_and_config(&cli.globals, loaded_config.output_format()?)?;
 
     match &cli.command {
         Some(command) => {
-            let status = CommandStatus::parsed(command.name());
+            let status = CommandStatus::parsed(command.name()).with_config(&loaded_config);
             render_success(writer, mode, "command_status", &status, &status.message)
         }
         None if matches!(mode, OutputMode::Human) => {
@@ -275,10 +294,31 @@ where
             writeln!(writer).map_err(|error| MissiveError::io("writing help output", error))
         }
         None => {
-            let status = CommandStatus::root_help_available();
+            let status = CommandStatus::root_help_available().with_config(&loaded_config);
             render_success(writer, mode, "command_status", &status, &status.message)
         }
     }
+}
+
+fn load_config(
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+) -> Result<LoadedConfig> {
+    ConfigDiscovery::new()
+        .with_current_dir(current_dir.to_path_buf())
+        .with_env(
+            environment
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        )
+        .with_explicit_path(globals.config.clone())
+        .with_selected_profile(globals.profile.clone())
+        .load()
+}
+
+fn process_environment() -> BTreeMap<String, String> {
+    std::env::vars().collect()
 }
 
 /// Runs the CLI using process arguments and standard streams.
@@ -301,32 +341,74 @@ where
     E: Write,
 {
     match Cli::try_parse_from(args) {
-        Ok(cli) => match execute(&cli, stdout) {
-            Ok(()) => MissiveExitCode::Success.as_i32(),
-            Err(error) => {
-                let exit_code = error.exit_code().as_i32();
-                if render_error(stderr, &cli.globals, &error).is_err() {
-                    MissiveExitCode::Io.as_i32()
-                } else {
-                    exit_code
-                }
-            }
-        },
-        Err(error) => {
-            let exit_code = error.exit_code();
-            let rendered = error.to_string();
-            let write_result = if error.use_stderr() {
-                stderr.write_all(rendered.as_bytes())
-            } else {
-                stdout.write_all(rendered.as_bytes())
-            };
-
-            if write_result.is_err() {
-                MissiveExitCode::Io.as_i32()
-            } else {
-                exit_code
+        Ok(cli) => {
+            let environment = process_environment();
+            match std::env::current_dir()
+                .map_err(|error| MissiveError::io("reading current directory", error))
+                .and_then(|current_dir| {
+                    execute_with_environment(&cli, &environment, &current_dir, stdout)
+                }) {
+                Ok(()) => MissiveExitCode::Success.as_i32(),
+                Err(error) => render_execution_error(stderr, &cli.globals, &error),
             }
         }
+        Err(error) => render_clap_error(error, stdout, stderr),
+    }
+}
+
+/// Runs the CLI from arguments with deterministic environment and current-directory inputs.
+#[must_use]
+pub fn run_from_with_environment<I, T, W, E>(
+    args: I,
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+    W: Write,
+    E: Write,
+{
+    match Cli::try_parse_from(args) {
+        Ok(cli) => match execute_with_environment(&cli, environment, current_dir, stdout) {
+            Ok(()) => MissiveExitCode::Success.as_i32(),
+            Err(error) => render_execution_error(stderr, &cli.globals, &error),
+        },
+        Err(error) => render_clap_error(error, stdout, stderr),
+    }
+}
+
+fn render_execution_error<W>(stderr: &mut W, globals: &GlobalArgs, error: &MissiveError) -> i32
+where
+    W: Write,
+{
+    let exit_code = error.exit_code().as_i32();
+    if render_error(stderr, globals, error).is_err() {
+        MissiveExitCode::Io.as_i32()
+    } else {
+        exit_code
+    }
+}
+
+fn render_clap_error<W, E>(error: clap::Error, stdout: &mut W, stderr: &mut E) -> i32
+where
+    W: Write,
+    E: Write,
+{
+    let exit_code = error.exit_code();
+    let rendered = error.to_string();
+    let write_result = if error.use_stderr() {
+        stderr.write_all(rendered.as_bytes())
+    } else {
+        stdout.write_all(rendered.as_bytes())
+    };
+
+    if write_result.is_err() {
+        MissiveExitCode::Io.as_i32()
+    } else {
+        exit_code
     }
 }
 
@@ -429,7 +511,8 @@ mod tests {
         };
         let mut output = Vec::new();
 
-        execute(&cli, &mut output).expect("help output should write");
+        execute_with_environment(&cli, &BTreeMap::new(), Path::new("."), &mut output)
+            .expect("help output should write");
         let output = String::from_utf8(output).expect("help should be UTF-8");
 
         assert!(output.contains("Usage: missive"));
@@ -447,7 +530,8 @@ mod tests {
         };
         let mut output = Vec::new();
 
-        execute(&cli, &mut output).expect("quiet command should succeed");
+        execute_with_environment(&cli, &BTreeMap::new(), Path::new("."), &mut output)
+            .expect("quiet command should succeed");
 
         assert!(output.is_empty());
     }
