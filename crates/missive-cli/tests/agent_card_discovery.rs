@@ -437,6 +437,155 @@ tags = ["local"]
 }
 
 #[test]
+fn agent_inspect_sends_cli_auth_headers_and_redacts_output() {
+    let temp = tempdir().expect("tempdir");
+    let mut environment = isolated_env(&temp.path().join("missive-home"));
+    let hidden = "value-hidden-in-output";
+    environment.insert("MISSIVE_TEST_TOKEN".to_owned(), hidden.to_owned());
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_json("http://127.0.0.1:1", "1.0.0"),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    add_agent("echo", &server.base_url, &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "agent",
+            "inspect",
+            "echo",
+            "--bearer-token-env",
+            "MISSIVE_TEST_TOKEN",
+            "--header",
+            "X-Api-Key:value-hidden-in-output",
+            "--header",
+            "X-Request-Id:visible-request",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    assert!(!stdout.contains(hidden));
+    assert!(!stderr.contains(hidden));
+    assert_eq!(
+        json_success(&stdout, "agent_inspect")["data"]["agent"]["alias"],
+        "echo"
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].headers.get("authorization").map(String::as_str),
+        Some("Bearer value-hidden-in-output")
+    );
+    assert_eq!(
+        requests[0].headers.get("x-api-key").map(String::as_str),
+        Some("value-hidden-in-output")
+    );
+    assert_eq!(
+        requests[0].headers.get("x-request-id").map(String::as_str),
+        Some("visible-request")
+    );
+}
+
+#[test]
+fn agent_inspect_sends_config_auth_ref_header_and_redacts_output() {
+    let temp = tempdir().expect("tempdir");
+    let mut environment = isolated_env(&temp.path().join("missive-home"));
+    let hidden = "value-hidden-in-output";
+    environment.insert("MISSIVE_CONFIG_TOKEN".to_owned(), hidden.to_owned());
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_json("http://127.0.0.1:1", "1.0.0"),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    let config_path = temp.path().join("missive.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+default_agent = "echo"
+
+[agents.echo]
+base_url = "{}"
+auth_ref = "example-env"
+
+[auth_refs.example-env]
+kind = "env"
+env = "MISSIVE_CONFIG_TOKEN"
+header = "Authorization"
+scheme = "Bearer"
+"#,
+            server.base_url
+        ),
+    )
+    .expect("write config");
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "agent",
+            "inspect",
+            "echo",
+            "--config",
+            config_path.to_str().expect("config path"),
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    assert!(!stdout.contains(hidden));
+    assert!(!stderr.contains(hidden));
+    let value = json_success(&stdout, "agent_inspect");
+    assert_eq!(value["data"]["agent"]["auth_ref"], "example-env");
+    assert_eq!(
+        server.requests()[0]
+            .headers
+            .get("authorization")
+            .map(String::as_str),
+        Some("Bearer value-hidden-in-output")
+    );
+}
+
+#[test]
+fn agent_inspect_missing_bearer_env_fails_before_http_request() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    add_agent("echo", "http://127.0.0.1:9", &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "agent",
+            "inspect",
+            "echo",
+            "--bearer-token-env",
+            "MISSIVE_MISSING_TOKEN",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Permission.as_i32());
+    assert!(stdout.is_empty());
+    let value = json_error(&stderr);
+    assert_eq!(value["data"]["code"], "missive::auth");
+    assert!(
+        value["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("MISSIVE_MISSING_TOKEN")
+    );
+}
+
+#[test]
 fn agent_inspect_maps_unsupported_protocol_version_to_protocol_exit() {
     let temp = tempdir().expect("tempdir");
     let environment = isolated_env(&temp.path().join("missive-home"));

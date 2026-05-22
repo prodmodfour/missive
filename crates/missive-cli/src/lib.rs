@@ -10,6 +10,7 @@ use missive_a2a::ServiceParameters;
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
 
 pub mod agent;
+pub(crate) mod auth;
 pub mod output;
 
 pub use output::{
@@ -139,6 +140,25 @@ pub struct GlobalArgs {
         help_heading = "Global options"
     )]
     pub service_params: Vec<String>,
+
+    /// Read a bearer token from this environment variable and send it as Authorization.
+    #[arg(
+        long = "bearer-token-env",
+        value_name = "ENV",
+        global = true,
+        help_heading = "Global options"
+    )]
+    pub bearer_token_env: Option<String>,
+
+    /// Add an outbound HTTP header as Name:Value; repeatable and never persisted.
+    #[arg(
+        long = "header",
+        value_name = "NAME:VALUE",
+        global = true,
+        action = ArgAction::Append,
+        help_heading = "Global options"
+    )]
+    pub headers: Vec<String>,
 
     /// Enable trace-oriented diagnostics for this invocation.
     #[arg(long, global = true, action = ArgAction::SetTrue, help_heading = "Global options")]
@@ -560,6 +580,10 @@ mod tests {
             "urn:example:ext",
             "--service-param",
             "A2A-Trace=trace-1",
+            "--bearer-token-env",
+            "MISSIVE_EXAMPLE_TOKEN",
+            "--header",
+            "X-Request-Id:trace-1",
             "--trace",
             "--verbose",
             "--verbose",
@@ -583,6 +607,11 @@ mod tests {
         assert_eq!(cli.globals.protocol_version.as_deref(), Some("1.0"));
         assert_eq!(cli.globals.a2a_extensions, ["urn:example:ext"]);
         assert_eq!(cli.globals.service_params, ["A2A-Trace=trace-1"]);
+        assert_eq!(
+            cli.globals.bearer_token_env.as_deref(),
+            Some("MISSIVE_EXAMPLE_TOKEN")
+        );
+        assert_eq!(cli.globals.headers, ["X-Request-Id:trace-1"]);
         assert!(cli.globals.trace);
         assert_eq!(cli.globals.verbose, 2);
     }

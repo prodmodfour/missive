@@ -108,6 +108,13 @@ selected profile's `protocol_version` for that invocation. The
 `--service-param NAME=VALUE` adds or overrides an extra service parameter for the
 invocation. These flags are validated before an outbound request is sent.
 
+Authentication can be supplied by linking an agent to an `auth_ref`, by passing
+`--bearer-token-env ENV`, or by passing repeatable `--header Name:Value` values.
+Config auth refs currently support `kind = "env"` and `kind = "keyring"`; they
+store only the environment variable name or keyring service/account, never the
+raw token. CLI-supplied auth headers are used for the current invocation only and
+are not written to SQLite.
+
 ## Local state paths
 
 The store layer now resolves data, state, cache, database, and lock paths for the
@@ -162,9 +169,12 @@ Config validation checks:
   `protocol.service_parameters`; use `protocol_version` and `extensions`
   instead
 * gateway bind address is an IP socket address such as `127.0.0.1:7347`
+* auth refs identify only environment variables or keyring coordinates, not raw
+  token values
 * raw secret storage is not part of the auth-ref schema
 
 Structured config rendering uses redaction before printing JSON. Secret-like keys
 such as `token`, `password`, `authorization`, `client_secret`, and cookies are
 rendered as `[REDACTED]`; auth-scheme strings such as `Bearer value` preserve only
-the scheme.
+the scheme. See [`security.md`](security.md) for authentication storage tradeoffs
+and keyring notes.

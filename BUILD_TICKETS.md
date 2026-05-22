@@ -549,7 +549,7 @@ Validation:
 
 ## 018 — Implement authentication inputs and redaction
 
-Status: TODO
+Status: DONE
 
 Phase: Security
 

@@ -1,6 +1,7 @@
 #![doc = "A2A protocol integration scaffolding for missive."]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::time::Duration;
 
 pub use missive_core::{
@@ -73,6 +74,124 @@ pub const PLANNED_BINDINGS: &[&str] = &[GRPC_BINDING];
 #[must_use]
 pub const fn crate_info() -> missive_core::CrateInfo {
     missive_core::CrateInfo::new(CRATE_NAME, CRATE_PURPOSE)
+}
+
+/// Redaction marker used by debug rendering for outbound auth headers.
+const AUTH_REDACTED: &str = "[REDACTED]";
+
+/// Validated HTTP authentication/authorization headers for outbound A2A requests.
+///
+/// The raw values are intentionally not serializable and `Debug` renders only
+/// redacted header values. Callers resolve secrets from CLI/config/keyring inputs
+/// outside this crate, then pass the resulting headers to the A2A transport edge.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct AuthHeaders {
+    headers: BTreeMap<String, String>,
+}
+
+impl AuthHeaders {
+    /// Creates an empty auth header set.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            headers: BTreeMap::new(),
+        }
+    }
+
+    /// Returns true when there are no auth headers to send.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.headers.is_empty()
+    }
+
+    /// Inserts or replaces one header using case-insensitive HTTP header-name
+    /// canonicalization.
+    pub fn insert(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
+        let name = name.as_ref().trim();
+        let value = value.as_ref().trim();
+        let header_name = auth_header_name(name)?;
+        auth_header_value(name, value)?;
+        self.headers
+            .insert(header_name.as_str().to_owned(), value.to_owned());
+        Ok(())
+    }
+
+    /// Applies these headers to a blocking reqwest request builder. Header
+    /// values are marked sensitive so downstream debug output does not expose
+    /// them through reqwest internals.
+    pub fn apply_to_blocking_request(&self, request: RequestBuilder) -> Result<RequestBuilder> {
+        let mut request = request;
+        for (name, value) in &self.headers {
+            request = request.header(auth_header_name(name)?, auth_header_value(name, value)?);
+        }
+        Ok(request)
+    }
+
+    /// Returns a deterministic redacted view suitable for debug output and tests.
+    #[must_use]
+    pub fn redacted(&self) -> BTreeMap<String, String> {
+        self.headers
+            .iter()
+            .map(|(name, value)| (name.clone(), redact_auth_header_value(name, value)))
+            .collect()
+    }
+}
+
+impl fmt::Debug for AuthHeaders {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AuthHeaders")
+            .field("headers", &self.redacted())
+            .finish()
+    }
+}
+
+fn auth_header_name(name: &str) -> Result<HeaderName> {
+    if name.is_empty() {
+        return Err(MissiveError::validation("auth header name cannot be empty"));
+    }
+    HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
+        MissiveError::validation("auth header name is not a valid HTTP header name")
+            .with_source(error)
+            .with_help("Use ASCII HTTP header names such as Authorization or X-Api-Key.")
+    })
+}
+
+fn auth_header_value(name: &str, value: &str) -> Result<HeaderValue> {
+    if value.is_empty() {
+        return Err(MissiveError::validation(format!(
+            "auth header {name:?} value cannot be empty"
+        )));
+    }
+    if value.len() > 8 * 1024 {
+        return Err(MissiveError::validation(format!(
+            "auth header {name:?} value must be at most 8192 bytes"
+        )));
+    }
+    let mut header_value = HeaderValue::from_str(value).map_err(|error| {
+        MissiveError::validation(format!(
+            "auth header {name:?} value is not a valid HTTP header value"
+        ))
+        .with_source(error)
+        .with_help("Avoid control characters and newline characters in auth headers.")
+    })?;
+    header_value.set_sensitive(true);
+    Ok(header_value)
+}
+
+fn redact_auth_header_value(name: &str, value: &str) -> String {
+    let normalized: String = name
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    if normalized == "authorization" || normalized == "proxyauthorization" {
+        let trimmed = value.trim();
+        if let Some((scheme, _)) = trimmed.split_once(char::is_whitespace) {
+            return format!("{scheme} {AUTH_REDACTED}");
+        }
+    }
+    AUTH_REDACTED.to_owned()
 }
 
 /// A2A service parameters applied to outbound protocol requests.
@@ -1019,12 +1138,30 @@ impl AgentCardClient {
         validators: Option<&AgentCardCacheValidators>,
         service_parameters: &ServiceParameters,
     ) -> Result<AgentCardFetchOutcome> {
+        self.fetch_public_agent_card_with_service_parameters_and_auth(
+            base_url,
+            validators,
+            service_parameters,
+            &AuthHeaders::new(),
+        )
+    }
+
+    /// Fetches `/.well-known/agent-card.json` with explicit A2A service
+    /// parameters and resolved authentication headers.
+    pub fn fetch_public_agent_card_with_service_parameters_and_auth(
+        &self,
+        base_url: &str,
+        validators: Option<&AgentCardCacheValidators>,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<AgentCardFetchOutcome> {
         let discovery_url = public_agent_card_url(base_url)?;
         let mut request = self
             .client
             .get(discovery_url.clone())
             .header("Accept", "application/json");
         request = service_parameters.apply_to_blocking_request(request)?;
+        request = auth_headers.apply_to_blocking_request(request)?;
 
         if let Some(validators) = validators {
             if let Some(etag) = &validators.etag {
@@ -1235,6 +1372,42 @@ mod tests {
 
         assert_eq!(info.name(), CRATE_NAME);
         assert!(info.purpose().contains("A2A"));
+    }
+
+    #[test]
+    fn auth_headers_apply_to_requests_and_debug_redacts_values() {
+        let client = Client::builder().build().expect("client");
+        let mut auth_headers = AuthHeaders::new();
+        auth_headers
+            .insert("Authorization", "Bearer value-hidden-in-output")
+            .expect("authorization header");
+        auth_headers
+            .insert("X-Api-Key", "value-hidden-in-output")
+            .expect("api key header");
+
+        let request = auth_headers
+            .apply_to_blocking_request(client.get("http://127.0.0.1:8080/a2a"))
+            .expect("auth headers should apply")
+            .build()
+            .expect("request should build");
+
+        assert_eq!(
+            request
+                .headers()
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer value-hidden-in-output")
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get("x-api-key")
+                .and_then(|value| value.to_str().ok()),
+            Some("value-hidden-in-output")
+        );
+        let rendered = format!("{auth_headers:?}");
+        assert!(!rendered.contains("value-hidden-in-output"));
+        assert!(rendered.contains("Bearer [REDACTED]"));
     }
 
     #[test]

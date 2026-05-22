@@ -56,6 +56,12 @@ Global options:
       --service-param <NAME=VALUE>
           Add an arbitrary A2A service parameter as NAME=VALUE; repeatable
 
+      --bearer-token-env <ENV>
+          Read a bearer token from this environment variable and send it as Authorization
+
+      --header <NAME:VALUE>
+          Add an outbound HTTP header as Name:Value; repeatable and never persisted
+
       --trace
           Enable trace-oriented diagnostics for this invocation
 

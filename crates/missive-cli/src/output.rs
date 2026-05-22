@@ -365,7 +365,7 @@ fn redact_header_value(value: &str) -> String {
 pub fn redact_text(input: &str) -> String {
     let mut output = input.to_owned();
 
-    for scheme in ["Bearer", "Basic", "Token"] {
+    for scheme in ["Bearer", "Basic", "Token", "ApiKey", "Api-Key"] {
         output = redact_after_auth_scheme(&output, scheme);
     }
 

@@ -14,6 +14,10 @@ path = "src/lib.rs"
 name = "missive"
 path = "src/main.rs"
 
+[features]
+default = ["native-keyring"]
+native-keyring = ["dep:keyring"]
+
 [dependencies]
 clap.workspace = true
 missive-adapters.workspace = true
@@ -26,6 +30,18 @@ missive-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 url.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["linux-native"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["apple-native"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["windows-native"], optional = true }
+
+[target.'cfg(all(not(target_os = "linux"), not(target_os = "macos"), not(windows)))'.dependencies]
+keyring = { version = "3.6", default-features = false, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

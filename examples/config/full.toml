@@ -1,6 +1,6 @@
 # Full schema example for missive configuration.
 # Keep real secrets out of this file. Auth refs point to environment variables
-# or keyring entries that are resolved at runtime by later tickets.
+# or keyring entries that are resolved at request time.
 
 schema_version = "missive.config.v1"
 default_profile = "default"

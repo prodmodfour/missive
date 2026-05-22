@@ -53,9 +53,9 @@ The effective protocol defaults come from `[protocol]` or
 `--protocol-version <VERSION>` overrides the configured version,
 `--a2a-extension <EXTENSION>` appends an extension, and the
 `--service-param NAME=VALUE` flag adds or overrides an extra service parameter.
-Current implemented use is public Agent Card discovery/refresh; future send,
-stream, task, and push clients should reuse the same helper so request metadata
-remains consistent.
+Current implemented use is Agent Card discovery/refresh; future send, stream,
+task, and push clients should reuse the same helper so request metadata remains
+consistent.
 
 When an HTTP response body reports the official A2A
 `VERSION_NOT_SUPPORTED` error code/reason, missive maps it to a protocol error
@@ -66,6 +66,18 @@ failure.
 `a2a.protocol_version`, requested extensions under `a2a.extensions`, and extra
 parameters under `a2a.service_parameters`; task/event persistence code should
 copy that metadata when recording outbound request effects.
+
+## Authentication headers
+
+`missive-a2a` exposes an `AuthHeaders` request helper for resolved HTTP auth
+headers. Raw values are not serializable, `Debug` renders redacted values, and
+reqwest header values are marked sensitive before sending. The CLI currently
+builds `AuthHeaders` from agent config auth refs, `--bearer-token-env`, and
+repeatable `--header Name:Value` inputs for Agent Card fetch/refresh requests.
+
+Auth resolution is deliberately outside protocol type parsing: config and CLI
+code locate secrets in environment variables or platform keyrings, while the A2A
+client only validates and applies already-resolved headers.
 
 ## Interface negotiation
 
@@ -129,4 +141,7 @@ Fixtures live under `tests/fixtures/a2a/1.0/`. Update the fixtures and rerun
 `cargo test -p missive-a2a --all-targets` when updating the upstream SDK or when
 A2A wire shapes change.
 
-Authentication material is not resolved for public Agent Card discovery yet.
+Authentication material is resolved for implemented Agent Card fetch/refresh
+requests only. Future send, stream, task, and push protocol calls should reuse
+`AuthHeaders` plus the CLI/config auth resolver instead of inventing separate
+secret handling paths.

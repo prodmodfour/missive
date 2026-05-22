@@ -86,8 +86,9 @@ Repository records reuse `missive-core` identifiers such as `AgentAlias`,
 `MissiveTimestamp`, and `Metadata`. Store-specific ids such as `GatewayJobId` and
 `AdapterBindingId` are validated wrappers. Auth-ref repository rows persist only
 non-secret references such as environment variable names or keyring account
-coordinates; raw tokens are not stored. JSON columns are serialized and parsed at
-the repository boundary so callers receive typed `serde_json::Value`, `Metadata`,
+coordinates; raw tokens are not stored, and CLI `--bearer-token-env`/`--header`
+values are never written to SQLite. JSON columns are serialized and parsed at the
+repository boundary so callers receive typed `serde_json::Value`, `Metadata`,
 maps, and lists instead of raw JSON text.
 
 `Store::transaction` runs a closure against `StoreTransaction`, which exposes the

@@ -25,6 +25,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use url::Url;
 
+use crate::auth::auth_headers_for_agent;
 use crate::output::{OutputMode, redact_json, redact_text, render_success};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
@@ -312,12 +313,28 @@ where
         AgentCommands::Inspect(args) => {
             let service_parameters =
                 service_parameters_from_config_and_globals(loaded_config, globals)?;
-            inspect_agent(args, registry, &service_parameters, mode, writer)
+            inspect_agent(
+                args,
+                registry,
+                globals,
+                environment,
+                &service_parameters,
+                mode,
+                writer,
+            )
         }
         AgentCommands::Refresh(args) => {
             let service_parameters =
                 service_parameters_from_config_and_globals(loaded_config, globals)?;
-            refresh_agent(args, registry, &service_parameters, mode, writer)
+            refresh_agent(
+                args,
+                registry,
+                globals,
+                environment,
+                &service_parameters,
+                mode,
+                writer,
+            )
         }
         AgentCommands::Rename(args) => rename_agent(args, registry, mode, writer),
     }
@@ -520,6 +537,8 @@ where
 fn inspect_agent<W>(
     args: &AgentInspectArgs,
     registry: AgentRegistry,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
     service_parameters: &ServiceParameters,
     mode: OutputMode,
     writer: &mut W,
@@ -530,6 +549,7 @@ where
     let alias = parse_alias(&args.alias)?;
     let record = get_existing_agent(&registry.store, &alias)?;
     let output = if args.refresh || record.agent_card_json.is_none() {
+        let auth_headers = auth_headers_for_agent(&registry.store, &record, globals, environment)?;
         fetch_and_cache_agent_card(
             &registry.store,
             &registry.profile,
@@ -537,6 +557,7 @@ where
             args.refresh,
             args.binding.as_deref(),
             service_parameters,
+            &auth_headers,
         )?
     } else {
         cached_agent_card_output(&registry, &record, args.binding.as_deref())?
@@ -548,6 +569,8 @@ where
 fn refresh_agent<W>(
     args: &AgentAliasArgs,
     registry: AgentRegistry,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
     service_parameters: &ServiceParameters,
     mode: OutputMode,
     writer: &mut W,
@@ -557,6 +580,7 @@ where
 {
     let alias = parse_alias(&args.alias)?;
     let record = get_existing_agent(&registry.store, &alias)?;
+    let auth_headers = auth_headers_for_agent(&registry.store, &record, globals, environment)?;
     let output = fetch_and_cache_agent_card(
         &registry.store,
         &registry.profile,
@@ -564,6 +588,7 @@ where
         true,
         None,
         service_parameters,
+        &auth_headers,
     )?;
 
     render_agent_card_inspection(writer, mode, "agent_refresh", &output)
@@ -720,13 +745,15 @@ fn fetch_and_cache_agent_card(
     refresh_requested: bool,
     binding_override: Option<&str>,
     service_parameters: &ServiceParameters,
+    auth_headers: &missive_a2a::AuthHeaders,
 ) -> Result<AgentCardInspectionOutput> {
     let validators = validators_from_record(record);
     let client = AgentCardClient::new()?;
-    let outcome = client.fetch_public_agent_card_with_service_parameters(
+    let outcome = client.fetch_public_agent_card_with_service_parameters_and_auth(
         &record.base_url,
         validators.as_ref(),
         service_parameters,
+        auth_headers,
     )?;
 
     match outcome {
