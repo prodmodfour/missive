@@ -1,0 +1,21 @@
+{
+  "messageId": "msg-fixture-user-1",
+  "contextId": "ctx-fixture-1",
+  "role": "ROLE_USER",
+  "parts": [
+    {
+      "text": "hello fixture agent",
+      "mediaType": "text/plain"
+    },
+    {
+      "data": {
+        "intent": "echo",
+        "attempt": 1
+      },
+      "mediaType": "application/json"
+    }
+  ],
+  "metadata": {
+    "fixture": "message"
+  }
+}

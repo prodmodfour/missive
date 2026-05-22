@@ -19,6 +19,7 @@ Initial ADRs use `Accepted` because they document project-defining constraints f
 * [0002 — A2A-first protocol strategy](0002-a2a-first-protocol-strategy.md)
 * [0003 — SQLite local state](0003-sqlite-local-state.md)
 * [0004 — CLI-first UX](0004-cli-first-ux.md)
+* [0005 — Official A2A Rust protocol types](0005-official-a2a-rust-types.md)
 
 ## Template
 

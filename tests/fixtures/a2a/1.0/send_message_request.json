@@ -1,0 +1,21 @@
+{
+  "message": {
+    "messageId": "msg-fixture-user-2",
+    "contextId": "ctx-fixture-2",
+    "role": "ROLE_USER",
+    "parts": [
+      {
+        "text": "start a fixture task",
+        "mediaType": "text/plain"
+      }
+    ]
+  },
+  "configuration": {
+    "acceptedOutputModes": ["text/plain"],
+    "historyLength": 5,
+    "returnImmediately": false
+  },
+  "metadata": {
+    "fixture": "send-message-request"
+  }
+}

@@ -2,24 +2,24 @@
 
 ## Current state
 
-Tickets 000 through 015 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000 through 016 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
 * `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, output rendering contract, redaction helpers, help snapshots, implemented `missive agent add/list/show/inspect/refresh/remove/rename` including `agent inspect --binding` interface override, and placeholder execution status for later commands
 * `crates/missive-core` — core domain primitive scaffolding, including shared error/result types, strongly typed IDs, timestamps, metadata maps, envelopes, configuration schema, config discovery, profile validation, and redacted config rendering
-* `crates/missive-a2a` — A2A protocol/client integration scaffolding plus public Agent Card discovery/parsing helpers for `/.well-known/agent-card.json` and A2A interface negotiation helpers
+* `crates/missive-a2a` — A2A protocol/client integration scaffolding, official `a2a-lf` protocol type re-exports, public Agent Card discovery/parsing helpers for `/.well-known/agent-card.json`, A2A interface negotiation helpers, and A2A serde fixture round-trip tests
 * `crates/missive-store` — persistence scaffolding with local state path resolution, profile-specific data/state/cache directories, SQLite database path resolution, process locks for state mutation and gateway operation, embedded SQLite schema migrations, and a blocking typed repository facade for auth refs, agents, contexts, tasks, events, groups, group members, and gateway jobs
 * `crates/missive-router` — routing and collectives scaffolding
 * `crates/missive-gateway` — gateway daemon scaffolding
 * `crates/missive-adapters` — adapter scaffolding
 * `crates/missive-observe` — observability scaffolding
 
-The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer depends on `rusqlite` with bundled SQLite plus `serde`/`serde_json` for typed JSON repository boundaries. The A2A layer now depends on `reqwest` with blocking rustls-backed HTTP/TLS support for public Agent Card discovery. The CLI directly depends on the workspace `url` crate for registry URL validation.
+The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer depends on `rusqlite` with bundled SQLite plus `serde`/`serde_json` for typed JSON repository boundaries. The A2A layer now depends on the official `a2a-lf` crate from `a2aproject/a2a-rs` for protocol types and on `reqwest` with blocking rustls-backed HTTP/TLS support for public Agent Card discovery. The CLI directly depends on the workspace `url` crate for registry URL validation.
 
 Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-tools.sh` is executable, idempotent, supports `--check`, and can install Rust components, optional cargo tools, and opt-in system dependencies.
 
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
 
-Architecture decision records live under `docs/adr/`, with a template and initial accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, and CLI-first UX. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command/agent-registry/Agent-Card contract, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, and typed repository contract. `docs/protocol.md` documents the current public Agent Card discovery and interface negotiation mapping.
+Architecture decision records live under `docs/adr/`, with a template and accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, CLI-first UX, and the official A2A Rust protocol type strategy. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command/agent-registry/Agent-Card contract, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, typed repository contract, and A2A type boundary. `docs/protocol.md` documents the current official Rust type boundary, public Agent Card discovery, interface negotiation mapping, and fixture update process.
 
 `missive-core` exposes `MissiveError`, `Result<T>`, `ErrorCategory`, `MissiveExitCode`, and `ErrorReport`. The error taxonomy covers I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures. Each category has a stable diagnostic code, deterministic exit code mapping for CLI use, human `Display` rendering, `miette::Diagnostic` metadata, and a serializable JSON/NDJSON report shape.
 
@@ -33,7 +33,7 @@ The store migration layer exposes `Migration`, `AppliedMigration`, `MigrationRep
 
 The store repository layer exposes blocking `Store` and `StoreTransaction` APIs. `Store::open`, `Store::from_connection`, and `Store::open_in_memory` apply migrations before use. Typed methods cover non-secret auth refs, agents, contexts, tasks, events, groups/group members, and gateway jobs with public upsert/record structs, state/source enums, core identifiers, validated `GatewayJobId`/`AdapterBindingId`, JSON serialization at the repository boundary, and transaction rollback on closure or SQL failures. SQL strings remain private to `missive-store` rather than leaking into CLI code.
 
-The A2A layer exposes public Agent Card compatibility structs, `AgentCardClient`, and interface negotiation helpers. It resolves `/.well-known/agent-card.json` from a registered base URL, sends conditional refresh headers when cached ETags/Last-Modified values exist, parses supported interfaces, provider, versions, capabilities, default modes, and skills, and maps HTTP/TLS/network failures to transport errors and invalid card JSON to protocol errors. Interface negotiation canonicalizes Agent Card bindings such as `HTTP+JSON` and `JSONRPC`, supports local `http+json` and `json-rpc`, recognizes gRPC for future extension diagnostics, respects agent binding preference or `agent inspect --binding`, and falls back to registry/base-URL interfaces when older cards omit `supportedInterfaces`.
+The A2A layer exposes the official `a2a-lf` protocol models through `missive_a2a::protocol`, aliases the public Agent Card inspection types to official SDK structs, provides `AgentCardClient`, and includes interface negotiation helpers. It resolves `/.well-known/agent-card.json` from a registered base URL, sends conditional refresh headers when cached ETags/Last-Modified values exist, parses supported interfaces, provider, versions, capabilities, default modes, and skills through the official Agent Card type, and maps HTTP/TLS/network failures to transport errors and invalid card JSON to protocol errors. A small compatibility parser normalizes snake_case fixture aliases and older/pre-release cards that omit `supportedInterfaces` before official deserialization while preserving raw card JSON in the cache/output. Interface negotiation canonicalizes Agent Card bindings such as `HTTP+JSON` and `JSONRPC`, supports local `http+json` and `json-rpc`, recognizes gRPC for future extension diagnostics, respects agent binding preference or `agent inspect --binding`, and falls back to registry/base-URL interfaces when older cards omit `supportedInterfaces`.
 
 The `missive` binary uses clap derive and exposes help pages for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`. Global flags parse at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`.
 
@@ -76,33 +76,32 @@ Checks run by the default gate included:
 Additional targeted validation run during this cycle:
 
 ```bash
-cargo check --workspace --all-targets
+cargo check -p missive-a2a --all-targets
 cargo test -p missive-a2a --all-targets
-cargo test -p missive-cli --test agent_card_discovery --all-features
-cargo fmt --all
-cargo clippy -p missive-a2a -p missive-cli --all-targets --all-features -- -D warnings
+cargo check --workspace --all-targets
 cargo test --workspace --all-targets --all-features
+cargo clippy -p missive-a2a -p missive-cli --all-targets --all-features -- -D warnings
+scripts/quality-gate.sh
 ```
 
-The targeted checks covered binding canonicalization, default preference order, unsupported remote bindings, explicit `--binding` override, missing-`supportedInterfaces` fallback, selected-interface JSON/human output, Agent Card cache interactions, and workspace regression coverage.
+The targeted checks covered official `a2a-lf` type compilation, Agent Card compatibility parsing, snake_case fixture aliases, missing-`supportedInterfaces` fallback preservation, official Agent Card/Message/Task/send/push fixture serde round-trips, CLI compatibility with official Agent Card skill option fields, and workspace regression coverage.
 
-Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle.
+Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle. The crates.io `a2a-lf` dependency was added and `Cargo.lock` was updated by Cargo.
 
 ## Latest cycle notes
 
-Implemented ticket 015 — Implement A2A interface negotiation.
+Implemented ticket 016 — Integrate official or vendored A2A Rust types.
 
 Included:
 
-* added `missive-a2a` interface negotiation helpers, canonical binding names, local support lists, selected-interface output structs, and gRPC-recognition diagnostics for future extension work
-* selected the first mutually supported interface by agent binding preference, defaulting to `http+json` then `json-rpc`
-* canonicalized Agent Card bindings such as `HTTP+JSON`, `JSONRPC`, and `gRPC` to stable lowercase missive names
-* added explicit `missive agent inspect <alias> --binding <binding>` override support for advanced users and tests
-* rendered `selected_interface` in `agent inspect --json` and a selected interface line in human inspect output
-* allowed older/pre-release Agent Cards without `supportedInterfaces` to parse so negotiation can fall back to explicit registry interface URLs or the registered base URL for HTTP+JSON
-* mapped unsupported or non-mutual bindings to transport errors that list locally supported bindings
-* added unit and CLI integration tests for preference order, unsupported bindings, explicit override, and missing-interface fallback
-* updated README, CLI docs, configuration docs, architecture docs, and protocol docs for the new negotiation behavior
+* evaluated official and alternative A2A Rust crates and selected the official `a2a-lf` crate from `a2aproject/a2a-rs` via crates.io rather than a Git dependency
+* added `a2a-lf` as the workspace A2A protocol type dependency and kept upstream access localized to `crates/missive-a2a`
+* added `missive_a2a::protocol` re-exports for official A2A Agent Card, Message, Task, Artifact, send/request/response, and push-config types
+* aliased the public Agent Card inspection types to official SDK structs instead of maintaining duplicate local protocol models
+* kept a small compatibility parser for public Agent Cards that normalizes snake_case fixture aliases and older cards that omit `supportedInterfaces` before official deserialization
+* preserved current interface negotiation behavior, cache behavior, and CLI inspect output while adapting CLI skill rendering to official optional skill mode/example fields
+* added minimal A2A v1.0 fixtures under `tests/fixtures/a2a/1.0/` and serde round-trip tests through official SDK types
+* documented the protocol type strategy, update process, and limitations in ADR 0005 plus README, architecture, and protocol docs
 
 ## Known blockers
 
@@ -110,11 +109,11 @@ None known.
 
 ## Limitations
 
-Official/vendored A2A protocol type integration, service parameter/version headers, authentication material resolution, outbound send/stream calls, task operations, and push/webhook/gateway behavior remain for later tickets.
+A2A service parameter/version headers, authentication material resolution, outbound send/stream calls, task operations, and push/webhook/gateway behavior remain for later tickets.
 
 Public Agent Card discovery currently expects unauthenticated cards. Config auth refs can be linked to agents but are not resolved or sent during card discovery yet.
 
-The Agent Card compatibility structs and negotiation helpers are intentionally scoped to the public inspection fields needed now. The official/vendored A2A Rust type strategy and broader conformance fixture suite remain for later tickets.
+The official A2A Rust type boundary is now in place through `a2a-lf`, but only a minimal fixture set exists for ticket 016. The broader conformance fixture suite, SDK/client interoperability against example agents, and protocol update automation remain for later tickets. The Agent Card compatibility parser is intentionally scoped to public inspection and negotiation needs; optional security fields are preserved in raw card JSON but not interpreted yet.
 
 Config-seeded agents are synced into SQLite as read-only rows when agent commands run. If a config entry is later removed, an already-synced row may remain in the local database until a future reconciliation/maintenance command defines stale config-seed pruning. Cached Agent Card fields are preserved only while the config-seeded base URL is unchanged.
 
@@ -138,4 +137,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 016 — Integrate official or vendored A2A Rust types.
+Ticket 017 — Implement A2A service parameter handling.

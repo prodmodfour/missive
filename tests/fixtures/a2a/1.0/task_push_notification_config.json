@@ -1,0 +1,10 @@
+{
+  "url": "https://callback.example.test/a2a/push/task-fixture-1",
+  "id": "push-config-fixture-1",
+  "taskId": "task-fixture-1",
+  "token": "fixture-token-redacted",
+  "authentication": {
+    "scheme": "Bearer",
+    "credentials": "fixture-credential-redacted"
+  }
+}

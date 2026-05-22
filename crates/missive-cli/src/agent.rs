@@ -9,7 +9,7 @@ use std::io::Write;
 
 use clap::{Args, Subcommand};
 use missive_a2a::{
-    AgentCard, AgentCardCacheValidators, AgentCardClient, AgentCardFetchOutcome,
+    AgentCard, AgentCardCacheValidators, AgentCardClient, AgentCardExt, AgentCardFetchOutcome,
     InterfaceNegotiationOptions, NegotiatedInterface, negotiate_agent_interface,
     public_agent_card_url,
 };
@@ -916,9 +916,9 @@ impl ParsedAgentCardView {
                     name: skill.name,
                     description: skill.description,
                     tags: skill.tags,
-                    examples: skill.examples,
-                    input_modes: skill.input_modes,
-                    output_modes: skill.output_modes,
+                    examples: skill.examples.unwrap_or_default(),
+                    input_modes: skill.input_modes.unwrap_or_default(),
+                    output_modes: skill.output_modes.unwrap_or_default(),
                 })
                 .collect(),
         }

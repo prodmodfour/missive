@@ -1,0 +1,53 @@
+{
+  "id": "task-fixture-1",
+  "contextId": "ctx-fixture-1",
+  "status": {
+    "state": "TASK_STATE_COMPLETED",
+    "message": {
+      "messageId": "msg-fixture-agent-1",
+      "contextId": "ctx-fixture-1",
+      "taskId": "task-fixture-1",
+      "role": "ROLE_AGENT",
+      "parts": [
+        {
+          "text": "hello fixture agent",
+          "mediaType": "text/plain"
+        }
+      ]
+    },
+    "timestamp": "2026-05-22T00:00:00Z"
+  },
+  "artifacts": [
+    {
+      "artifactId": "artifact-fixture-1",
+      "name": "echo-output",
+      "description": "Echo response artifact.",
+      "parts": [
+        {
+          "text": "hello fixture agent",
+          "mediaType": "text/plain"
+        }
+      ],
+      "metadata": {
+        "fixture": "artifact"
+      }
+    }
+  ],
+  "history": [
+    {
+      "messageId": "msg-fixture-user-1",
+      "contextId": "ctx-fixture-1",
+      "taskId": "task-fixture-1",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "text": "hello fixture agent",
+          "mediaType": "text/plain"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "fixture": "task"
+  }
+}

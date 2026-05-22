@@ -11,6 +11,7 @@ description = "A2A protocol integration layer for missive."
 path = "src/lib.rs"
 
 [dependencies]
+a2a.workspace = true
 missive-core.workspace = true
 reqwest.workspace = true
 serde.workspace = true

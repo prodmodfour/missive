@@ -489,7 +489,7 @@ Validation:
 
 ## 016 — Integrate official or vendored A2A Rust types
 
-Status: TODO
+Status: DONE
 
 Phase: A2A
 

@@ -8,8 +8,34 @@ use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use reqwest::header::{ETAG, HeaderMap, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use url::Url;
+
+/// Official A2A Rust SDK protocol types re-exported behind missive's A2A
+/// boundary.
+///
+/// The upstream Cargo package is `a2a-lf`, whose library crate is named `a2a`.
+/// Re-exporting the protocol types from this module keeps downstream missive
+/// crates from depending on the upstream SDK directly while still avoiding
+/// duplicate Message/Task/Artifact/Agent Card models in this workspace.
+pub mod protocol {
+    pub use a2a::{
+        AgentCapabilities, AgentCard, AgentCardSignature, AgentExtension, AgentInterface,
+        AgentProvider, AgentSkill, Artifact, AuthenticationInfo, CancelTaskRequest,
+        DeleteTaskPushNotificationConfigRequest, GetExtendedAgentCardRequest,
+        GetTaskPushNotificationConfigRequest, GetTaskRequest,
+        ListTaskPushNotificationConfigsRequest, ListTaskPushNotificationConfigsResponse,
+        ListTasksRequest, ListTasksResponse, Message, Part, PartContent, ProtocolVersion, Role,
+        SVC_PARAM_EXTENSIONS, SVC_PARAM_VERSION, SendMessageConfiguration, SendMessageRequest,
+        SendMessageResponse, SubscribeToTaskRequest, TRANSPORT_PROTOCOL_GRPC,
+        TRANSPORT_PROTOCOL_HTTP_JSON, TRANSPORT_PROTOCOL_JSONRPC, TRANSPORT_PROTOCOL_SLIMRPC, Task,
+        TaskPushNotificationConfig, TaskState, TaskStatus, TransportProtocol, VERSION,
+    };
+}
+
+pub use protocol::{
+    AgentCapabilities, AgentCard, AgentExtension, AgentInterface, AgentProvider, AgentSkill,
+};
 
 /// Cargo package name for this crate.
 pub const CRATE_NAME: &str = "missive-a2a";
@@ -44,87 +70,50 @@ pub const fn crate_info() -> missive_core::CrateInfo {
     missive_core::CrateInfo::new(CRATE_NAME, CRATE_PURPOSE)
 }
 
-/// A2A Agent Card as published at `/.well-known/agent-card.json`.
+/// Extension helpers around the official SDK Agent Card type.
 ///
-/// This type intentionally models the public discovery surface needed by the
-/// current `missive agent inspect` command. It follows the A2A v1 lower-camel
-/// JSON names while accepting snake_case aliases for fixtures generated from the
-/// normative proto names.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentCard {
-    /// Human-readable agent name.
-    pub name: String,
-    /// Human-readable description.
-    pub description: String,
-    /// Ordered list of supported protocol interfaces. The first entry is the
-    /// remote agent's preferred interface. Older/pre-release Agent Cards may
-    /// omit this field; interface negotiation has a registry/base-URL fallback
-    /// for that compatibility case.
-    #[serde(default, alias = "supported_interfaces")]
-    pub supported_interfaces: Vec<AgentInterface>,
-    /// Optional service provider metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<AgentProvider>,
-    /// Agent implementation version.
-    pub version: String,
-    /// Optional documentation URL.
-    #[serde(
-        default,
-        alias = "documentation_url",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub documentation_url: Option<String>,
-    /// Declared A2A capabilities.
-    pub capabilities: AgentCapabilities,
-    /// Declared security scheme descriptions.
-    #[serde(
-        default,
-        alias = "security_schemes",
-        skip_serializing_if = "BTreeMap::is_empty"
-    )]
-    pub security_schemes: BTreeMap<String, Value>,
-    /// Declared security requirements.
-    #[serde(
-        default,
-        alias = "security_requirements",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub security_requirements: Vec<Value>,
-    /// Default input media types.
-    #[serde(default, alias = "default_input_modes")]
-    pub default_input_modes: Vec<String>,
-    /// Default output media types.
-    #[serde(default, alias = "default_output_modes")]
-    pub default_output_modes: Vec<String>,
-    /// Skills advertised by the agent.
-    #[serde(default)]
-    pub skills: Vec<AgentSkill>,
-    /// Optional signature records for the Agent Card.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub signatures: Vec<Value>,
-    /// Optional icon URL.
-    #[serde(default, alias = "icon_url", skip_serializing_if = "Option::is_none")]
-    pub icon_url: Option<String>,
+/// `missive-a2a` parses public Agent Cards into the official `a2a-lf`
+/// `AgentCard` model, then applies missive-specific validation and compatibility
+/// normalization at the edge. This lets future send/task/push features share the
+/// upstream protocol structs while preserving the current inspection behavior for
+/// older cards that omit `supportedInterfaces`.
+pub trait AgentCardExt {
+    /// Parses and validates an Agent Card from JSON using the official SDK type.
+    fn from_json(value: Value) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Returns distinct protocol versions exposed by supported interfaces.
+    fn protocol_versions(&self) -> Vec<String>;
+
+    /// Returns a compact parsed summary useful for command output and cache
+    /// diagnostics.
+    fn summary(&self) -> AgentCardSummary;
 }
 
-impl AgentCard {
-    /// Parses and validates an Agent Card from JSON.
-    pub fn from_json(value: Value) -> Result<Self> {
-        let card = serde_json::from_value::<Self>(value).map_err(|error| {
+impl AgentCardExt for AgentCard {
+    fn from_json(value: Value) -> Result<Self> {
+        if !value.is_object() {
+            return Err(
+                MissiveError::protocol("A2A Agent Card JSON must be an object").with_help(
+                    "Verify that /.well-known/agent-card.json returns an AgentCard object.",
+                ),
+            );
+        }
+
+        let normalized = normalize_agent_card_value(value);
+        let card = parse_official_agent_card(normalized).map_err(|error| {
             MissiveError::protocol("malformed A2A Agent Card JSON")
                 .with_source(error)
                 .with_help(
                     "Verify that /.well-known/agent-card.json follows the A2A AgentCard schema.",
                 )
         })?;
-        card.validate()?;
+        validate_agent_card(&card)?;
         Ok(card)
     }
 
-    /// Returns distinct protocol versions exposed by supported interfaces.
-    #[must_use]
-    pub fn protocol_versions(&self) -> Vec<String> {
+    fn protocol_versions(&self) -> Vec<String> {
         let mut seen = BTreeSet::new();
         let mut versions = Vec::new();
         for interface in &self.supported_interfaces {
@@ -135,10 +124,7 @@ impl AgentCard {
         versions
     }
 
-    /// Returns a compact parsed summary useful for command output and cache
-    /// diagnostics.
-    #[must_use]
-    pub fn summary(&self) -> AgentCardSummary {
+    fn summary(&self) -> AgentCardSummary {
         AgentCardSummary {
             name: self.name.clone(),
             description: self.description.clone(),
@@ -154,35 +140,6 @@ impl AgentCard {
             skills: self.skills.clone(),
         }
     }
-
-    fn validate(&self) -> Result<()> {
-        validate_non_empty("Agent Card name", &self.name)?;
-        validate_non_empty("Agent Card description", &self.description)?;
-        validate_non_empty("Agent Card version", &self.version)?;
-        if self.skills.is_empty() {
-            return Err(
-                MissiveError::protocol("A2A Agent Card does not declare any skills")
-                    .with_help("Public Agent Cards must include at least one skills entry."),
-            );
-        }
-        for (index, interface) in self.supported_interfaces.iter().enumerate() {
-            interface.validate(index)?;
-        }
-        for (index, skill) in self.skills.iter().enumerate() {
-            skill.validate(index)?;
-        }
-        Ok(())
-    }
-}
-
-/// Service provider metadata from an Agent Card.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentProvider {
-    /// Provider website or documentation URL.
-    pub url: String,
-    /// Provider organization name.
-    pub organization: String,
 }
 
 /// Parsed and validated subset of an Agent Card that is stable for command
@@ -219,94 +176,177 @@ pub struct AgentCardSummary {
     pub skills: Vec<AgentSkill>,
 }
 
-/// Capability set declared by an Agent Card.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentCapabilities {
-    /// Whether streaming message/task updates are supported.
-    #[serde(default)]
-    pub streaming: bool,
-    /// Whether task push notifications are supported.
-    #[serde(default, alias = "push_notifications")]
-    pub push_notifications: bool,
-    /// Whether task status history is available.
-    #[serde(default, alias = "state_transition_history")]
-    pub state_transition_history: bool,
-    /// Whether authenticated extended Agent Cards are supported.
-    #[serde(default, alias = "extended_agent_card")]
-    pub extended_agent_card: bool,
-    /// Declared protocol extensions.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub extensions: Vec<AgentExtension>,
-    /// Unknown capability fields preserved for forward compatibility.
-    #[serde(flatten)]
-    pub additional: BTreeMap<String, Value>,
-}
-
-/// A2A extension declaration inside Agent Card capabilities.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentExtension {
-    /// Extension URI.
-    pub uri: String,
-    /// Optional description.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Whether clients must understand this extension to interact safely.
-    #[serde(default)]
-    pub required: bool,
-    /// Extension-specific parameters.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub params: BTreeMap<String, Value>,
-}
-
-/// A concrete protocol interface from an Agent Card.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentInterface {
-    /// URL where this interface is available.
-    pub url: String,
-    /// Protocol binding, for example `HTTP+JSON`, `JSONRPC`, or `GRPC`.
-    #[serde(alias = "protocol_binding", alias = "transport")]
-    pub protocol_binding: String,
-    /// Optional tenant identifier required by this interface.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant: Option<String>,
-    /// A2A protocol version exposed by this interface.
-    #[serde(alias = "protocol_version")]
-    pub protocol_version: String,
-}
-
-impl AgentInterface {
-    fn validate(&self, index: usize) -> Result<()> {
-        validate_non_empty(
-            format!("Agent Card supportedInterfaces[{index}].url"),
-            &self.url,
-        )?;
-        validate_non_empty(
-            format!("Agent Card supportedInterfaces[{index}].protocolBinding"),
-            &self.protocol_binding,
-        )?;
-        validate_non_empty(
-            format!("Agent Card supportedInterfaces[{index}].protocolVersion"),
-            &self.protocol_version,
-        )?;
-        let parsed = Url::parse(&self.url).map_err(|error| {
-            MissiveError::protocol(format!(
-                "A2A Agent Card supportedInterfaces[{index}].url is not an absolute URL"
-            ))
-            .with_source(error)
-            .with_help(
-                "AgentInterface.url must be an absolute URL such as https://agent.example/a2a.",
-            )
-        })?;
-        if parsed.host_str().is_none() {
-            return Err(MissiveError::protocol(format!(
-                "A2A Agent Card supportedInterfaces[{index}].url must include a host"
-            )));
+fn parse_official_agent_card(value: Value) -> std::result::Result<AgentCard, serde_json::Error> {
+    match serde_json::from_value::<AgentCard>(value.clone()) {
+        Ok(card) => Ok(card),
+        Err(primary_error) => {
+            let relaxed = relax_optional_security_fields(value.clone());
+            if relaxed == value {
+                Err(primary_error)
+            } else {
+                serde_json::from_value::<AgentCard>(relaxed).map_err(|_| primary_error)
+            }
         }
-        Ok(())
     }
+}
+
+fn normalize_agent_card_value(mut value: Value) -> Value {
+    let Some(object) = value.as_object_mut() else {
+        return value;
+    };
+
+    move_alias(object, "supportedInterfaces", &["supported_interfaces"]);
+    move_alias(object, "documentationUrl", &["documentation_url"]);
+    move_alias(object, "securitySchemes", &["security_schemes"]);
+    move_alias(object, "securityRequirements", &["security_requirements"]);
+    move_alias(object, "defaultInputModes", &["default_input_modes"]);
+    move_alias(object, "defaultOutputModes", &["default_output_modes"]);
+    move_alias(object, "iconUrl", &["icon_url"]);
+
+    object
+        .entry("supportedInterfaces".to_owned())
+        .or_insert_with(|| Value::Array(Vec::new()));
+
+    if let Some(interfaces) = object
+        .get_mut("supportedInterfaces")
+        .and_then(Value::as_array_mut)
+    {
+        for interface in interfaces {
+            if let Some(interface) = interface.as_object_mut() {
+                move_alias(
+                    interface,
+                    "protocolBinding",
+                    &["protocol_binding", "transport"],
+                );
+                move_alias(interface, "protocolVersion", &["protocol_version"]);
+            }
+        }
+    }
+
+    if let Some(capabilities) = object
+        .get_mut("capabilities")
+        .and_then(Value::as_object_mut)
+    {
+        move_alias(capabilities, "pushNotifications", &["push_notifications"]);
+        move_alias(
+            capabilities,
+            "stateTransitionHistory",
+            &["state_transition_history"],
+        );
+        move_alias(capabilities, "extendedAgentCard", &["extended_agent_card"]);
+    }
+
+    if let Some(skills) = object.get_mut("skills").and_then(Value::as_array_mut) {
+        for skill in skills {
+            if let Some(skill) = skill.as_object_mut() {
+                move_alias(skill, "inputModes", &["input_modes"]);
+                move_alias(skill, "outputModes", &["output_modes"]);
+                move_alias(skill, "securityRequirements", &["security_requirements"]);
+            }
+        }
+    }
+
+    value
+}
+
+fn move_alias(object: &mut Map<String, Value>, canonical: &str, aliases: &[&str]) {
+    if object.contains_key(canonical) {
+        return;
+    }
+    for alias in aliases {
+        if let Some(value) = object.remove(*alias) {
+            object.insert(canonical.to_owned(), value);
+            return;
+        }
+    }
+}
+
+fn relax_optional_security_fields(mut value: Value) -> Value {
+    let Some(object) = value.as_object_mut() else {
+        return value;
+    };
+
+    object.remove("securitySchemes");
+    object.remove("securityRequirements");
+    object.remove("signatures");
+
+    if let Some(skills) = object.get_mut("skills").and_then(Value::as_array_mut) {
+        for skill in skills {
+            if let Some(skill) = skill.as_object_mut() {
+                skill.remove("securityRequirements");
+            }
+        }
+    }
+
+    value
+}
+
+fn validate_agent_card(card: &AgentCard) -> Result<()> {
+    validate_non_empty("Agent Card name", &card.name)?;
+    validate_non_empty("Agent Card description", &card.description)?;
+    validate_non_empty("Agent Card version", &card.version)?;
+    if card.skills.is_empty() {
+        return Err(
+            MissiveError::protocol("A2A Agent Card does not declare any skills")
+                .with_help("Public Agent Cards must include at least one skills entry."),
+        );
+    }
+    for (index, interface) in card.supported_interfaces.iter().enumerate() {
+        validate_agent_interface(interface, index)?;
+    }
+    for (index, skill) in card.skills.iter().enumerate() {
+        validate_agent_skill(skill, index)?;
+    }
+    Ok(())
+}
+
+fn validate_agent_interface(interface: &AgentInterface, index: usize) -> Result<()> {
+    validate_non_empty(
+        format!("Agent Card supportedInterfaces[{index}].url"),
+        &interface.url,
+    )?;
+    validate_non_empty(
+        format!("Agent Card supportedInterfaces[{index}].protocolBinding"),
+        &interface.protocol_binding,
+    )?;
+    validate_non_empty(
+        format!("Agent Card supportedInterfaces[{index}].protocolVersion"),
+        &interface.protocol_version,
+    )?;
+
+    match Url::parse(&interface.url) {
+        Ok(parsed) if parsed.host_str().is_some() => Ok(()),
+        _ if canonical_protocol_binding(&interface.protocol_binding) == GRPC_BINDING
+            && looks_like_grpc_authority(&interface.url) =>
+        {
+            Ok(())
+        }
+        Ok(_) => Err(MissiveError::protocol(format!(
+            "A2A Agent Card supportedInterfaces[{index}].url must include a host"
+        ))),
+        Err(error) => Err(MissiveError::protocol(format!(
+            "A2A Agent Card supportedInterfaces[{index}].url is not an absolute URL"
+        ))
+        .with_source(error)
+        .with_help(
+            "AgentInterface.url must be an absolute URL such as https://agent.example/a2a.",
+        )),
+    }
+}
+
+fn looks_like_grpc_authority(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && !value.contains("://")
+        && !value.starts_with('/')
+        && !value
+            .chars()
+            .any(|character| character.is_ascii_whitespace() || character.is_control())
+}
+
+fn validate_agent_skill(skill: &AgentSkill, index: usize) -> Result<()> {
+    validate_non_empty(format!("Agent Card skills[{index}].id"), &skill.id)?;
+    validate_non_empty(format!("Agent Card skills[{index}].name"), &skill.name)
 }
 
 /// Source used when an A2A interface negotiation result was selected.
@@ -665,45 +705,6 @@ fn local_support_help(binding: Option<&str>) -> String {
     help
 }
 
-/// Skill metadata declared by an Agent Card.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentSkill {
-    /// Stable skill id.
-    pub id: String,
-    /// Human-readable skill name.
-    pub name: String,
-    /// Skill description.
-    #[serde(default)]
-    pub description: String,
-    /// Keywords describing this skill.
-    #[serde(default)]
-    pub tags: Vec<String>,
-    /// Example prompts or tasks.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub examples: Vec<String>,
-    /// Skill-specific input media types.
-    #[serde(default, alias = "input_modes", skip_serializing_if = "Vec::is_empty")]
-    pub input_modes: Vec<String>,
-    /// Skill-specific output media types.
-    #[serde(default, alias = "output_modes", skip_serializing_if = "Vec::is_empty")]
-    pub output_modes: Vec<String>,
-    /// Skill-specific security requirements.
-    #[serde(
-        default,
-        alias = "security_requirements",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub security_requirements: Vec<Value>,
-}
-
-impl AgentSkill {
-    fn validate(&self, index: usize) -> Result<()> {
-        validate_non_empty(format!("Agent Card skills[{index}].id"), &self.id)?;
-        validate_non_empty(format!("Agent Card skills[{index}].name"), &self.name)
-    }
-}
-
 /// Cache validators captured from Agent Card HTTP response headers.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -986,8 +987,54 @@ mod tests {
         assert_eq!(summary.protocol_versions, vec!["1.0"]);
         assert_eq!(summary.supported_interfaces.len(), 2);
         assert_eq!(summary.skills[0].id, "echo");
-        assert!(summary.capabilities.streaming);
-        assert!(summary.capabilities.push_notifications);
+        assert_eq!(summary.capabilities.streaming, Some(true));
+        assert_eq!(summary.capabilities.push_notifications, Some(true));
+    }
+
+    #[test]
+    fn agent_card_parses_snake_case_fixture_aliases() {
+        let card = json!({
+            "name": "Alias Agent",
+            "description": "Uses proto-style fixture keys.",
+            "supported_interfaces": [
+                {
+                    "url": "http://127.0.0.1:8080/a2a",
+                    "protocol_binding": "HTTP+JSON",
+                    "protocol_version": "1.0"
+                }
+            ],
+            "version": "1.0.0",
+            "documentation_url": "https://example.test/docs",
+            "capabilities": {
+                "push_notifications": true,
+                "extended_agent_card": true
+            },
+            "default_input_modes": ["text/plain"],
+            "default_output_modes": ["text/plain"],
+            "skills": [
+                {
+                    "id": "echo",
+                    "name": "Echo",
+                    "description": "Echoes text",
+                    "tags": ["test"],
+                    "input_modes": ["text/plain"],
+                    "output_modes": ["text/plain"]
+                }
+            ]
+        });
+
+        let card = AgentCard::from_json(card).expect("snake_case aliases parse");
+
+        assert_eq!(
+            card.documentation_url.as_deref(),
+            Some("https://example.test/docs")
+        );
+        assert_eq!(card.supported_interfaces[0].protocol_binding, "HTTP+JSON");
+        assert_eq!(card.capabilities.push_notifications, Some(true));
+        assert_eq!(
+            card.skills[0].input_modes.as_deref(),
+            Some(vec!["text/plain".to_owned()].as_slice())
+        );
     }
 
     #[test]

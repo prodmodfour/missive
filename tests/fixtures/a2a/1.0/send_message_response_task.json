@@ -1,0 +1,13 @@
+{
+  "task": {
+    "id": "task-fixture-2",
+    "contextId": "ctx-fixture-2",
+    "status": {
+      "state": "TASK_STATE_SUBMITTED",
+      "timestamp": "2026-05-22T00:01:00Z"
+    },
+    "metadata": {
+      "fixture": "send-message-response-task"
+    }
+  }
+}

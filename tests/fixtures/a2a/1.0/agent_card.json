@@ -1,0 +1,40 @@
+{
+  "name": "Fixture Echo Agent",
+  "description": "A deterministic A2A fixture agent used by missive tests.",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "url": "http://127.0.0.1:8080/rest",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0"
+    },
+    {
+      "url": "http://127.0.0.1:8080/jsonrpc",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "provider": {
+    "organization": "missive fixtures",
+    "url": "https://example.test/a2a-fixtures"
+  },
+  "documentationUrl": "https://example.test/a2a-fixtures/docs",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": true,
+    "extendedAgentCard": false
+  },
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "skills": [
+    {
+      "id": "echo",
+      "name": "Echo",
+      "description": "Echoes text input for protocol tests.",
+      "tags": ["fixture", "echo"],
+      "examples": ["hello"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    }
+  ]
+}

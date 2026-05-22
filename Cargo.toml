@@ -20,6 +20,7 @@ license = "Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+a2a = { package = "a2a-lf", version = "0.3" }
 missive-adapters = { path = "crates/missive-adapters", version = "0.1.0" }
 missive-a2a = { path = "crates/missive-a2a", version = "0.1.0" }
 missive-core = { path = "crates/missive-core", version = "0.1.0" }

@@ -1,8 +1,9 @@
 # Protocol mapping
 
 `missive` treats A2A as the canonical protocol layer. The current implemented
-protocol behavior covers public Agent Card discovery for registered agents and
-local interface negotiation for inspected cards.
+protocol behavior covers public Agent Card discovery for registered agents,
+official Rust protocol type integration through `missive-a2a`, and local
+interface negotiation for inspected cards.
 
 ## Public Agent Card discovery
 
@@ -26,10 +27,14 @@ perform a remote request. If cache validators are available, missive sends
 `If-None-Match` and/or `If-Modified-Since`; `304 Not Modified` keeps the cached
 card and updates the cache validation timestamp.
 
-The current parser extracts and renders the Agent Card fields needed for human
-and machine inspection: provider, agent version, protocol versions, capabilities,
-supported interfaces, default input/output modes, and skills. Full official A2A
-Rust SDK/type integration remains a later ticket.
+The current parser deserializes into the official `a2a-lf` `AgentCard` type and
+extracts the fields needed for human and machine inspection: provider, agent
+version, protocol versions, capabilities, supported interfaces, default
+input/output modes, and skills. A small compatibility layer normalizes known
+snake_case fixture aliases and inserts an empty `supportedInterfaces` array for
+older/pre-release cards that omit the field, preserving the negotiation fallback
+introduced earlier. The raw public card JSON remains cached and rendered for
+inspection.
 
 ## Interface negotiation
 
@@ -71,5 +76,24 @@ fallback and reports `protocol_version = "unknown"` with
 * Unsupported or non-mutual interface bindings map to `missive::transport`.
 * Invalid JSON or schema-incompatible Agent Card payloads map to
   `missive::protocol`.
+
+## Official Rust type boundary
+
+`crates/missive-a2a` depends on the official `a2a-lf` crate from
+`a2aproject/a2a-rs` and re-exports protocol models from
+`missive_a2a::protocol`. Downstream missive crates should use that module rather
+than importing `a2a-lf` directly. Current fixture coverage round-trips these
+A2A v1.0 shapes through official serde types:
+
+* `AgentCard`
+* `Message`
+* `Task`
+* `SendMessageRequest`
+* `SendMessageResponse`
+* `TaskPushNotificationConfig`
+
+Fixtures live under `tests/fixtures/a2a/1.0/`. Update the fixtures and rerun
+`cargo test -p missive-a2a --all-targets` when updating the upstream SDK or when
+A2A wire shapes change.
 
 Authentication material is not resolved for public Agent Card discovery yet.

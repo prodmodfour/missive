@@ -38,8 +38,8 @@ When `a2a-rs` is used as a Git or unreleased dependency, pin the revision and do
 
 ### Follow-up
 
-* Ticket 016 must document the concrete `a2a-rs` integration or compatibility strategy once the SDK is evaluated.
-* A2A conformance fixtures should be versioned and round-trip tested before protocol behavior is treated as stable.
+* ADR 0005 documents the concrete official `a2a-lf` integration and compatibility parser selected by ticket 016.
+* A2A conformance fixtures should continue to be expanded and versioned before broader protocol behavior is treated as stable.
 
 ## References
 
