@@ -7,7 +7,7 @@ Ticket statuses:
 * DONE
 * BLOCKED
 The build loop must select the lowest-numbered TODO or IN_PROGRESS ticket.
-This queue contains 66 project-specific tickets for building `missive`. Each ticket is intended to produce one autonomous commit.
+This queue contains 67 project-specific tickets for building `missive`. Each ticket is intended to produce one autonomous commit.
 ---
 ## 000 — Bootstrap repository skeleton
 
@@ -1442,7 +1442,7 @@ Validation:
 
 ---
 
-## 048 — Implement observability and tracing
+## 048 — Implement tracing/logging foundation
 
 Status: TODO
 
@@ -1450,19 +1450,20 @@ Phase: Observability
 
 Objective:
 
-Implement implement observability and tracing for `missive` without starting later tickets.
+Implement the observability logging foundation for `missive` without starting operation-wide span instrumentation.
 
 Required:
 
-* Add tracing spans for CLI commands, A2A requests, store operations, gateway jobs, adapter events, and collectives.
-* Support RUST_LOG/env filters and optional JSON logs.
-* Redact secrets in traces.
+* Add a reusable `missive-observe` initialization API for tracing subscribers that can be shared by the CLI, gateway, adapters, and tests.
+* Wire CLI/global diagnostics handling for `RUST_LOG`/env filters, `--trace`, `--verbose`, and optional JSON log formatting without changing command semantics beyond diagnostics.
+* Ensure log/tracing rendering uses existing redaction helpers or equivalent so authorization headers, tokens, cookies, and secret-like fields are never emitted raw.
+* Document log levels, JSON log mode, default destinations, and redaction boundaries.
 
 Acceptance criteria:
 
-* Tests or snapshots confirm redaction.
-* Debug logs help diagnose failed protocol calls.
-* Docs explain log levels and destinations.
+* Tests or snapshots confirm env-filter/JSON-log configuration and logging-layer secret redaction.
+* `RUST_LOG`, `--trace`, and `--verbose` produce deterministic diagnostic behavior in smoke or unit tests where feasible.
+* Docs explain how to enable human and JSON logs and where logs are written.
 
 Validation:
 
@@ -1472,7 +1473,38 @@ Validation:
 
 ---
 
-## 049 — Implement logs and diagnostics commands
+## 049 — Add observability spans across missive operations
+
+Status: TODO
+
+Phase: Observability
+
+Objective:
+
+Implement operation-level tracing spans for `missive` using the tracing/logging foundation without adding logs or diagnostics commands.
+
+Required:
+
+* Add tracing spans and structured fields for CLI commands, A2A requests, store operations, gateway jobs, adapter events, and collectives.
+* Include protocol/transport debug context needed to diagnose failed A2A calls while preserving redaction and avoiding raw message or secret payloads.
+* Add tests or snapshots for representative CLI, A2A client, store, gateway/adapter, and collective instrumentation.
+* Update docs with span/field conventions and troubleshooting examples.
+
+Acceptance criteria:
+
+* Debug logs show selected command, agent/binding/protocol version, request/task/job identifiers, state transitions, and errors where applicable.
+* Spans do not expose raw tokens, auth headers, or secret-like values.
+* Representative tests cover CLI, A2A client, store, and at least one gateway/adapter or collective instrumentation path.
+
+Validation:
+
+* Run `scripts/quality-gate.sh`.
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`.
+* Commit the completed ticket with a conventional commit message.
+
+---
+
+## 050 — Implement logs and diagnostics commands
 
 Status: TODO
 
@@ -1501,7 +1533,7 @@ Validation:
 
 ---
 
-## 050 — Implement shell completions and manpages
+## 051 — Implement shell completions and manpages
 
 Status: TODO
 
@@ -1530,7 +1562,7 @@ Validation:
 
 ---
 
-## 051 — Implement command examples and smoke tests
+## 052 — Implement command examples and smoke tests
 
 Status: TODO
 
@@ -1560,7 +1592,7 @@ Validation:
 
 ---
 
-## 052 — Add property tests for parsers and routing
+## 053 — Add property tests for parsers and routing
 
 Status: TODO
 
@@ -1590,7 +1622,7 @@ Validation:
 
 ---
 
-## 053 — Add fuzzing smoke tests
+## 054 — Add fuzzing smoke tests
 
 Status: TODO
 
@@ -1620,7 +1652,7 @@ Validation:
 
 ---
 
-## 054 — Add mutation and failure-injection tests
+## 055 — Add mutation and failure-injection tests
 
 Status: TODO
 
@@ -1650,7 +1682,7 @@ Validation:
 
 ---
 
-## 055 — Add benchmarks and performance budgets
+## 056 — Add benchmarks and performance budgets
 
 Status: TODO
 
@@ -1680,7 +1712,7 @@ Validation:
 
 ---
 
-## 056 — Add CI workflow
+## 057 — Add CI workflow
 
 Status: TODO
 
@@ -1709,7 +1741,7 @@ Validation:
 
 ---
 
-## 057 — Add cross-platform build matrix
+## 058 — Add cross-platform build matrix
 
 Status: TODO
 
@@ -1738,7 +1770,7 @@ Validation:
 
 ---
 
-## 058 — Add Docker and devcontainer support
+## 059 — Add Docker and devcontainer support
 
 Status: TODO
 
@@ -1768,7 +1800,7 @@ Validation:
 
 ---
 
-## 059 — Add release packaging
+## 060 — Add release packaging
 
 Status: TODO
 
@@ -1797,7 +1829,7 @@ Validation:
 
 ---
 
-## 060 — Add supply-chain checks
+## 061 — Add supply-chain checks
 
 Status: TODO
 
@@ -1826,7 +1858,7 @@ Validation:
 
 ---
 
-## 061 — Write user documentation
+## 062 — Write user documentation
 
 Status: TODO
 
@@ -1855,7 +1887,7 @@ Validation:
 
 ---
 
-## 062 — Write architecture and operations documentation
+## 063 — Write architecture and operations documentation
 
 Status: TODO
 
@@ -1884,7 +1916,7 @@ Validation:
 
 ---
 
-## 063 — Add compatibility tests against a2a-rs example agent
+## 064 — Add compatibility tests against a2a-rs example agent
 
 Status: TODO
 
@@ -1915,7 +1947,7 @@ Validation:
 
 ---
 
-## 064 — Add end-to-end multi-agent demo
+## 065 — Add end-to-end multi-agent demo
 
 Status: TODO
 
@@ -1945,7 +1977,7 @@ Validation:
 
 ---
 
-## 065 — Final autonomous review and completion marker
+## 066 — Final autonomous review and completion marker
 
 Status: TODO
 

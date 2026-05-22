@@ -151,13 +151,15 @@ Follow-up automation update requested by the user: token/context-length failures
 
 Updated `docs/AUTONOMOUS_BUILD.md` and `docs/USAGE.md` with the cleanup/retry and token-limit splitter behavior. The ticket queue was not advanced; next recommended ticket remains 048.
 
+Recovery maintenance update requested by the user: oversized ticket 048 was split after a prior token/context-length failure into ticket 048 for tracing/logging foundation work and ticket 049 for operation-level tracing spans. Later pending tickets were renumbered to 050 through 066. No product code was changed. Lightweight validation run: `bash -n scripts/build-loop.sh scripts/run-agent.sh` plus a heading-sequence check confirming tickets 000 through 066 are unique and ordered.
+
 ## Known blockers
 
 None known.
 
 ## Limitations
 
-The A2A conformance fixture suite is a static, local compatibility suite based on A2A 1.0 specification examples and the current official Rust SDK wire shape. It is not an external certification program and does not prove interoperability with every independent A2A implementation; ticket 063 remains responsible for running against an upstream/example A2A agent.
+The A2A conformance fixture suite is a static, local compatibility suite based on A2A 1.0 specification examples and the current official Rust SDK wire shape. It is not an external certification program and does not prove interoperability with every independent A2A implementation; ticket 064 remains responsible for running against an upstream/example A2A agent.
 
 `missive-test-support` remains a deterministic local fixture server rather than a formal external conformance service. It intentionally serves the endpoint shapes needed by current and near-future missive tests.
 
@@ -245,4 +247,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 048 — Implement observability and tracing.
+Ticket 048 — Implement tracing/logging foundation.
