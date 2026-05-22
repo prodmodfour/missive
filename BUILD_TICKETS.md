@@ -131,7 +131,7 @@ Validation:
 
 ## 004 — Create architecture decision records scaffold
 
-Status: TODO
+Status: DONE
 
 Phase: Foundation
 

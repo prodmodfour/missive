@@ -1,5 +1,25 @@
 # Architecture decision records
 
-This directory will contain missive architecture decision records (ADRs).
+Architecture decision records (ADRs) capture durable project choices for `missive`: the context, decision, alternatives considered, and consequences. They are intentionally short and should be updated by adding a new ADR rather than rewriting history when a decision changes.
 
-Ticket 004 adds the ADR template and the initial decisions. The directory exists in the bootstrap skeleton so documentation links and future ADR work have a stable home.
+## Status vocabulary
+
+Use one of these status values in the `Status:` field:
+
+* `Proposed` — under discussion and not yet binding.
+* `Accepted` — current project direction.
+* `Deprecated` — still documented for history but no longer recommended.
+* `Superseded` — replaced by another ADR; include a link to the successor.
+
+Initial ADRs use `Accepted` because they document project-defining constraints from `PROJECT_BRIEF.md`.
+
+## Records
+
+* [0001 — Rust workspace structure](0001-rust-workspace-structure.md)
+* [0002 — A2A-first protocol strategy](0002-a2a-first-protocol-strategy.md)
+* [0003 — SQLite local state](0003-sqlite-local-state.md)
+* [0004 — CLI-first UX](0004-cli-first-ux.md)
+
+## Template
+
+Use [template.md](template.md) for new records. Keep numbering monotonic and prefer one decision per ADR.

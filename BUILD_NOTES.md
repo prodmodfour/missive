@@ -2,7 +2,7 @@
 
 ## Current state
 
-Tickets 000, 001, 002, and 003 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000, 001, 002, 003, and 004 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
 * `crates/missive-cli` — package `missive-cli`, binary `missive`, and placeholder CLI entry point
 * `crates/missive-core` — core domain primitive scaffolding
@@ -17,7 +17,9 @@ The root `Cargo.toml` is a virtual workspace manifest with shared workspace pack
 
 Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-tools.sh` is executable, idempotent, supports `--check`, and can install Rust components, optional cargo tools, and opt-in system dependencies.
 
-`scripts/quality-gate.sh` is now the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
+`scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
+
+Architecture decision records now live under `docs/adr/`, with a template and initial accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, and CLI-first UX. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries.
 
 ## Quality gates
 
@@ -49,34 +51,30 @@ Checks run by the default gate included:
 * optional `cargo machete` check because it is installed
 * optional `cargo audit` check because it is installed
 
-Additional targeted/aggressive validation run during this cycle:
+Additional targeted validation run during this cycle:
 
 ```bash
-bash -n scripts/quality-gate.sh scripts/check-no-secrets.sh scripts/check-no-generated-private-files.sh scripts/bootstrap-tools.sh
-shellcheck scripts/*.sh scripts/lib/*.sh
-MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh
+grep -R '^Status:' docs/adr/*.md
+grep -n 'ADR 000[1-4]' docs/architecture.md docs/adr/README.md
 ```
 
-Aggressive mode passed. It additionally ran `cargo llvm-cov --workspace --all-features --no-report`, repeated installed dependency checks, and ran a bounded `cargo mutants --workspace --check` smoke shard using a temporary output directory. It skipped `cargo-nextest` because it is not installed, skipped miri because the component is unavailable for the active stable toolchain, and skipped fuzz, benchmark, and Docker checks because there are no fuzz targets, benchmark sources, Dockerfile, Compose file, devcontainer, or Docker integration script yet.
+The targeted checks confirmed the initial ADR status fields and the links from `docs/architecture.md`.
 
-Environment/tooling notes: the aggressive coverage check ensured the `llvm-tools-preview` rustup component (`llvm-tools-x86_64-unknown-linux-gnu`) is installed. No new cargo subcommands or OS packages were installed manually during this cycle.
+Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle.
 
 ## Latest cycle notes
 
-Implemented ticket 003 — Harden Rust quality gate.
+Implemented ticket 004 — Create architecture decision records scaffold.
 
 Included:
 
-* expanded `scripts/quality-gate.sh` into explicit shell, guardrail, Rust feature-check, formatting/linting, test, documentation, build, dependency, aggressive, Docker, `just`, and Node adjunct stages
-* added default `cargo check` coverage for default, all-features, and no-default-features workspace builds
-* added docs build enforcement with `RUSTDOCFLAGS=-Dwarnings`
-* required the guardrail scripts to exist and run during the gate
-* enhanced secret scanning to cover tracked files and untracked non-ignored files with labelled findings
-* enhanced generated/private-file scanning to cover tracked files and untracked non-ignored files, including local key files and mutation output
-* added optional `shellcheck` usage to the quality gate and bootstrap tooling
-* added bounded aggressive paths for nextest, coverage, advisory/dependency checks, deny policy when configured, miri, mutation compile smoke, fuzz smoke, benchmark compilation, and Docker/devcontainer validation
-* kept cargo-mutants output in a temporary directory so aggressive checks do not dirty the working tree
-* documented the hardened default and aggressive gate behaviour in `docs/tooling.md` and refreshed README validation commands
+* added `docs/architecture.md` with current crate boundaries, recommended high-level flow, and links to the initial ADRs
+* replaced the placeholder ADR README with status vocabulary, an ADR index, and template guidance
+* added `docs/adr/template.md`
+* added ADR 0001 for the accepted Rust workspace structure
+* added ADR 0002 for the accepted A2A-first protocol strategy, including alternatives around wrapping `a2a-rs`, hand-rolling protocol models, schema generation, and multi-protocol scope
+* added ADR 0003 for accepted SQLite-backed local state
+* added ADR 0004 for accepted CLI-first UX and automation-friendly output expectations
 
 ## Known blockers
 
@@ -86,10 +84,12 @@ None known.
 
 The `missive` binary is still a placeholder. Real CLI flags, subcommands, output rendering, configuration, A2A integration, persistence, gateway behaviour, adapters, and collectives remain for later tickets.
 
+The ADRs document current architectural direction only. Detailed protocol mapping, storage schema, gateway operations, adapter lifecycle, collectives, security, testing, and runbook documentation remain for later implementation/documentation tickets.
+
 Optional exhaustive validation tools are not all installed in this environment yet. The default quality gate passes without them and uses installed optional tools automatically. `cargo-nextest` is currently missing, and miri is unavailable for the active stable toolchain.
 
 There is not yet a `cargo-deny` policy file; the quality gate skips deny checks until the supply-chain policy ticket introduces one.
 
 ## Next recommended ticket
 
-Ticket 004 — Create architecture decision records scaffold.
+Ticket 005 — Implement core error and result types.
