@@ -1,0 +1,36 @@
+# Rust build output
+/target/
+
+# Local missive/runtime state (must stay outside version control)
+/.missive/
+/.agent/
+
+# Environment and secret-bearing local files
+.env
+.env.*
+!.env.example
+
+# Databases and runtime handles
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pid
+*.sock
+
+# Coverage, release, and generated reports
+/coverage/
+/dist/
+*.profraw
+
+# Fuzz crash/artifact output
+/fuzz/artifacts/
+/fuzz/crashes/
+
+# Operating system and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

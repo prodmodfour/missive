@@ -1,58 +1,61 @@
-# missive autonomous build system
+# missive
 
-This directory is a drop-in autonomous build system for `missive`, a lowercase-m Rust CLI for A2A-native agent communication management.
+`missive` is an early-stage Rust command-line tool and local control plane for A2A-native agent communication. The long-term goal is to make agent messaging feel like `curl`, agent communication state feel like `kubectl`, and multi-agent coordination feel like MPI-style collective operations.
 
-It is based on the ticket-driven pattern from the autonomous build template:
+## Current status
 
-1. read `AGENTS.md`, `PROJECT_BRIEF.md`, `BUILD_TICKETS.md`, and `BUILD_NOTES.md`
-2. select the lowest-numbered `TODO` or `IN_PROGRESS` ticket
-3. implement only that ticket
-4. run `scripts/quality-gate.sh`
-5. update tickets and notes
-6. commit
-7. leave the working tree clean
+This repository is at bootstrap stage. It contains:
 
-## Files
+* a minimal Rust workspace root with a binary package named `missive`
+* repository hygiene files and guardrails
+* the autonomous ticket queue used to build the project one commit at a time
+* starter documentation directories, including `docs/adr/`
 
-```text
-AGENTS.md                         Agent rules for autonomous work
-PROJECT_BRIEF.md                  missive-specific project brief
-BUILD_TICKETS.md                  66 ordered autonomous build tickets
-BUILD_NOTES.md                    Current state and cycle notes
-tickets.json                      Machine-readable ticket export
-tickets/github-issue-bodies.md    Copy/paste GitHub issue bodies
-scripts/build-loop.sh             Autonomous loop
-scripts/run-agent.sh              Agent wrapper; defaults to pi
-scripts/quality-gate.sh           Rust-aware quality gate
-scripts/bootstrap-tools.sh        Optional tool installer
-scripts/check-no-secrets.sh       Secret guardrail
-scripts/check-no-generated-private-files.sh
-scripts/create-github-issues.sh   Optional gh-based issue creator
-docs/USAGE.md                     How to use this build system
-docs/AUTONOMOUS_BUILD.md          Operational model
-```
-
-## Quick start
-
-Copy these files into the root of the future/existing `missive` repo, commit them, then run:
+The current binary is only a placeholder:
 
 ```bash
-scripts/bootstrap-tools.sh
-scripts/build-loop.sh --create-branch feature/autonomous-build --max-cycles 70
+cargo run
 ```
 
-Run without pushing:
+Future tickets add the real crate layout, CLI commands, A2A integration, persistence, gateway, adapters, collectives, tests, and packaging.
+
+## Build and validation
+
+Prerequisites:
+
+* Rust stable toolchain with `cargo`, `rustfmt`, and `clippy`
+* Bash for repository scripts
+
+Validate the checkout with:
 
 ```bash
-scripts/build-loop.sh --create-branch feature/autonomous-build --max-cycles 70 --no-push
+scripts/quality-gate.sh
 ```
 
-The final ticket sets:
+Useful direct Rust commands during this bootstrap phase:
 
-```text
-AUTOMATION_STATUS: DONE
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo build --workspace --all-features
 ```
 
-## Autonomy
+Runtime state, credentials, logs, database files, generated artifacts, and other machine-local files must stay out of the repository.
 
-The agent may use sudo, install build/test dependencies, run Docker, run local mock servers, run fuzzers, run benchmarks, and use aggressive validation. The only retained limits are repository hygiene and not attacking third-party systems.
+## Autonomous build system
+
+The repository is driven by ordered tickets in `BUILD_TICKETS.md`. Each autonomous run must complete only the lowest-numbered `TODO` or `IN_PROGRESS` ticket, run the quality gate, update `BUILD_NOTES.md`, and commit the result.
+
+Key files:
+
+* `AGENTS.md` — autonomous agent rules
+* `PROJECT_BRIEF.md` — project goals, constraints, and architecture expectations
+* `BUILD_TICKETS.md` — ordered implementation queue
+* `BUILD_NOTES.md` — latest validation notes and next ticket
+* `docs/AUTONOMOUS_BUILD.md` — build-loop model
+* `docs/USAGE.md` — autonomous build usage
+
+## License
+
+Licensed under the Apache License, Version 2.0. See `LICENSE`.

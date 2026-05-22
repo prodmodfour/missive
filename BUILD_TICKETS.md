@@ -11,7 +11,7 @@ This queue contains 66 project-specific tickets for building `missive`. Each tic
 ---
 ## 000 — Bootstrap repository skeleton
 
-Status: TODO
+Status: DONE
 
 Phase: Foundation
 

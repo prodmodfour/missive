@@ -1,0 +1,11 @@
+[package]
+name = "missive"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Bootstrap skeleton for the missive A2A-native agent communication CLI."
+publish = false
+
+[workspace]
+members = ["."]
+resolver = "3"

@@ -2,40 +2,59 @@
 
 ## Current state
 
-`missive` autonomous build system has been initialised from the autonomous build template pattern.
+Ticket 000 is complete. The repository now has a bootstrap Rust workspace root for `missive`, including a placeholder `missive` binary, root package metadata, `rust-toolchain.toml`, license/contribution/security/changelog files, `.gitignore`, and an initial `docs/adr/` directory.
 
-The project brief is customised, the ticket queue contains 66 ordered project-specific tickets, and the quality gate is Rust-aware.
+The autonomous build system remains at the repository root and continues to drive work through `BUILD_TICKETS.md`.
 
 ## Quality gates
 
 Latest run:
 
 ```bash
-bash scripts/quality-gate.sh
+scripts/quality-gate.sh
 ```
 
-Result: not yet run in the target repository.
+Result: passed.
+
+Checks run by the gate included:
+
+* shell script syntax checks
+* secret guardrail
+* generated/private-file guardrail
+* `cargo fmt --all -- --check`
+* `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+* `cargo test --workspace --all-features`
+* `cargo test --workspace --doc --all-features`
+* `cargo build --workspace --all-features`
+* `cargo build --workspace --all-features --release`
+* optional `cargo machete` check because it was installed
+* optional `cargo audit` check because it was installed
+
+No new tools were installed during this cycle. `cargo audit` updated/read the local RustSec advisory database as part of validation.
 
 ## Latest cycle notes
 
-Initial autonomous build plan prepared.
+Implemented ticket 000 — Bootstrap repository skeleton.
 
 Included:
 
-* project-specific `PROJECT_BRIEF.md`
-* project-specific `AGENTS.md`
-* 66-ticket `BUILD_TICKETS.md`
-* Rust-aware `scripts/quality-gate.sh`
-* optional `scripts/bootstrap-tools.sh`
-* build loop and agent wrapper scripts
-* secret/generated-file guardrails
-* docs for autonomous usage
-* JSON ticket export for issue automation
+* `Cargo.toml` workspace/package root with edition 2024 and package name `missive`
+* `src/lib.rs` and `src/main.rs` placeholder binary implementation
+* `Cargo.lock` for the bootstrap binary package
+* `rust-toolchain.toml` with stable Rust plus rustfmt/clippy components
+* `.gitignore` entries for Rust outputs, runtime state, secrets, local databases, logs, sockets, fuzz artifacts, and editor/OS noise
+* project-facing `README.md`
+* `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`
+* `docs/adr/README.md` as the initial ADR directory placeholder
 
 ## Known blockers
 
 None known.
 
+## Limitations
+
+The `missive` binary is currently only a bootstrap placeholder. Ticket 001 will replace/extend this with the target Cargo workspace crate layout.
+
 ## Next recommended ticket
 
-Ticket 000 — Bootstrap repository skeleton.
+Ticket 001 — Define Cargo workspace and crate layout.
