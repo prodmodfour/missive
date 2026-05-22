@@ -1,0 +1,9 @@
+{
+  "contextId": "context-uuid",
+  "status": "TASK_STATE_WORKING",
+  "pageSize": 50,
+  "pageToken": "cursor-token",
+  "historyLength": 3,
+  "includeArtifacts": true,
+  "statusTimestampAfter": "2024-03-15T10:00:00Z"
+}

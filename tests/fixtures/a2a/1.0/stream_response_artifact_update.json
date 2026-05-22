@@ -1,0 +1,24 @@
+{
+  "artifactUpdate": {
+    "taskId": "task-stream-1",
+    "contextId": "ctx-stream-1",
+    "artifact": {
+      "artifactId": "artifact-stream-report-1",
+      "name": "Climate Change Report",
+      "parts": [
+        {
+          "text": "# Climate Change Report\n\nGlobal temperatures continue to rise.",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "metadata": {
+        "fixture": "stream-artifact"
+      }
+    },
+    "append": false,
+    "lastChunk": true,
+    "metadata": {
+      "fixture": "stream-artifact-update"
+    }
+  }
+}

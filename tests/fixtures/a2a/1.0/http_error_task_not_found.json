@@ -1,0 +1,18 @@
+{
+  "error": {
+    "code": 404,
+    "status": "NOT_FOUND",
+    "message": "The specified task ID does not exist or is not accessible",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "TASK_NOT_FOUND",
+        "domain": "a2a-protocol.org",
+        "metadata": {
+          "taskId": "task-123",
+          "timestamp": "2025-11-09T10:30:00.000Z"
+        }
+      }
+    ]
+  }
+}

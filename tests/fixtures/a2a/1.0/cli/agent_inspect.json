@@ -1,0 +1,150 @@
+{
+  "data": {
+    "agent": {
+      "agent_card_fetched_at": "<timestamp>",
+      "alias": "fixture",
+      "base_url": "http://fixture.invalid",
+      "binding_preference": [
+        "http+json",
+        "json-rpc"
+      ],
+      "created_at": "<timestamp>",
+      "interface_urls": {},
+      "metadata": {},
+      "read_only": false,
+      "source": "local",
+      "tags": [],
+      "updated_at": "<timestamp>"
+    },
+    "cache": {
+      "discovery_url": "http://fixture.invalid/.well-known/agent-card.json",
+      "fetched_at": "<timestamp>",
+      "status": "fetched"
+    },
+    "card": {
+      "agent_version": "1.0.0",
+      "capabilities": {
+        "extendedAgentCard": false,
+        "pushNotifications": true,
+        "streaming": true
+      },
+      "default_input_modes": [
+        "text/plain",
+        "application/json"
+      ],
+      "default_output_modes": [
+        "text/plain",
+        "application/json"
+      ],
+      "description": "A deterministic A2A fixture agent used by missive tests.",
+      "documentation_url": "https://example.test/a2a-fixtures/docs",
+      "name": "Fixture Echo Agent",
+      "protocol_versions": [
+        "1.0"
+      ],
+      "provider": {
+        "organization": "missive fixtures",
+        "url": "https://example.test/a2a-fixtures"
+      },
+      "skills": [
+        {
+          "description": "Echoes text input for protocol tests.",
+          "examples": [
+            "hello"
+          ],
+          "id": "echo",
+          "input_modes": [
+            "text/plain"
+          ],
+          "name": "Echo",
+          "output_modes": [
+            "text/plain"
+          ],
+          "tags": [
+            "fixture",
+            "echo"
+          ]
+        }
+      ],
+      "supported_interfaces": [
+        {
+          "protocol_binding": "HTTP+JSON",
+          "protocol_version": "1.0",
+          "url": "http://fixture.invalid/a2a"
+        },
+        {
+          "protocol_binding": "JSONRPC",
+          "protocol_version": "1.0",
+          "url": "http://fixture.invalid/rpc"
+        }
+      ]
+    },
+    "message": "Inspected A2A Agent Card for 'fixture' (Fixture Echo Agent) using http+json",
+    "profile": "default",
+    "raw_card": {
+      "capabilities": {
+        "extendedAgentCard": false,
+        "pushNotifications": true,
+        "streaming": true
+      },
+      "defaultInputModes": [
+        "text/plain",
+        "application/json"
+      ],
+      "defaultOutputModes": [
+        "text/plain",
+        "application/json"
+      ],
+      "description": "A deterministic A2A fixture agent used by missive tests.",
+      "documentationUrl": "https://example.test/a2a-fixtures/docs",
+      "name": "Fixture Echo Agent",
+      "provider": {
+        "organization": "missive fixtures",
+        "url": "https://example.test/a2a-fixtures"
+      },
+      "skills": [
+        {
+          "description": "Echoes text input for protocol tests.",
+          "examples": [
+            "hello"
+          ],
+          "id": "echo",
+          "inputModes": [
+            "text/plain"
+          ],
+          "name": "Echo",
+          "outputModes": [
+            "text/plain"
+          ],
+          "tags": [
+            "fixture",
+            "echo"
+          ]
+        }
+      ],
+      "supportedInterfaces": [
+        {
+          "protocolBinding": "HTTP+JSON",
+          "protocolVersion": "1.0",
+          "url": "http://fixture.invalid/a2a"
+        },
+        {
+          "protocolBinding": "JSONRPC",
+          "protocolVersion": "1.0",
+          "url": "http://fixture.invalid/rpc"
+        }
+      ],
+      "version": "1.0.0"
+    },
+    "selected_interface": {
+      "binding": "http+json",
+      "protocol_binding": "HTTP+JSON",
+      "protocol_version": "1.0",
+      "source": "agent_card",
+      "url": "http://fixture.invalid/a2a"
+    }
+  },
+  "kind": "agent_inspect",
+  "ok": true,
+  "schema_version": "missive.output.v1"
+}

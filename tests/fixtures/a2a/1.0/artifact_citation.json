@@ -1,0 +1,26 @@
+{
+  "artifactId": "research-summary-001",
+  "name": "Climate Change Summary",
+  "description": "Research summary with citation extension metadata.",
+  "parts": [
+    {
+      "text": "Global temperatures have risen by 1.1°C since pre-industrial times, with significant impacts on weather patterns and sea levels.",
+      "mediaType": "text/plain"
+    }
+  ],
+  "extensions": ["https://standards.example.test/extensions/citations/v1"],
+  "metadata": {
+    "https://standards.example.test/extensions/citations/v1": {
+      "sources": [
+        {
+          "title": "Global Temperature Anomalies - 2023 Report",
+          "authors": ["Smith, J.", "Johnson, M."],
+          "url": "https://climate.example.test/reports/2023-temperature",
+          "accessDate": "2025-10-21",
+          "relevantText": "Global temperatures have risen by 1.1°C"
+        }
+      ]
+    },
+    "fixture": "citation-artifact"
+  }
+}

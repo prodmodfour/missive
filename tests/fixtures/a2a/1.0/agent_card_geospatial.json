@@ -1,0 +1,86 @@
+{
+  "name": "GeoSpatial Route Planner Agent",
+  "description": "Provides route planning, traffic analysis, and custom map generation services for A2A fixture tests.",
+  "supportedInterfaces": [
+    {
+      "url": "https://georoute-agent.example.test/a2a/v1",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    },
+    {
+      "url": "https://georoute-agent.example.test/a2a/grpc",
+      "protocolBinding": "GRPC",
+      "protocolVersion": "1.0"
+    },
+    {
+      "url": "https://georoute-agent.example.test/a2a/json",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "provider": {
+    "organization": "Example Geo Services Inc.",
+    "url": "https://www.examplegeoservices.test"
+  },
+  "iconUrl": "https://georoute-agent.example.test/icon.png",
+  "version": "1.2.0",
+  "documentationUrl": "https://docs.examplegeoservices.test/georoute-agent/api",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": true,
+    "extendedAgentCard": true,
+    "extensions": [
+      {
+        "uri": "https://standards.example.test/extensions/citations/v1",
+        "description": "Provides citation metadata for route research sources.",
+        "required": false
+      }
+    ]
+  },
+  "securitySchemes": {
+    "oidc": {
+      "openIdConnectSecurityScheme": {
+        "openIdConnectUrl": "https://accounts.example.test/.well-known/openid-configuration"
+      }
+    }
+  },
+  "securityRequirements": [
+    {
+      "oidc": ["openid", "profile", "email"]
+    }
+  ],
+  "defaultInputModes": ["application/json", "text/plain"],
+  "defaultOutputModes": ["application/json", "image/png"],
+  "skills": [
+    {
+      "id": "route-optimizer-traffic",
+      "name": "Traffic-Aware Route Optimizer",
+      "description": "Calculates driving routes with traffic, closures, and user preferences.",
+      "tags": ["maps", "routing", "navigation", "directions", "traffic"],
+      "examples": [
+        "Plan a route from Mountain View to San Francisco International Airport avoiding tolls.",
+        "{\"origin\":{\"lat\":37.422,\"lng\":-122.084},\"destination\":{\"lat\":37.7749,\"lng\":-122.4194},\"preferences\":[\"avoid_ferries\"]}"
+      ],
+      "inputModes": ["application/json", "text/plain"],
+      "outputModes": ["application/json", "application/vnd.geo+json", "text/html"]
+    },
+    {
+      "id": "custom-map-generator",
+      "name": "Personalized Map Generator",
+      "description": "Creates custom map images or interactive map views from user-defined points of interest.",
+      "tags": ["maps", "customization", "visualization", "cartography"],
+      "examples": [
+        "Generate a map of my upcoming road trip with all planned stops highlighted.",
+        "Show coffee shops within a 1-mile radius of my current location."
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["image/png", "image/jpeg", "application/json", "text/html"]
+    }
+  ],
+  "signatures": [
+    {
+      "protected": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpPU0UiLCJraWQiOiJrZXktMSIsImprdSI6Imh0dHBzOi8vZXhhbXBsZS50ZXN0L2FnZW50L2p3a3MuanNvbiJ9",
+      "signature": "QFdkNLNszlGj3z3u0YQGt_T9LixY3qtdQpZmsTdDHDe3fXV9y9-B3m2-XgCpzuhiLt8E0tV6HXoZKHv4GtHgKQ"
+    }
+  ]
+}

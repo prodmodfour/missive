@@ -1,0 +1,13 @@
+{
+  "task": {
+    "id": "task-stream-1",
+    "contextId": "ctx-stream-1",
+    "status": {
+      "state": "TASK_STATE_WORKING",
+      "timestamp": "2024-03-15T11:01:00Z"
+    },
+    "metadata": {
+      "fixture": "stream-task"
+    }
+  }
+}

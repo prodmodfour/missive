@@ -1,0 +1,38 @@
+{
+  "id": "task-input-required-1",
+  "contextId": "ctx-flight-booking-1",
+  "status": {
+    "state": "TASK_STATE_INPUT_REQUIRED",
+    "message": {
+      "messageId": "msg-need-flight-details-1",
+      "contextId": "ctx-flight-booking-1",
+      "taskId": "task-input-required-1",
+      "role": "ROLE_AGENT",
+      "parts": [
+        {
+          "text": "I need more details. Where would you like to fly from and to?",
+          "mediaType": "text/plain"
+        }
+      ]
+    },
+    "timestamp": "2024-03-15T10:05:00Z"
+  },
+  "history": [
+    {
+      "messageId": "msg-book-flight-1",
+      "contextId": "ctx-flight-booking-1",
+      "taskId": "task-input-required-1",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "text": "Book me a flight",
+          "mediaType": "text/plain"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "fixture": "input-required-task",
+    "sourceExample": "a2a-1.0-multi-turn"
+  }
+}

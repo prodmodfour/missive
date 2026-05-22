@@ -1,0 +1,26 @@
+{
+  "message": {
+    "messageId": "6dbc13b5-bd57-4c2b-b503-24e381b6c8d6",
+    "role": "ROLE_USER",
+    "parts": [
+      {
+        "text": "Generate the Q1 sales report. This usually takes a while. Notify me when it's ready.",
+        "mediaType": "text/plain"
+      }
+    ]
+  },
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://client.example.test/webhook/a2a-notifications",
+      "token": "fixture-token-redacted",
+      "authentication": {
+        "scheme": "Bearer",
+        "credentials": "fixture-credential-redacted"
+      }
+    },
+    "returnImmediately": true
+  },
+  "metadata": {
+    "fixture": "send-message-request-with-push-config"
+  }
+}

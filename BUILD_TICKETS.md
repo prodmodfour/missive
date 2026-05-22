@@ -819,7 +819,7 @@ Validation:
 
 ## 027 — Add A2A conformance fixture suite
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 

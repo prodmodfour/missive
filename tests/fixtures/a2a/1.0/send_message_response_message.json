@@ -1,0 +1,16 @@
+{
+  "message": {
+    "messageId": "msg-direct-response-1",
+    "contextId": "ctx-direct-response-1",
+    "role": "ROLE_AGENT",
+    "parts": [
+      {
+        "text": "Today will be sunny with a high of 75°F",
+        "mediaType": "text/plain"
+      }
+    ],
+    "metadata": {
+      "fixture": "direct-message-response"
+    }
+  }
+}

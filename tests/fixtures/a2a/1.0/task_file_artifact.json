@@ -1,0 +1,28 @@
+{
+  "id": "43667960-d455-4453-b0cf-1bae4955270d",
+  "contextId": "c295ea44-7543-4f78-b524-7a38915ad6e4",
+  "status": {
+    "state": "TASK_STATE_COMPLETED",
+    "timestamp": "2024-03-15T12:05:00Z"
+  },
+  "artifacts": [
+    {
+      "artifactId": "9b6934dd-37e3-4eb1-8766-962efaab63a1",
+      "name": "processed_image_with_faces.png",
+      "parts": [
+        {
+          "url": "https://storage.example.test/processed/task-bbb/output.png?redacted=1",
+          "filename": "output.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "metadata": {
+        "fixture": "file-reference-artifact"
+      }
+    }
+  ],
+  "metadata": {
+    "fixture": "file-artifact-task",
+    "sourceExample": "a2a-1.0-file-exchange"
+  }
+}

@@ -257,16 +257,32 @@ exported separately with `missive task artifact list/show/save/export`.
 than importing `a2a-lf` directly. Current fixture coverage round-trips these
 A2A v1.0 shapes through official serde types:
 
-* `AgentCard`
-* `Message`
-* `Task`
-* `SendMessageRequest`
-* `SendMessageResponse`
-* `TaskPushNotificationConfig`
+* `AgentCard`, including a richer multi-interface Agent Card with extensions,
+  security schemes, and signatures
+* `Message`, including text/data and file-byte examples
+* `Artifact`, including extension metadata
+* `Task`, including completed, input-required, and file-artifact task examples
+* `SendMessageRequest` and `SendMessageResponse`
+* `StreamResponse` task/message/status/artifact variants, including the push
+  webhook payload shape
+* `GetTaskRequest`, `ListTasksRequest`/`ListTasksResponse`,
+  `CancelTaskRequest`, and `SubscribeToTaskRequest`
+* `TaskPushNotificationConfig` plus get/list/delete push config request and list
+  response shapes
+* JSON-RPC request/response/error envelopes with embedded official payloads
+* HTTP binding error values that preserve A2A `google.rpc.ErrorInfo` details
 
-Fixtures live under `tests/fixtures/a2a/1.0/`. Update the fixtures and rerun
-`cargo test -p missive-a2a --all-targets` when updating the upstream SDK or when
-A2A wire shapes change.
+Fixtures live under `tests/fixtures/a2a/1.0/`, and normalized CLI golden outputs
+for fixture-backed `agent inspect --json` and `send --json` live under
+`tests/fixtures/a2a/1.0/cli/`. The directory name is the protocol major/minor
+version used by those wire examples. When updating the upstream SDK or when A2A
+wire shapes change, follow the update process in
+`tests/fixtures/a2a/1.0/README.md`, then rerun at least:
+
+```bash
+cargo test -p missive-a2a --test protocol_fixtures --all-features
+cargo test -p missive-cli --test a2a_conformance_fixtures --all-features
+```
 
 Authentication material is resolved for implemented Agent Card fetch/refresh,
 non-streaming send, streaming send, and task get/list/wait/cancel requests.

@@ -1,0 +1,18 @@
+{
+  "error": {
+    "code": 400,
+    "status": "FAILED_PRECONDITION",
+    "message": "The requested A2A protocol version 0.5 is not supported by this agent",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "VERSION_NOT_SUPPORTED",
+        "domain": "a2a-protocol.org",
+        "metadata": {
+          "requestedVersion": "0.5",
+          "supportedVersions": "1.0"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "data": {
+    "agent": "fixture",
+    "message": "Sent message to 'fixture' and recorded task task-fixture-2 in context ctx-fixture-2",
+    "persistence": {
+      "context_id": "ctx-fixture-2",
+      "request_message_id": "<generated-id>",
+      "response_message_id": "<generated-id>",
+      "task_id": "task-fixture-2"
+    },
+    "profile": "default",
+    "request": {
+      "accepted_output_modes": [
+        "text/plain"
+      ],
+      "local_input_bytes": 20,
+      "message_id": "<generated-id>",
+      "metadata": {
+        "a2a.protocol_version": "1.0"
+      },
+      "part_count": 1,
+      "parts": [
+        {
+          "kind": "text",
+          "local_bytes": 20,
+          "source": "message"
+        }
+      ],
+      "request_bytes": 180
+    },
+    "response": {
+      "context_id": "ctx-fixture-2",
+      "raw": {
+        "task": {
+          "contextId": "ctx-fixture-2",
+          "id": "task-fixture-2",
+          "metadata": {
+            "fixture": "send-message-response-task"
+          },
+          "status": {
+            "state": "TASK_STATE_SUBMITTED",
+            "timestamp": "2026-05-22T00:01:00Z"
+          }
+        }
+      },
+      "shape": "task",
+      "state": "submitted",
+      "task_id": "task-fixture-2"
+    },
+    "selected_interface": {
+      "binding": "http+json",
+      "protocol_binding": "HTTP+JSON",
+      "protocol_version": "1.0",
+      "source": "agent_card",
+      "url": "http://fixture.invalid/a2a"
+    }
+  },
+  "kind": "send_result",
+  "ok": true,
+  "schema_version": "missive.output.v1"
+}

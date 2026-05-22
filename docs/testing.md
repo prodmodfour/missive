@@ -74,16 +74,48 @@ let server = MockA2aServer::builder()
 
 The fixture records request method, path, lowercase headers, and UTF-8 body for assertions. It is intentionally deterministic and local-only; tests must not use it as a proxy to external services.
 
+## A2A conformance fixture suite
+
+Protocol-versioned conformance examples live under:
+
+```text
+tests/fixtures/a2a/1.0/
+```
+
+The directory name tracks the A2A major/minor protocol version. The suite covers
+Agent Cards, messages, tasks, artifacts, streaming events, push notification
+configs, JSON-RPC envelopes, HTTP error bodies, and normalized CLI golden outputs
+under `tests/fixtures/a2a/1.0/cli/`.
+
+Targeted conformance checks are:
+
+```bash
+cargo test -p missive-a2a --test protocol_fixtures --all-features
+cargo test -p missive-cli --test a2a_conformance_fixtures --all-features
+```
+
+To intentionally refresh CLI golden outputs after a public output contract change,
+run:
+
+```bash
+MISSIVE_UPDATE_GOLDENS=1 cargo test -p missive-cli --test a2a_conformance_fixtures --all-features
+```
+
+Only commit the normalized golden JSON, not local ports, generated message IDs,
+timestamps, runtime databases, or captured external traffic. The fixture README
+contains the update process for future A2A protocol versions.
+
 ## Running the fixture tests
 
-Targeted checks for the fixture and its CLI integration are:
+Targeted checks for the reusable mock server and CLI integration are:
 
 ```bash
 cargo test -p missive-test-support --all-targets
 cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
 ```
 
-The default quality gate also runs these tests through the workspace test pass:
+The default quality gate also runs these tests and the conformance suite through
+the workspace test pass:
 
 ```bash
 scripts/quality-gate.sh

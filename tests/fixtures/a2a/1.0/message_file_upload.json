@@ -1,0 +1,19 @@
+{
+  "messageId": "6dbc13b5-bd57-4c2b-b503-24e381b6c8d6",
+  "role": "ROLE_USER",
+  "parts": [
+    {
+      "text": "Analyze this image and highlight any faces.",
+      "mediaType": "text/plain"
+    },
+    {
+      "raw": "iVBORw0KGgo=",
+      "filename": "input_image.png",
+      "mediaType": "image/png"
+    }
+  ],
+  "metadata": {
+    "fixture": "file-upload-message",
+    "sourceExample": "a2a-1.0-file-exchange"
+  }
+}

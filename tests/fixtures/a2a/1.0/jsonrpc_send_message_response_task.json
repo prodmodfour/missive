@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "task": {
+      "id": "task-jsonrpc-send-1",
+      "contextId": "ctx-jsonrpc-send-1",
+      "status": {
+        "state": "TASK_STATE_SUBMITTED",
+        "timestamp": "2024-03-15T11:00:00Z"
+      },
+      "metadata": {
+        "fixture": "jsonrpc-send-response-task"
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "statusUpdate": {
+    "taskId": "task-stream-1",
+    "contextId": "ctx-stream-1",
+    "status": {
+      "state": "TASK_STATE_COMPLETED",
+      "message": {
+        "messageId": "msg-stream-status-1",
+        "contextId": "ctx-stream-1",
+        "taskId": "task-stream-1",
+        "role": "ROLE_AGENT",
+        "parts": [
+          {
+            "text": "Report complete.",
+            "mediaType": "text/plain"
+          }
+        ]
+      },
+      "timestamp": "2024-03-15T18:30:00Z"
+    },
+    "metadata": {
+      "fixture": "stream-status-update"
+    }
+  }
+}

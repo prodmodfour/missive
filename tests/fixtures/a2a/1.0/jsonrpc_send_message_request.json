@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "messageId": "msg-jsonrpc-send-1",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "text": "Hello over JSON-RPC",
+          "mediaType": "text/plain"
+        }
+      ]
+    },
+    "configuration": {
+      "acceptedOutputModes": ["text/plain"]
+    }
+  }
+}

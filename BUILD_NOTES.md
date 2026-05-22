@@ -2,11 +2,11 @@
 
 ## Current state
 
-Tickets 000 through 026 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000 through 027 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
-* `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, A2A service-parameter CLI overrides, authentication input resolution for implemented Agent Card/send/stream/task requests, output rendering and redaction helpers, help snapshots, implemented `missive agent add/list/show/inspect/refresh/remove/rename`, implemented non-streaming `missive send` with rich text/file-reference/file-bytes/JSON-data message parts, implemented streaming `missive stream` with the same rich input parser, implemented `missive task get/list/wait/cancel`, implemented `missive task artifact list/show/save/export`, implemented `missive context create/list/show/fork/close/export`, implemented `missive events list/tail/replay/export`, and placeholder execution status for later commands
+* `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, A2A service-parameter CLI overrides, authentication input resolution for implemented Agent Card/send/stream/task requests, output rendering and redaction helpers, help snapshots and A2A conformance CLI golden tests, implemented `missive agent add/list/show/inspect/refresh/remove/rename`, implemented non-streaming `missive send` with rich text/file-reference/file-bytes/JSON-data message parts, implemented streaming `missive stream` with the same rich input parser, implemented `missive task get/list/wait/cancel`, implemented `missive task artifact list/show/save/export`, implemented `missive context create/list/show/fork/close/export`, implemented `missive events list/tail/replay/export`, and placeholder execution status for later commands
 * `crates/missive-core` — core domain primitive scaffolding, including shared error/result types, strongly typed IDs, timestamps, metadata maps and A2A metadata keys, envelopes, configuration schema, protocol service-parameter defaults, config auth-ref schema, config discovery, profile validation, redacted config rendering, and deterministic task-wait exit-code variants
-* `crates/missive-a2a` — A2A protocol/client integration scaffolding, official `a2a-lf` protocol type re-exports, Agent Card discovery/parsing helpers for `/.well-known/agent-card.json`, A2A service-parameter request handling, resolved auth-header request handling, A2A interface negotiation helpers, non-streaming SendMessage HTTP+JSON/JSON-RPC client support, streaming SendStreamingMessage HTTP+JSON/JSON-RPC SSE client support, task GetTask/ListTasks/CancelTask HTTP+JSON/JSON-RPC client support, and A2A serde fixture/parser tests
+* `crates/missive-a2a` — A2A protocol/client integration scaffolding, official `a2a-lf` protocol type re-exports, Agent Card discovery/parsing helpers for `/.well-known/agent-card.json`, A2A service-parameter request handling, resolved auth-header request handling, A2A interface negotiation helpers, non-streaming SendMessage HTTP+JSON/JSON-RPC client support, streaming SendStreamingMessage HTTP+JSON/JSON-RPC SSE client support, task GetTask/ListTasks/CancelTask HTTP+JSON/JSON-RPC client support, and a protocol-versioned A2A 1.0 conformance fixture suite with serde round-trip tests
 * `crates/missive-store` — persistence scaffolding with local state path resolution, profile-specific data/state/cache directories, SQLite database path resolution, process locks for state mutation and gateway operation, embedded SQLite schema migrations, a blocking typed repository facade for non-secret auth refs, agents, contexts, tasks, artifacts, messages, events, groups, group members, and gateway jobs, plus helpers to record A2A protocol versions in task/event metadata and message rows that can carry protocol metadata
 * `crates/missive-router` — routing and collectives scaffolding
 * `crates/missive-gateway` — gateway daemon scaffolding
@@ -14,13 +14,13 @@ Tickets 000 through 026 are complete. The repository uses the target Cargo works
 * `crates/missive-observe` — observability scaffolding
 * `crates/missive-test-support` — reusable local A2A mock server fixtures for integration tests, including Agent Card discovery, HTTP+JSON and JSON-RPC endpoints, controllable task states, streaming SSE events, push-config fixture routes, auth/version-error paths, malformed responses, and request recording
 
-The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer depends on `rusqlite` with bundled SQLite plus `serde`/`serde_json` for typed JSON repository boundaries. The A2A layer depends on the official `a2a-lf` crate from `a2aproject/a2a-rs` for protocol types and on `reqwest` with blocking rustls-backed HTTP/TLS support for Agent Card discovery, non-streaming sends, SSE streaming sends, and task operations. The test-support crate depends on `missive-a2a` and `serde_json` so fixtures can use official A2A method/error constants while staying local and deterministic. The CLI directly depends on the workspace `url` crate for registry URL validation, has a default `native-keyring` feature using the Rust `keyring` crate for platform keyring-backed auth refs where available, and uses `missive-test-support` as a dev-dependency for reusable local A2A integration coverage.
+The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer depends on `rusqlite` with bundled SQLite plus `serde`/`serde_json` for typed JSON repository boundaries. The A2A layer depends on the official `a2a-lf` crate from `a2aproject/a2a-rs` for protocol types and on `reqwest` with blocking rustls-backed HTTP/TLS support for Agent Card discovery, non-streaming sends, SSE streaming sends, and task operations. The versioned conformance fixtures live under `tests/fixtures/a2a/1.0/` and are consumed by `missive-a2a` round-trip tests plus `missive-cli` golden-output tests. The test-support crate depends on `missive-a2a` and `serde_json` so fixtures can use official A2A method/error constants while staying local and deterministic. The CLI directly depends on the workspace `url` crate for registry URL validation, has a default `native-keyring` feature using the Rust `keyring` crate for platform keyring-backed auth refs where available, and uses `missive-test-support` as a dev-dependency for reusable local A2A integration coverage.
 
 Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-tools.sh` is executable, idempotent, supports `--check`, and can install Rust components, optional cargo tools, and opt-in system dependencies.
 
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
 
-Architecture decision records live under `docs/adr/`, with a template and accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, CLI-first UX, and the official A2A Rust protocol type strategy. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command/agent-registry/Agent-Card/send/stream/task/context/events/service-parameter/auth contract, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, typed repository contract, A2A type boundary, and reusable local A2A fixture crate. `docs/protocol.md` documents the current official Rust type boundary, Agent Card discovery, rich SendMessage/SendStreamingMessage message-part mapping, task GetTask/ListTasks/CancelTask mapping, local context continuity mapping, service-parameter handling, auth-header handling, interface negotiation mapping, error mapping, and fixture update process. `docs/security.md` documents current auth inputs, keyring support, storage tradeoffs, local file-input path disclosure tradeoffs, redaction, context/event export redaction, and limitations. `docs/testing.md` documents local validation and how to run/extend the reusable mock A2A server fixtures.
+Architecture decision records live under `docs/adr/`, with a template and accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, CLI-first UX, and the official A2A Rust protocol type strategy. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command/agent-registry/Agent-Card/send/stream/task/context/events/service-parameter/auth contract, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, typed repository contract, A2A type boundary, and reusable local A2A fixture crate. `docs/protocol.md` documents the current official Rust type boundary, Agent Card discovery, rich SendMessage/SendStreamingMessage message-part mapping, task GetTask/ListTasks/CancelTask mapping, local context continuity mapping, service-parameter handling, auth-header handling, interface negotiation mapping, error mapping, conformance fixture coverage, and fixture update process. `docs/security.md` documents current auth inputs, keyring support, storage tradeoffs, local file-input path disclosure tradeoffs, redaction, context/event export redaction, and limitations. `docs/testing.md` documents local validation, how to run/extend the reusable mock A2A server fixtures, and how to run/update protocol-versioned A2A conformance fixtures.
 
 `missive-core` exposes `MissiveError`, `Result<T>`, `ErrorCategory`, `MissiveExitCode`, and `ErrorReport`. The error taxonomy covers I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures. Each category has a stable diagnostic code, deterministic exit code mapping for CLI use, human `Display` rendering, `miette::Diagnostic` metadata, and a serializable JSON/NDJSON report shape. `MissiveError::with_exit_code` allows command-specific deterministic exit codes, currently used by task wait: failed `80`, cancelled `81`, timeout `82`, and input-required `83`.
 
@@ -91,34 +91,32 @@ Checks run by the default gate included:
 Additional targeted validation run during this cycle:
 
 ```bash
-cargo test -p missive-test-support --all-targets
-cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
-cargo check --workspace --all-targets --all-features
-cargo clippy -p missive-test-support --all-targets --all-features -- -D warnings
-cargo clippy -p missive-cli --test mock_a2a_server_fixture --all-features -- -D warnings
-cargo test -p missive-test-support --all-targets
-cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
+cargo test -p missive-a2a --test protocol_fixtures -- --nocapture
+MISSIVE_UPDATE_GOLDENS=1 cargo test -p missive-cli --test a2a_conformance_fixtures --all-features -- --nocapture
+cargo test -p missive-cli --test a2a_conformance_fixtures --all-features -- --nocapture
+cargo test -p missive-a2a --test protocol_fixtures --all-features
+cargo test -p missive-cli --test a2a_conformance_fixtures --all-features
+cargo clippy -p missive-a2a --test protocol_fixtures --all-features -- -D warnings
+cargo clippy -p missive-cli --test a2a_conformance_fixtures --all-features -- -D warnings
 scripts/quality-gate.sh
 ```
 
-The targeted checks covered the reusable mock A2A server's Agent Card, HTTP+JSON, JSON-RPC, task-state queue, streaming SSE, push-config, auth, version-error, malformed-response, and request-recording behavior, plus CLI integration through local HTTP+JSON and JSON-RPC `missive send` flows.
+The targeted checks covered the versioned A2A 1.0 fixture directory, official SDK serde round trips for Agent Cards/messages/tasks/artifacts/stream events/operation requests/push configs/JSON-RPC envelopes, HTTP A2A error-info validation, and normalized CLI golden outputs for fixture-backed `agent inspect --json` and `send --json` flows. `MISSIVE_UPDATE_GOLDENS=1` was used only to create the new normalized golden files before rerunning the same CLI test without the update flag.
 
 Environment/tooling notes: no new cargo subcommands, Rust components, OS packages, or Rust dependencies were installed during this cycle.
 
 ## Latest cycle notes
 
-Implemented ticket 026 — Build local mock A2A server fixtures.
+Implemented ticket 027 — Add A2A conformance fixture suite.
 
 Included:
 
-* added `crates/missive-test-support` as a reusable dev-support workspace crate
-* implemented `MockA2aServer`, `MockA2aServerBuilder`, and `MockA2aHandle` for local-only A2A integration fixtures
-* served public Agent Cards with HTTP+JSON and JSON-RPC interfaces, streaming and push capabilities, and deterministic test metadata
-* implemented HTTP+JSON fixture routes for SendMessage, SendStreamingMessage SSE, GetTask, ListTasks, CancelTask, and push-config create/get/list/delete aliases
-* implemented JSON-RPC fixture handling for SendMessage, SendStreamingMessage SSE, GetTask, ListTasks, CancelTask, and push-config create/get/list/delete methods using official A2A method constants
-* added controllable task-state queues, stream event replacement, send-response replacement, push-config insertion, request recording, auth-header requirements, protocol-version errors, and malformed Agent Card/send/task/stream/JSON-RPC response modes
-* added unit tests for fixture routes and a CLI integration test proving local HTTP+JSON and JSON-RPC `missive send` flows can use the reusable fixture
-* documented fixture use and extension in `docs/testing.md`, and linked the test-support crate from README and architecture docs
+* expanded `tests/fixtures/a2a/1.0/` with deterministic A2A 1.0 JSON examples for Agent Cards, messages, tasks, artifacts, stream responses, operation requests/responses, push notification configs, JSON-RPC envelopes, and HTTP error bodies
+* added `tests/fixtures/a2a/1.0/README.md` documenting fixture sources, redaction rules, protocol-version directory naming, and the update process for future A2A versions
+* broadened `crates/missive-a2a/tests/protocol_fixtures.rs` so official `a2a-lf` types round-trip all supported fixture categories through serde and validate HTTP error-info payloads
+* added `crates/missive-cli/tests/a2a_conformance_fixtures.rs` with fixture-backed CLI golden output coverage for `missive agent inspect --json` and `missive send --json`
+* added normalized CLI goldens under `tests/fixtures/a2a/1.0/cli/`, replacing local ports, generated message IDs, and timestamps with stable placeholders
+* updated README, `docs/protocol.md`, and `docs/testing.md` to describe the conformance fixture suite and targeted validation commands
 
 ## Known blockers
 
@@ -126,7 +124,9 @@ None known.
 
 ## Limitations
 
-`missive-test-support` is a deterministic local fixture server, not an external interoperability or formal A2A conformance suite. It intentionally serves the endpoint shapes needed by current and near-future missive tests; ticket 027 remains responsible for broader spec fixture coverage and protocol-versioned conformance fixtures.
+The A2A conformance fixture suite is a static, local compatibility suite based on A2A 1.0 specification examples and the current official Rust SDK wire shape. It is not an external certification program and does not prove interoperability with every independent A2A implementation; ticket 063 remains responsible for running against an upstream/example A2A agent.
+
+`missive-test-support` remains a deterministic local fixture server rather than a formal external conformance service. It intentionally serves the endpoint shapes needed by current and near-future missive tests.
 
 Older CLI integration tests still contain some per-file minimal TCP mocks from earlier tickets. New protocol/gateway/push/adapters tests should prefer `crates/missive-test-support`, and legacy mocks can be migrated opportunistically when those tests are touched for functional work.
 
@@ -184,4 +184,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 027 — Add A2A conformance fixture suite.
+Ticket 028 — Implement push notification config commands.
