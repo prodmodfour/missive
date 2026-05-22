@@ -106,7 +106,7 @@ The daemon exposes unauthenticated local JSON endpoints:
 
 The paths can be changed with `--health-path`, `--ready-path`, and `--status-path`; they must be distinct non-root HTTP paths.
 
-A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `health_http`, active `subscriptions`, plus idle placeholders for `webhook_receiver`, `background_jobs`, and `adapters`.
+A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, plus idle placeholders for `webhook_receiver`, `background_jobs`, and `adapters`.
 
 ## Task subscriptions and resume
 
@@ -121,6 +121,21 @@ On startup and then periodically while running, the `subscriptions` component sc
 If a subscription stream fails or closes before the task reaches a terminal state, the gateway leaves the `task_subscription` job in `retrying` state, increments `retry_count`, records `gateway.subscription.backoff_ms`, stores `next_run_at`, and appends `missive.gateway.subscription.retrying`. Backoff is bounded between 1s and 30s and is visible in `/status`, NDJSON `gateway_component` output, the `gateway_jobs` row, and the event journal.
 
 This provides restart resume: after a daemon restart, any still-in-flight task and persisted subscription job are discovered from SQLite and monitored again once their backoff permits.
+
+## Sessions and reset policies
+
+The `sessions` component represents the persistent gateway session store added for communication continuity. A gateway session is keyed by source kind, source identity, target agent, and a resume name, and points at the current A2A `contextId`. This lets future adapters and gateway job workers resume a named source/agent conversation after process restart without relying on in-memory state.
+
+Session rows store reset policy metadata:
+
+* `none` — keep using the linked context until an explicit reset or relink.
+* `daily` — rotate when the configured UTC reset hour boundary has passed.
+* `idle` — rotate when `last_active_at` is older than the configured idle timeout.
+* `both` — rotate when either the daily boundary or idle timeout is reached.
+
+The reset evaluator lives in `crates/missive-gateway::session` and accepts an injectable clock; tests use a fixed clock so daily and idle boundary behavior is deterministic. The current daemon initializes/migrates the store and reports the `sessions` component as ready, but it does not yet expose user-facing session commands or adapter-driven session rotation. Later busy-input, job, and adapter tickets should use the typed `missive-store` gateway-session repository APIs instead of storing session state in memory.
+
+Sessions are not long-term memory. They do not contain learned facts, summaries for model recall, vector indexes, prompts, or tool state. They only record communication routing state: source identity, target agent, resume name, linked context id, reset policy fields, timestamps, reset count, and non-secret metadata.
 
 ## State and locking
 

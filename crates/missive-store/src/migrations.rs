@@ -13,7 +13,7 @@ use missive_core::{MissiveError, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Current schema version created by the embedded migrations.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 /// SQLite application id reserved for missive databases (`miss` as big-endian ASCII).
 pub const SQLITE_APPLICATION_ID: i32 = 0x6d69_7373;
@@ -28,11 +28,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 "#;
 
 const INITIAL_SCHEMA_SQL: &str = include_str!("../migrations/0001_initial_schema.sql");
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial_schema",
-    sql: INITIAL_SCHEMA_SQL,
-}];
+const GATEWAY_SESSIONS_SQL: &str = include_str!("../migrations/0002_gateway_sessions.sql");
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        sql: INITIAL_SCHEMA_SQL,
+    },
+    Migration {
+        version: 2,
+        name: "gateway_sessions",
+        sql: GATEWAY_SESSIONS_SQL,
+    },
+];
 
 /// An embedded store schema migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -371,6 +379,7 @@ mod tests {
         "auth_refs",
         "push_configs",
         "gateway_jobs",
+        "gateway_sessions",
         "adapter_bindings",
     ];
 
@@ -382,8 +391,9 @@ mod tests {
         let report = migrate_database(&database_path).expect("migration succeeds");
 
         assert_eq!(report.current_version(), CURRENT_SCHEMA_VERSION);
-        assert_eq!(report.applied().len(), 1);
+        assert_eq!(report.applied().len(), 2);
         assert_eq!(report.applied()[0].version(), 1);
+        assert_eq!(report.applied()[1].version(), 2);
         assert!(database_path.exists());
     }
 
@@ -402,6 +412,7 @@ mod tests {
         assert!(indexes.contains("idx_tasks_agent_state"));
         assert!(indexes.contains("idx_events_context_task"));
         assert!(indexes.contains("idx_gateway_jobs_state_next_run"));
+        assert!(indexes.contains("idx_gateway_sessions_source_agent"));
     }
 
     #[test]
@@ -412,12 +423,14 @@ mod tests {
         let second = migrate_connection(&mut connection).expect("second migration succeeds");
         let applied = applied_migrations(&connection).expect("ledger reads");
 
-        assert_eq!(first.applied().len(), 1);
+        assert_eq!(first.applied().len(), 2);
         assert!(second.applied().is_empty());
-        assert_eq!(applied.len(), 1);
+        assert_eq!(applied.len(), 2);
         assert_eq!(applied[0].name(), "initial_schema");
         assert_eq!(applied[0].checksum(), embedded_migrations()[0].checksum());
-        assert_eq!(schema_version(&connection).expect("version"), Some(1));
+        assert_eq!(applied[1].name(), "gateway_sessions");
+        assert_eq!(applied[1].checksum(), embedded_migrations()[1].checksum());
+        assert_eq!(schema_version(&connection).expect("version"), Some(2));
     }
 
     #[test]

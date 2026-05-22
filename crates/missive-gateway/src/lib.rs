@@ -2,6 +2,7 @@
 
 pub mod daemon;
 pub mod service;
+pub mod session;
 mod subscription;
 pub mod webhook;
 
@@ -15,6 +16,10 @@ pub use service::{
     GatewayServiceCommand, GatewayServiceCommandResult, GatewayServiceOptions,
     GatewayServicePlatform, GatewayServiceResult, GatewayServiceScope, captured_environment_keys,
     execute_gateway_service_action, validate_service_environment,
+};
+pub use session::{
+    FixedGatewaySessionClock, GatewaySessionClock, GatewaySessionResetEvaluation,
+    GatewaySessionResetReason, SystemGatewaySessionClock, evaluate_session_reset,
 };
 pub use webhook::{
     DEFAULT_MAX_BODY_BYTES, DEFAULT_WEBHOOK_PATH, WebhookAccepted, WebhookAuth, WebhookAuthView,

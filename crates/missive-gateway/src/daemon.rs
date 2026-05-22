@@ -39,6 +39,7 @@ const GATEWAY_SOURCE: &str = "gateway:daemon";
 const COMPONENT_SUPERVISOR: &str = "supervisor";
 const COMPONENT_EVENT_BUS: &str = "event_bus";
 const COMPONENT_STORE: &str = "store";
+const COMPONENT_SESSIONS: &str = "sessions";
 const COMPONENT_HEALTH_HTTP: &str = "health_http";
 pub(crate) const COMPONENT_SUBSCRIPTIONS: &str = "subscriptions";
 const COMPONENT_WEBHOOK_RECEIVER: &str = "webhook_receiver";
@@ -595,6 +596,10 @@ fn initial_components(job_concurrency: u16) -> Vec<GatewayComponentStatus> {
             COMPONENT_STORE,
             "SQLite store opened and migrations applied",
         ),
+        GatewayComponentStatus::ready(
+            COMPONENT_SESSIONS,
+            "persistent source/agent session store and reset policies available",
+        ),
         GatewayComponentStatus::new(
             COMPONENT_HEALTH_HTTP,
             "starting",
@@ -806,6 +811,7 @@ mod tests {
         assert_eq!(by_name[COMPONENT_SUPERVISOR], "running");
         assert_eq!(by_name[COMPONENT_EVENT_BUS], "running");
         assert_eq!(by_name[COMPONENT_STORE], "ready");
+        assert_eq!(by_name[COMPONENT_SESSIONS], "ready");
         assert_eq!(by_name[COMPONENT_SUBSCRIPTIONS], "idle");
         assert_eq!(by_name[COMPONENT_BACKGROUND_JOBS], "idle");
         assert_eq!(by_name[COMPONENT_ADAPTERS], "idle");

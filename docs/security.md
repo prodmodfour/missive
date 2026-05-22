@@ -72,6 +72,13 @@ Keyring tokens avoid putting the secret in config, command history, or SQLite,
 but availability depends on the local OS/session keyring. Headless Linux systems
 may need keyutils/keyring setup or an env-backed fallback.
 
+Gateway session rows store source kind/source identity, target agent alias,
+resume name, linked context id, reset policy fields, timestamps, reset count,
+and non-secret metadata. They are communication continuity records only, not
+agent memory. Source identities such as adapter user/channel identifiers can be
+operationally sensitive, so keep profile SQLite files outside the repository and
+prune them according to future adapter retention policy.
+
 `--header Name:Value` is useful for one-off auth headers such as `X-Api-Key`,
 but the full value can be visible in shell history and process listings. Prefer
 config auth refs or `--bearer-token-env` for repeated use.
@@ -190,5 +197,5 @@ adapter tickets must reuse the same resolution and redaction path when they add
 broader outbound requests.
 
 Webhook signature/JWT verification, adapter trust boundaries, trace/log sinks,
-rate limits, gateway subscription auth resolution, and insecure local token
-storage policy are not implemented yet.
+rate limits, gateway subscription auth resolution, user-facing session management
+commands, and insecure local token storage policy are not implemented yet.

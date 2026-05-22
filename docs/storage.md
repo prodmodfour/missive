@@ -16,9 +16,9 @@ store.
   successful migration run.
 * Store connections enable foreign-key enforcement and a bounded busy timeout.
 
-The current schema version is `1`, created by
-`0001_initial_schema.sql`. Runtime database files are resolved outside the source
-tree by the state path contract documented in
+The current schema version is `2`, created by `0001_initial_schema.sql` plus
+`0002_gateway_sessions.sql`. Runtime database files are resolved outside the
+source tree by the state path contract documented in
 [`docs/configuration.md`](configuration.md#local-state-paths).
 
 ## Tables
@@ -36,6 +36,7 @@ tree by the state path contract documented in
 | `group_members` | Stores group membership, rank names, tags, weights, and routing metadata. | Keep with the owning group; cascade delete when the group is removed. |
 | `adapter_bindings` | Stores configured local adapter bindings, kind, profile mapping, source identity, settings, and metadata. | Keep while the adapter is configured. Disable instead of deleting when audit history is useful. |
 | `gateway_jobs` | Stores gateway-managed background jobs, state, related agent/context/task/group/adapter IDs, request/result JSON, retry data, and locks. | Keep queued/running jobs until completion. Completed job retention should be bounded by future gateway policy. |
+| `gateway_sessions` | Stores persistent per-source/per-agent communication sessions, resume names, linked A2A contexts, reset policy mode (`none`, `daily`, `idle`, or `both`), last activity/reset timestamps, and non-secret metadata. | Keep while a source/agent conversation should be resumable. Reset rotates the linked context but does not create long-term agent memory. Source identities can be operationally sensitive and should be pruned with adapter retention policy later. |
 | `push_configs` | Stores local records of A2A push notification configs, callback URLs, auth refs, remote config JSON, and deletion timestamps. | Keep active configs while remote tasks may call back. Deleted configs retain a tombstone until pruning is safe. |
 | `events` | Append-oriented event journal for registry changes, protocol calls, streaming updates, task changes, group operations, gateway jobs, and adapter callbacks. | Keep enough history for replay, diagnostics, and exports. Future retention policies should prefer compact summaries over silent loss. |
 
@@ -111,11 +112,17 @@ strings:
   methods for background job state; the gateway currently uses kind
   `task_subscription` to persist/resume A2A task subscription state and bounded
   backoff
+* gateway sessions: `GatewaySessionUpsert`, `GatewaySessionRecord`,
+  `GatewaySessionId`, `GatewaySessionResetMode`, CRUD/list methods, and
+  `get_gateway_session_by_resume` for named resume by source kind, source id,
+  target agent, and resume name. Rows link to a current `ContextId` and store
+  reset policy fields for gateway/adapters to evaluate without storing agent
+  memory.
 
 Repository records reuse `missive-core` identifiers such as `AgentAlias`,
 `ContextId`, `TaskId`, `EventId`, `GroupName`, `RankName`, `TransportName`,
 `MissiveTimestamp`, and `Metadata`. Store-specific ids such as `ArtifactId`,
-`GatewayJobId`, and `AdapterBindingId` are validated wrappers. Auth-ref repository rows persist only
+`GatewayJobId`, `GatewaySessionId`, and `AdapterBindingId` are validated wrappers. Auth-ref repository rows persist only
 non-secret references such as environment variable names or keyring account
 coordinates; raw tokens are not stored, and CLI `--bearer-token-env`/`--header`
 values are never written to SQLite. JSON columns are serialized and parsed at the
@@ -132,7 +139,7 @@ should use for multi-row state changes.
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
 and the CLI now uses the auth-ref, agent, context, group, task, artifact,
-message, event, and push-config repositories for `missive agent` registry
+message, event, push-config, and gateway-session repositories for `missive agent` registry
 commands, public Agent Card cache updates, non-streaming `missive send`
 persistence, streaming `missive stream` request/event/artifact persistence, task
 get/list/wait/cancel state updates, `missive task artifact` local export
@@ -140,8 +147,11 @@ commands, context create/list/show/fork/close/export state management, group
 create/list/show/add/remove/rename/delete state management, broadcast collective
 context/task/message/event persistence, barrier collective task/artifact/event persistence,
 gather collective local context/task/message/artifact/event reads plus safe artifact export, reduce collective local context/task/message/artifact/event reads plus local reduced-output message persistence, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
-gateway task subscription/resume job state and event persistence, webhook
-callback event persistence, and event journal list/tail/replay/export.
+gateway task subscription/resume job state and event persistence, persistent
+gateway session storage and reset-policy metadata, webhook callback event
+persistence, and event journal list/tail/replay/export. Sessions are local
+communication continuity records only; missive does not store long-term agent
+memory, learned facts, or cognition state in `gateway_sessions`.
 Adapter-binding repositories, retention enforcement, compaction, and durable
 event producers for future background jobs and adapter callbacks are implemented
 by later tickets.

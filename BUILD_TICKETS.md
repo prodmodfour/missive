@@ -1206,7 +1206,7 @@ Validation:
 
 ## 040 — Implement gateway session store inspired by Hermes
 
-Status: TODO
+Status: DONE
 
 Phase: Sessions
 

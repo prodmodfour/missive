@@ -144,6 +144,7 @@ macro_rules! store_identifier {
 }
 
 store_identifier!(GatewayJobId, "gateway job id");
+store_identifier!(GatewaySessionId, "gateway session id");
 store_identifier!(AdapterBindingId, "adapter binding id");
 store_identifier!(ArtifactId, "artifact id");
 store_identifier!(PushConfigId, "push config id");
@@ -360,6 +361,27 @@ impl_string_enum!(GatewayJobState, "gateway job state", {
     Failed => "failed",
     Cancelled => "cancelled",
     Retrying => "retrying",
+});
+
+/// Reset policy mode for persistent gateway communication sessions.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GatewaySessionResetMode {
+    /// Never reset automatically; explicit commands/workers may still relink the session.
+    #[default]
+    None,
+    /// Reset when a UTC daily boundary configured by `daily_reset_hour` has passed.
+    Daily,
+    /// Reset when the session has been idle longer than `idle_timeout_seconds`.
+    Idle,
+    /// Reset when either the daily boundary or idle timeout is reached.
+    Both,
+}
+impl_string_enum!(GatewaySessionResetMode, "gateway session reset mode", {
+    None => "none",
+    Daily => "daily",
+    Idle => "idle",
+    Both => "both",
 });
 
 /// Input used to create or update a non-secret authentication reference row.
@@ -1189,6 +1211,101 @@ pub struct GatewayJobRecord {
     pub completed_at: Option<MissiveTimestamp>,
 }
 
+/// Input used to create or update a persistent gateway communication session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GatewaySessionUpsert {
+    /// Gateway session id.
+    pub gateway_session_id: GatewaySessionId,
+    /// Source kind such as `cli`, `adapter`, `webhook`, or a local integration name.
+    pub source_kind: String,
+    /// Stable source identity, for example an adapter user/channel composite.
+    pub source_id: String,
+    /// Target/default agent for this communication session.
+    pub agent_alias: AgentAlias,
+    /// Human or adapter-provided name used for later resume.
+    pub resume_name: String,
+    /// Current A2A context linked to this session.
+    pub context_id: ContextId,
+    /// Reset policy mode.
+    pub reset_mode: GatewaySessionResetMode,
+    /// UTC hour at which daily reset boundaries occur.
+    pub daily_reset_hour: u8,
+    /// Idle timeout in seconds for `idle` and `both` reset modes.
+    pub idle_timeout_seconds: Option<u64>,
+    /// Last inbound/outbound communication time for this source/agent session.
+    pub last_active_at: MissiveTimestamp,
+    /// Most recent reset timestamp, if the session has rotated contexts.
+    pub last_reset_at: Option<MissiveTimestamp>,
+    /// Number of times this session has been reset/rotated.
+    pub reset_count: u64,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+}
+
+impl GatewaySessionUpsert {
+    /// Creates a default non-auto-resetting gateway session upsert.
+    #[must_use]
+    pub fn new(
+        gateway_session_id: GatewaySessionId,
+        source_kind: impl Into<String>,
+        source_id: impl Into<String>,
+        agent_alias: AgentAlias,
+        resume_name: impl Into<String>,
+        context_id: ContextId,
+    ) -> Self {
+        Self {
+            gateway_session_id,
+            source_kind: source_kind.into(),
+            source_id: source_id.into(),
+            agent_alias,
+            resume_name: resume_name.into(),
+            context_id,
+            reset_mode: GatewaySessionResetMode::None,
+            daily_reset_hour: 0,
+            idle_timeout_seconds: None,
+            last_active_at: MissiveTimestamp::now_utc(),
+            last_reset_at: None,
+            reset_count: 0,
+            metadata: Metadata::new(),
+        }
+    }
+}
+
+/// Stored persistent gateway communication session row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GatewaySessionRecord {
+    /// Gateway session id.
+    pub gateway_session_id: GatewaySessionId,
+    /// Source kind such as `cli`, `adapter`, `webhook`, or a local integration name.
+    pub source_kind: String,
+    /// Stable source identity, for example an adapter user/channel composite.
+    pub source_id: String,
+    /// Target/default agent for this communication session.
+    pub agent_alias: AgentAlias,
+    /// Human or adapter-provided name used for later resume.
+    pub resume_name: String,
+    /// Current A2A context linked to this session.
+    pub context_id: ContextId,
+    /// Reset policy mode.
+    pub reset_mode: GatewaySessionResetMode,
+    /// UTC hour at which daily reset boundaries occur.
+    pub daily_reset_hour: u8,
+    /// Idle timeout in seconds for `idle` and `both` reset modes.
+    pub idle_timeout_seconds: Option<u64>,
+    /// Last inbound/outbound communication time for this source/agent session.
+    pub last_active_at: MissiveTimestamp,
+    /// Most recent reset timestamp, if the session has rotated contexts.
+    pub last_reset_at: Option<MissiveTimestamp>,
+    /// Number of times this session has been reset/rotated.
+    pub reset_count: u64,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+    /// Creation time recorded by SQLite.
+    pub created_at: MissiveTimestamp,
+    /// Last update time recorded by SQLite.
+    pub updated_at: MissiveTimestamp,
+}
+
 /// Blocking SQLite repository facade for one profile database.
 #[derive(Debug)]
 pub struct Store {
@@ -1494,6 +1611,57 @@ impl Store {
     pub fn delete_gateway_job(&self, gateway_job_id: &GatewayJobId) -> Result<bool> {
         delete_gateway_job(&self.connection, gateway_job_id)
     }
+
+    /// Creates or updates a gateway session and returns the stored row.
+    pub fn upsert_gateway_session(
+        &self,
+        input: &GatewaySessionUpsert,
+    ) -> Result<GatewaySessionRecord> {
+        upsert_gateway_session(&self.connection, input)
+    }
+
+    /// Reads one gateway session by id.
+    pub fn get_gateway_session(
+        &self,
+        gateway_session_id: &GatewaySessionId,
+    ) -> Result<Option<GatewaySessionRecord>> {
+        get_gateway_session(&self.connection, gateway_session_id)
+    }
+
+    /// Reads one gateway session by source/agent/resume name.
+    pub fn get_gateway_session_by_resume(
+        &self,
+        source_kind: &str,
+        source_id: &str,
+        agent_alias: &AgentAlias,
+        resume_name: &str,
+    ) -> Result<Option<GatewaySessionRecord>> {
+        get_gateway_session_by_resume(
+            &self.connection,
+            source_kind,
+            source_id,
+            agent_alias,
+            resume_name,
+        )
+    }
+
+    /// Lists gateway sessions in deterministic source/agent/name order.
+    pub fn list_gateway_sessions(&self) -> Result<Vec<GatewaySessionRecord>> {
+        list_gateway_sessions(&self.connection)
+    }
+
+    /// Lists gateway sessions for one target agent in deterministic source/name order.
+    pub fn list_gateway_sessions_for_agent(
+        &self,
+        agent_alias: &AgentAlias,
+    ) -> Result<Vec<GatewaySessionRecord>> {
+        list_gateway_sessions_for_agent(&self.connection, agent_alias)
+    }
+
+    /// Deletes a gateway session by id. Returns `true` when a row was removed.
+    pub fn delete_gateway_session(&self, gateway_session_id: &GatewaySessionId) -> Result<bool> {
+        delete_gateway_session(&self.connection, gateway_session_id)
+    }
 }
 
 /// Repository view scoped to an active SQLite transaction.
@@ -1745,6 +1913,57 @@ impl StoreTransaction<'_> {
     /// Deletes a gateway job by id. Returns `true` when a row was removed.
     pub fn delete_gateway_job(&self, gateway_job_id: &GatewayJobId) -> Result<bool> {
         delete_gateway_job(&self.transaction, gateway_job_id)
+    }
+
+    /// Creates or updates a gateway session and returns the stored row.
+    pub fn upsert_gateway_session(
+        &self,
+        input: &GatewaySessionUpsert,
+    ) -> Result<GatewaySessionRecord> {
+        upsert_gateway_session(&self.transaction, input)
+    }
+
+    /// Reads one gateway session by id.
+    pub fn get_gateway_session(
+        &self,
+        gateway_session_id: &GatewaySessionId,
+    ) -> Result<Option<GatewaySessionRecord>> {
+        get_gateway_session(&self.transaction, gateway_session_id)
+    }
+
+    /// Reads one gateway session by source/agent/resume name.
+    pub fn get_gateway_session_by_resume(
+        &self,
+        source_kind: &str,
+        source_id: &str,
+        agent_alias: &AgentAlias,
+        resume_name: &str,
+    ) -> Result<Option<GatewaySessionRecord>> {
+        get_gateway_session_by_resume(
+            &self.transaction,
+            source_kind,
+            source_id,
+            agent_alias,
+            resume_name,
+        )
+    }
+
+    /// Lists gateway sessions in deterministic source/agent/name order.
+    pub fn list_gateway_sessions(&self) -> Result<Vec<GatewaySessionRecord>> {
+        list_gateway_sessions(&self.transaction)
+    }
+
+    /// Lists gateway sessions for one target agent in deterministic source/name order.
+    pub fn list_gateway_sessions_for_agent(
+        &self,
+        agent_alias: &AgentAlias,
+    ) -> Result<Vec<GatewaySessionRecord>> {
+        list_gateway_sessions_for_agent(&self.transaction, agent_alias)
+    }
+
+    /// Deletes a gateway session by id. Returns `true` when a row was removed.
+    pub fn delete_gateway_session(&self, gateway_session_id: &GatewaySessionId) -> Result<bool> {
+        delete_gateway_session(&self.transaction, gateway_session_id)
     }
 }
 
@@ -2715,6 +2934,160 @@ fn delete_gateway_job(connection: &Connection, gateway_job_id: &GatewayJobId) ->
     )
 }
 
+fn upsert_gateway_session(
+    connection: &Connection,
+    input: &GatewaySessionUpsert,
+) -> Result<GatewaySessionRecord> {
+    validate_store_identifier("gateway session source kind", input.source_kind.as_str())?;
+    validate_store_identifier("gateway session source id", input.source_id.as_str())?;
+    validate_len(
+        "gateway session resume_name",
+        input.resume_name.as_str(),
+        128,
+    )?;
+    validate_gateway_session_reset_policy(
+        input.reset_mode,
+        input.daily_reset_hour,
+        input.idle_timeout_seconds,
+    )?;
+    let idle_timeout_seconds = optional_u64_to_i64(
+        "gateway session idle_timeout_seconds",
+        input.idle_timeout_seconds,
+    )?;
+    let reset_count = u64_to_i64("gateway session reset_count", input.reset_count)?;
+    let last_active_at = input.last_active_at.to_rfc3339();
+    let last_reset_at = input.last_reset_at.map(MissiveTimestamp::to_rfc3339);
+    let metadata_json = to_json_text("gateway session metadata", &input.metadata)?;
+
+    connection
+        .execute(
+            "INSERT INTO gateway_sessions (
+                gateway_session_id, source_kind, source_id, agent_alias, resume_name,
+                context_id, reset_mode, daily_reset_hour, idle_timeout_seconds,
+                last_active_at, last_reset_at, reset_count, metadata_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            ON CONFLICT(gateway_session_id) DO UPDATE SET
+                source_kind = excluded.source_kind,
+                source_id = excluded.source_id,
+                agent_alias = excluded.agent_alias,
+                resume_name = excluded.resume_name,
+                context_id = excluded.context_id,
+                reset_mode = excluded.reset_mode,
+                daily_reset_hour = excluded.daily_reset_hour,
+                idle_timeout_seconds = excluded.idle_timeout_seconds,
+                last_active_at = excluded.last_active_at,
+                last_reset_at = excluded.last_reset_at,
+                reset_count = excluded.reset_count,
+                metadata_json = excluded.metadata_json,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            params![
+                input.gateway_session_id.as_str(),
+                &input.source_kind,
+                &input.source_id,
+                input.agent_alias.as_str(),
+                &input.resume_name,
+                input.context_id.as_str(),
+                input.reset_mode.as_str(),
+                i64::from(input.daily_reset_hour),
+                idle_timeout_seconds,
+                last_active_at,
+                last_reset_at.as_deref(),
+                reset_count,
+                metadata_json,
+            ],
+        )
+        .map_err(|error| storage_error("upserting gateway session", error))?;
+
+    get_gateway_session(connection, &input.gateway_session_id)?
+        .ok_or_else(|| missing_after_write("gateway session", input.gateway_session_id.as_str()))
+}
+
+fn get_gateway_session(
+    connection: &Connection,
+    gateway_session_id: &GatewaySessionId,
+) -> Result<Option<GatewaySessionRecord>> {
+    connection
+        .query_row(
+            "SELECT gateway_session_id, source_kind, source_id, agent_alias, resume_name,
+                context_id, reset_mode, daily_reset_hour, idle_timeout_seconds,
+                last_active_at, last_reset_at, reset_count, metadata_json, created_at, updated_at
+             FROM gateway_sessions WHERE gateway_session_id = ?1",
+            params![gateway_session_id.as_str()],
+            read_gateway_session_row,
+        )
+        .optional()
+        .map_err(|error| storage_error("reading gateway session", error))
+}
+
+fn get_gateway_session_by_resume(
+    connection: &Connection,
+    source_kind: &str,
+    source_id: &str,
+    agent_alias: &AgentAlias,
+    resume_name: &str,
+) -> Result<Option<GatewaySessionRecord>> {
+    validate_store_identifier("gateway session source kind", source_kind)?;
+    validate_store_identifier("gateway session source id", source_id)?;
+    validate_len("gateway session resume_name", resume_name, 128)?;
+    connection
+        .query_row(
+            "SELECT gateway_session_id, source_kind, source_id, agent_alias, resume_name,
+                context_id, reset_mode, daily_reset_hour, idle_timeout_seconds,
+                last_active_at, last_reset_at, reset_count, metadata_json, created_at, updated_at
+             FROM gateway_sessions
+             WHERE source_kind = ?1 AND source_id = ?2 AND agent_alias = ?3 AND resume_name = ?4",
+            params![source_kind, source_id, agent_alias.as_str(), resume_name],
+            read_gateway_session_row,
+        )
+        .optional()
+        .map_err(|error| storage_error("reading gateway session by resume name", error))
+}
+
+fn list_gateway_sessions(connection: &Connection) -> Result<Vec<GatewaySessionRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT gateway_session_id, source_kind, source_id, agent_alias, resume_name,
+                context_id, reset_mode, daily_reset_hour, idle_timeout_seconds,
+                last_active_at, last_reset_at, reset_count, metadata_json, created_at, updated_at
+             FROM gateway_sessions ORDER BY source_kind, source_id, agent_alias, resume_name",
+        )
+        .map_err(|error| storage_error("preparing gateway session list", error))?;
+    collect_rows(
+        statement.query_map([], read_gateway_session_row),
+        "listing gateway sessions",
+    )
+}
+
+fn list_gateway_sessions_for_agent(
+    connection: &Connection,
+    agent_alias: &AgentAlias,
+) -> Result<Vec<GatewaySessionRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT gateway_session_id, source_kind, source_id, agent_alias, resume_name,
+                context_id, reset_mode, daily_reset_hour, idle_timeout_seconds,
+                last_active_at, last_reset_at, reset_count, metadata_json, created_at, updated_at
+             FROM gateway_sessions WHERE agent_alias = ?1 ORDER BY source_kind, source_id, resume_name",
+        )
+        .map_err(|error| storage_error("preparing gateway session agent list", error))?;
+    collect_rows(
+        statement.query_map(params![agent_alias.as_str()], read_gateway_session_row),
+        "listing gateway sessions for agent",
+    )
+}
+
+fn delete_gateway_session(
+    connection: &Connection,
+    gateway_session_id: &GatewaySessionId,
+) -> Result<bool> {
+    delete_by_key(
+        connection,
+        "DELETE FROM gateway_sessions WHERE gateway_session_id = ?1",
+        gateway_session_id.as_str(),
+        "deleting gateway session",
+    )
+}
+
 fn read_auth_ref_row(row: &Row<'_>) -> rusqlite::Result<AuthRefRecord> {
     Ok(AuthRefRecord {
         name: row.get(0)?,
@@ -2898,6 +3271,26 @@ fn read_gateway_job_row(row: &Row<'_>) -> rusqlite::Result<GatewayJobRecord> {
     })
 }
 
+fn read_gateway_session_row(row: &Row<'_>) -> rusqlite::Result<GatewaySessionRecord> {
+    Ok(GatewaySessionRecord {
+        gateway_session_id: parse_sql(0, row.get(0)?)?,
+        source_kind: row.get(1)?,
+        source_id: row.get(2)?,
+        agent_alias: parse_sql(3, row.get(3)?)?,
+        resume_name: row.get(4)?,
+        context_id: parse_sql(5, row.get(5)?)?,
+        reset_mode: parse_sql(6, row.get(6)?)?,
+        daily_reset_hour: u8_from_sql(7, row.get(7)?)?,
+        idle_timeout_seconds: optional_u64_from_sql(8, row.get(8)?)?,
+        last_active_at: timestamp_from_sql(9, row.get(9)?)?,
+        last_reset_at: optional_timestamp_from_sql(10, row.get(10)?)?,
+        reset_count: u64_from_sql(11, row.get(11)?)?,
+        metadata: json_from_sql(12, row.get(12)?)?,
+        created_at: timestamp_from_sql(13, row.get(13)?)?,
+        updated_at: timestamp_from_sql(14, row.get(14)?)?,
+    })
+}
+
 fn collect_rows<T>(
     rows: rusqlite::Result<rusqlite::MappedRows<'_, impl FnMut(&Row<'_>) -> rusqlite::Result<T>>>,
     action: &str,
@@ -2979,12 +3372,31 @@ fn optional_timestamp_from_sql(
     optional_parse_sql(column, value)
 }
 
+fn u8_from_sql(column: usize, value: i64) -> rusqlite::Result<u8> {
+    u8::try_from(value).map_err(|error| conversion_error(column, error))
+}
+
 fn u32_from_sql(column: usize, value: i64) -> rusqlite::Result<u32> {
     u32::try_from(value).map_err(|error| conversion_error(column, error))
 }
 
 fn u64_from_sql(column: usize, value: i64) -> rusqlite::Result<u64> {
     u64::try_from(value).map_err(|error| conversion_error(column, error))
+}
+
+fn optional_u64_from_sql(column: usize, value: Option<i64>) -> rusqlite::Result<Option<u64>> {
+    value.map(|value| u64_from_sql(column, value)).transpose()
+}
+
+fn u64_to_i64(label: &str, value: u64) -> Result<i64> {
+    i64::try_from(value).map_err(|error| {
+        MissiveError::validation(format!("{label} is too large to store in SQLite"))
+            .with_source(error)
+    })
+}
+
+fn optional_u64_to_i64(label: &str, value: Option<u64>) -> Result<Option<i64>> {
+    value.map(|value| u64_to_i64(label, value)).transpose()
 }
 
 fn conversion_error(
@@ -3073,6 +3485,40 @@ fn validate_gateway_attempts(retry_count: u32, max_attempts: u32) -> Result<()> 
         return Err(MissiveError::validation(format!(
             "gateway job retry_count {retry_count} cannot exceed max_attempts {max_attempts}"
         )));
+    }
+    Ok(())
+}
+
+fn validate_gateway_session_reset_policy(
+    mode: GatewaySessionResetMode,
+    daily_reset_hour: u8,
+    idle_timeout_seconds: Option<u64>,
+) -> Result<()> {
+    if daily_reset_hour > 23 {
+        return Err(MissiveError::validation(format!(
+            "gateway session daily_reset_hour must be between 0 and 23, got {daily_reset_hour}"
+        )));
+    }
+    match mode {
+        GatewaySessionResetMode::Idle | GatewaySessionResetMode::Both => {
+            let Some(seconds) = idle_timeout_seconds else {
+                return Err(MissiveError::validation(
+                    "gateway session idle_timeout_seconds is required for idle and both reset modes",
+                ));
+            };
+            if seconds == 0 {
+                return Err(MissiveError::validation(
+                    "gateway session idle_timeout_seconds must be greater than zero",
+                ));
+            }
+        }
+        GatewaySessionResetMode::None | GatewaySessionResetMode::Daily => {
+            if idle_timeout_seconds.is_some() {
+                return Err(MissiveError::validation(
+                    "gateway session idle_timeout_seconds is only valid for idle and both reset modes",
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -3500,6 +3946,122 @@ mod tests {
                 .expect("job deleted")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn gateway_session_persists_named_resume_across_store_reopen() {
+        let temp = tempdir().expect("tempdir");
+        let database_path = temp.path().join("missive.sqlite3");
+        let agent = alias("echo");
+        let context = context_id("ctx-session");
+        let session_id = GatewaySessionId::new("session-1").expect("session id");
+
+        {
+            let store = Store::open(&database_path).expect("store");
+            store
+                .upsert_agent(&AgentUpsert::new(agent.clone(), "http://127.0.0.1/session"))
+                .expect("agent");
+            let mut context_input = ContextUpsert::new(context.clone());
+            context_input.agent_alias = Some(agent.clone());
+            context_input.name = Some("gateway-session-context".to_owned());
+            store.upsert_context(&context_input).expect("context");
+
+            let mut session = GatewaySessionUpsert::new(
+                session_id.clone(),
+                "adapter",
+                "stdin/user-1",
+                agent.clone(),
+                "daily-standup",
+                context.clone(),
+            );
+            session.reset_mode = GatewaySessionResetMode::Both;
+            session.daily_reset_hour = 4;
+            session.idle_timeout_seconds = Some(3_600);
+            session.last_active_at = timestamp(1_735_787_045);
+            session.last_reset_at = Some(timestamp(1_735_700_000));
+            session.reset_count = 2;
+            session
+                .metadata
+                .insert_str("purpose", "repository-test")
+                .expect("metadata");
+
+            let created = store
+                .upsert_gateway_session(&session)
+                .expect("session upsert");
+            assert_eq!(created.gateway_session_id, session_id);
+            assert_eq!(created.source_kind, "adapter");
+            assert_eq!(created.source_id, "stdin/user-1");
+            assert_eq!(created.agent_alias, agent);
+            assert_eq!(created.resume_name, "daily-standup");
+            assert_eq!(created.context_id, context);
+            assert_eq!(created.reset_mode, GatewaySessionResetMode::Both);
+            assert_eq!(created.daily_reset_hour, 4);
+            assert_eq!(created.idle_timeout_seconds, Some(3_600));
+            assert_eq!(created.reset_count, 2);
+            assert_eq!(created.metadata.get_str("purpose"), Some("repository-test"));
+            assert_eq!(
+                store
+                    .get_gateway_session_by_resume(
+                        "adapter",
+                        "stdin/user-1",
+                        &created.agent_alias,
+                        "daily-standup",
+                    )
+                    .expect("named resume"),
+                Some(created.clone())
+            );
+            assert_eq!(
+                store
+                    .list_gateway_sessions_for_agent(&created.agent_alias)
+                    .expect("sessions for agent"),
+                vec![created]
+            );
+        }
+
+        let reopened = Store::open(&database_path).expect("reopened store");
+        let persisted = reopened
+            .get_gateway_session(&session_id)
+            .expect("session get after reopen")
+            .expect("session persisted");
+        assert_eq!(persisted.resume_name, "daily-standup");
+        assert_eq!(persisted.context_id, context);
+        assert_eq!(persisted.last_active_at, timestamp(1_735_787_045));
+        assert_eq!(persisted.last_reset_at, Some(timestamp(1_735_700_000)));
+        assert_eq!(
+            reopened.list_gateway_sessions().expect("sessions"),
+            vec![persisted.clone()]
+        );
+        assert!(
+            reopened
+                .delete_gateway_session(&session_id)
+                .expect("delete session")
+        );
+    }
+
+    #[test]
+    fn gateway_session_reset_policy_validation_is_actionable() {
+        let store = Store::open_in_memory().expect("store");
+        let agent = seed_agent(&store, "echo");
+        let context = context_id("ctx-session-validation");
+        store
+            .upsert_context(&ContextUpsert::new(context.clone()))
+            .expect("context");
+        let mut session = GatewaySessionUpsert::new(
+            GatewaySessionId::new("session-invalid").expect("session id"),
+            "adapter",
+            "stdin/user-1",
+            agent,
+            "default",
+            context,
+        );
+        session.reset_mode = GatewaySessionResetMode::Idle;
+
+        let error = store
+            .upsert_gateway_session(&session)
+            .expect_err("idle reset requires timeout");
+
+        assert_eq!(error.category(), missive_core::ErrorCategory::Validation);
+        assert!(error.to_string().contains("idle_timeout_seconds"));
     }
 
     #[test]

@@ -171,7 +171,9 @@ installs provide an explicit `MISSIVE_HOME`. The `missive-gateway` crate tests
 also exercise service file generation for systemd and launchd, subscription
 resume by seeding an in-flight task plus a persisted `task_subscription` job,
 serving local mock `SubscribeToTask` SSE updates, verifying terminal cleanup, and
-checking bounded retry/backoff metadata for malformed streams. The webhook
+checking bounded retry/backoff metadata for malformed streams. Gateway session
+unit tests additionally use fixed clocks to cover daily, idle, and combined reset
+policy boundaries without wall-clock sleeps. The webhook
 command integration test similarly spawns the binary, waits for local
 `/healthz`, posts unauthorized, malformed, and valid A2A `StreamResponse`
 payloads over loopback HTTP, verifies graceful `--max-events` shutdown, checks
