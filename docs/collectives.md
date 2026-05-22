@@ -1,8 +1,7 @@
 # Collectives
 
 `missive` collective commands coordinate groups of registered A2A agents. The
-currently implemented collectives are broadcast, barrier, and gather; reduce
-remains a future ordered ticket and is not available yet.
+currently implemented collectives are broadcast, barrier, gather, and reduce.
 
 ## Broadcast: `missive bcast`
 
@@ -140,13 +139,76 @@ counts, message/artifact/export counts, and one member row per rank. Member rows
 include agent alias, rank, status, task summary, selected text, output message
 summaries, artifact summaries, and artifact export records when used.
 
+## Reduce: `missive reduce`
+
+`missive reduce <group> --context <id>` consumes the local gathered state for a
+group/context and produces one final reduced result with source references.
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive reduce team --context ctx-planning-round --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team --context ctx-planning-round --strategy vote --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team \
+  --context ctx-planning-round \
+  --strategy custom \
+  --template 'Combine {{input_count}} inputs from {{group}}:\n{{inputs}}' \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team \
+  --context ctx-planning-round \
+  --reducer-agent editor \
+  --strategy summarise \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team \
+  --context ctx-planning-round \
+  --command 'python3 ./scripts/reducer.py' \
+  --json
+```
+
+Behavior:
+
+* member order and latest-task selection match `gather`
+* the command is local-first and does not refresh remote tasks before reducing
+* local deterministic strategies are `summarise`/`summarize`, `vote`, `merge`,
+  `rank`, and `custom`
+* `custom` requires `--template`; other strategies can optionally use a template
+  to shape local output or the prompt sent to an external reducer
+* templates support `{{group}}`, `{{context_id}}`, `{{strategy}}`,
+  `{{input_count}}`, `{{inputs}}`, and `{{default_reduction}}`
+* `--reducer-agent ALIAS` sends the generated prompt as an A2A `SendMessage` to
+  a registered agent and persists the normal send request/response rows
+* `--command COMMAND` writes the generated prompt to a local shell command's
+  stdin and treats UTF-8 stdout as the reduced result
+* one local `messages` row with direction `local` records the final reduced
+  output plus provenance metadata
+* lifecycle and provenance events are appended as `missive.reduce.*`
+
+Machine output uses `kind: "reduce_result"`. The summary includes operation id,
+strategy, reducer method, final `reduced_text`, persisted reduced-message id,
+member/input counts, and a `provenance` array. Provenance rows include agent,
+rank, status, task summary, selected text when available, source message ids, and
+source artifact ids/kinds/versions.
+
+Failure modes:
+
+* missing group, empty group, invalid context id, or missing reducer agent fail
+  validation before reducing
+* `--strategy custom` without `--template` fails validation
+* `--reducer-agent` and `--command` are mutually exclusive
+* no gathered outputs in the selected context fails with a usage error instead
+  of producing an empty reduction
+* reducer-agent transport/protocol failures use the same A2A diagnostics as
+  `send`
+* command reducers fail when the shell command exits nonzero, writes invalid
+  UTF-8, or writes empty stdout
+
 ## Current limitations
 
 `bcast` does not stream responses. `barrier` synchronizes task state but does not
 collect outputs or artifacts by itself; run `gather` afterward to collect the
-latest local outputs. `gather` is local-only and does not refresh remote task
-state, subscribe to tasks, or reduce/summarize member outputs. Run `barrier` or
-`task get --remote` first when fresh remote state is required. Reduce is not
-implemented yet. Concurrent broadcast mode does not cancel already-started worker
-threads when another member fails; it reports all completed outcomes in the
-summary.
+latest local outputs. `gather` and `reduce` are local-only and do not refresh
+remote task state or subscribe to tasks. Run `barrier` or `task get --remote`
+first when fresh remote state is required. Local `summarise` is an attributed
+summary template rather than an LLM semantic summary; use `--reducer-agent` or
+`--command` for richer reduction. Command reducers execute user-supplied local
+commands and are not sandboxed by missive. Concurrent broadcast mode does not
+cancel already-started worker threads when another member fails; it reports all
+completed outcomes in the summary.

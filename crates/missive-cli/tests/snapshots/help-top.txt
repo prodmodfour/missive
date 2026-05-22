@@ -12,6 +12,7 @@ Commands:
   bcast       Broadcast one message to every member of a local group
   barrier     Wait for group member tasks to reach terminal or requested states
   gather      Gather latest local outputs and artifacts from group member tasks
+  reduce      Reduce gathered group outputs into one source-attributed result
   gateway     Run and manage the local missive gateway daemon
   webhook     Receive A2A push notification callbacks locally
   push        Manage A2A push notification configurations

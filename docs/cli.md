@@ -7,8 +7,8 @@ commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive group
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
-`missive gather`, `missive push create/get/list/delete`, `missive webhook run`,
-`missive gateway run`, and `missive gateway install/start/stop/status/uninstall`;
+`missive gather`, `missive reduce`, `missive push create/get/list/delete`,
+`missive webhook run`, `missive gateway run`, and `missive gateway install/start/stop/status/uninstall`;
 other top-level commands still emit skeletal parsed status until their ordered
 tickets land.
 
@@ -25,6 +25,7 @@ missive group --help
 missive bcast --help
 missive barrier --help
 missive gather --help
+missive reduce --help
 missive push --help
 missive gateway --help
 missive gateway run --help
@@ -64,7 +65,7 @@ requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a name
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
 Agent Card HTTP requests plus implemented send, stream, bcast, barrier remote
-task polling, remote task, and push config calls. `missive webhook run` records
+task polling, reduce reducer-agent calls, remote task, and push config calls. `missive webhook run` records
 the effective protocol version on inbound callback events when the callback omits
 `A2A-Version`. Task wait, bcast, barrier, webhook run, and gateway run use global
 `--timeout` as bounded execution budgets; tracing and broader command-specific
@@ -84,6 +85,7 @@ group       Manage groups of agents for collective operations
 bcast       Broadcast one message to every member of a local group
 barrier     Wait for group member tasks to reach terminal or requested states
 gather      Gather latest local outputs and artifacts from group member tasks
+reduce      Reduce gathered group outputs into one source-attributed result
 gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
@@ -559,10 +561,10 @@ state, or a structured error report.
 
 Current limitations: `bcast` is non-streaming and does not wait for returned
 tasks to finish. Use `missive barrier` for group task synchronization and
-`missive gather` for local output/artifact collection. A later reduce ticket will
-add reduction operations. Concurrent mode does not cancel already-started worker
-threads after another member fails; it reports all completed member outcomes in
-the summary.
+`missive gather` for local output/artifact collection. Run `missive reduce` after gather when the collected member outputs should be
+summarised, voted, merged, ranked, or sent to a reducer agent/command pipeline.
+Concurrent mode does not cancel already-started worker threads after another
+member fails; it reports all completed member outcomes in the summary.
 
 ## Barrier collective
 
@@ -639,6 +641,77 @@ the summary instead of causing a command failure.
 rank-prefixed deterministic names. Existing files are not overwritten unless
 `--force` is supplied. URL/file-reference artifacts are exported as JSON
 manifests, matching `missive task artifact export` behavior.
+
+## Reduce collective
+
+`missive reduce <group> --context <id>` reads the same local rank-ordered
+member outputs used by `gather` and produces one final source-attributed result.
+It does not refresh remote tasks by itself; run `barrier`, `task get --remote`,
+or `gather` first when the local store needs fresh task/output rows.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive reduce team --context ctx-planning-round --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team --context ctx-planning-round --strategy vote --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team \
+  --context ctx-planning-round \
+  --strategy custom \
+  --template 'Write a release note for {{group}} using:\n{{inputs}}' \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team \
+  --context ctx-planning-round \
+  --reducer-agent editor \
+  --strategy summarise \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive reduce team \
+  --context ctx-planning-round \
+  --command 'python3 ./scripts/reducer.py' \
+  --json
+```
+
+Built-in local strategies are deterministic and automation-friendly:
+
+* `summarise` (default) emits one source-attributed bullet per gathered member.
+  The alias `summarize` is accepted for CLI convenience.
+* `vote` normalizes identical text answers, counts votes, and reports the
+  deterministic winner plus tallies.
+* `merge` concatenates member outputs under rank/agent headings.
+* `rank` orders outputs by a simple deterministic local heuristic using text
+  length plus message/artifact counts.
+* `custom` requires `--template`; local mode renders the template directly.
+
+`--template` can also override the prompt sent to `--reducer-agent` or
+`--command`. Supported placeholders are `{{group}}`, `{{context_id}}`,
+`{{strategy}}`, `{{input_count}}`, `{{inputs}}`, and
+`{{default_reduction}}`. Without a template, agent/command modes receive a
+strategy-specific prompt containing the provenance block and deterministic local
+baseline.
+
+`--reducer-agent ALIAS` sends the generated prompt through the normal A2A
+`SendMessage` path to a registered agent, including Agent Card discovery,
+interface negotiation, auth headers, service parameters, accepted output modes,
+and send persistence. The reducer agent does not need to be a member of the
+reduced group. `--command COMMAND` runs a local shell command, writes the prompt
+to stdin, and uses UTF-8 stdout as the reduced output; nonzero exit, invalid
+UTF-8, or empty stdout is an orchestration error.
+
+Machine-readable output uses `kind: "reduce_result"` and includes the operation
+id, group/context, strategy, reducer method, gathered/missing/empty counts,
+final `reduced_text`, a persisted local reduced-message id, and a `provenance`
+array. Each provenance row includes the source agent, rank, status, task summary,
+selected text when available, source message references, and source artifact
+references. The command appends `missive.reduce.started`,
+`missive.reduce.input.*`, `missive.reduce.completed`, and failed-attempt events
+to the local journal; reducer-agent mode also records the normal `a2a.send.*`
+events.
+
+Failure modes are intentional: missing group/member references fail validation;
+`--strategy custom` without `--template` fails validation; combining
+`--reducer-agent` and `--command` fails validation; no gathered member outputs in
+the selected context fails with a usage error; reducer-agent transport/protocol
+failures are reported through the A2A error taxonomy; command pipelines fail when
+they exit nonzero or produce unusable stdout.
 
 ## Push notification config commands
 

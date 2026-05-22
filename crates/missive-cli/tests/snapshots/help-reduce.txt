@@ -1,0 +1,87 @@
+Reduce rank-ordered group member outputs from one shared A2A context into one final result. Reduction can run locally with deterministic summarise, vote, merge, rank, or custom-template strategies, call a registered reducer agent, or pipe a generated prompt through a local command.
+
+Usage: missive reduce [OPTIONS] --context <CONTEXT_ID> <GROUP>
+
+Arguments:
+  <GROUP>
+          Local group name whose gathered member outputs should be reduced
+
+Options:
+      --context <CONTEXT_ID>
+          A2A context id shared by the member tasks to reduce
+
+      --strategy <STRATEGY>
+          Reduction strategy to apply or describe in the generated prompt
+
+          Possible values:
+          - summarise: Produce a concise source-attributed summary
+          - vote:      Count identical member answers and report the deterministic winner
+          - merge:     Concatenate member outputs in rank order
+          - rank:      Rank member outputs using a deterministic local heuristic
+          - custom:    Use the provided --template as a custom prompt/output template
+          
+          [default: summarise]
+
+      --reducer-agent <ALIAS>
+          Registered agent alias that should perform the final reduction
+
+      --command <COMMAND>
+          Local command pipeline to receive the generated prompt on stdin and return the reduced output on stdout
+
+      --template <TEXT>
+          Template or custom prompt. Supports {{group}}, {{context_id}}, {{strategy}}, {{input_count}}, {{inputs}}, and {{default_reduction}}
+
+      --accepted-output-mode <MIME>
+          Accepted reducer-agent response MIME/output mode; repeatable
+
+      --metadata <KEY=VALUE>
+          Add non-secret metadata to reducer-agent requests and the local reduced-output message
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Global options:
+      --json
+          Emit a single JSON document for command output when the command supports it
+
+      --ndjson
+          Emit newline-delimited JSON events when the command supports streaming output
+
+  -q, --quiet
+          Suppress non-error output
+
+      --no-color
+          Disable colored terminal output and diagnostics
+
+      --config <PATH>
+          Read configuration from this file path
+
+      --profile <PROFILE>
+          Select a named configuration profile
+
+      --timeout <DURATION>
+          Set an overall command timeout such as 30s, 2m, or 1h
+
+      --protocol-version <VERSION>
+          Override the A2A protocol version sent as the A2A-Version service parameter
+
+      --a2a-extension <EXTENSION>
+          Request an A2A extension through the A2A-Extensions service parameter; repeatable
+
+      --service-param <NAME=VALUE>
+          Add an arbitrary A2A service parameter as NAME=VALUE; repeatable
+
+      --bearer-token-env <ENV>
+          Read a bearer token from this environment variable and send it as Authorization
+
+      --header <NAME:VALUE>
+          Add an outbound HTTP header as Name:Value; repeatable and never persisted
+
+      --trace
+          Enable trace-oriented diagnostics for this invocation
+
+  -v, --verbose...
+          Increase human diagnostic verbosity; repeat for more detail

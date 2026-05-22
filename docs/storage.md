@@ -89,7 +89,8 @@ strings:
   `MessageRole`, and append/get/list/delete methods for request/response rows
   linked to agents, contexts, and tasks; `missive send` uses these rows for
   non-streaming A2A request/response persistence, and `missive stream` appends
-  request plus `stream_event` rows for parsed SSE updates
+  request plus `stream_event` rows for parsed SSE updates; `missive reduce`
+  appends one local reduced-output message row with provenance metadata
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
   monotonic SQLite sequences; `EventInsert::record_a2a_protocol_version` records
   the selected A2A version in event metadata. Current CLI producers append
@@ -97,6 +98,7 @@ strings:
   broadcast collective `missive.bcast.*` lifecycle/member/completion events,
   barrier collective `missive.barrier.*` lifecycle/member/completion events,
   gather collective `missive.gather.*` lifecycle/member/completion events,
+  reduce collective `missive.reduce.*` lifecycle/provenance/completion events,
   A2A send/stream requests, A2A send responses, `a2a.stream.*` updates, changed
   remote task payloads observed by send/task/bcast/barrier commands, push-config CRUD, gateway
   daemon lifecycle start/stop events, gateway subscription lifecycle and
@@ -137,9 +139,9 @@ get/list/wait/cancel state updates, `missive task artifact` local export
 commands, context create/list/show/fork/close/export state management, group
 create/list/show/add/remove/rename/delete state management, broadcast collective
 context/task/message/event persistence, barrier collective task/artifact/event persistence,
-gather collective local context/task/message/artifact/event reads plus safe artifact export, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
+gather collective local context/task/message/artifact/event reads plus safe artifact export, reduce collective local context/task/message/artifact/event reads plus local reduced-output message persistence, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
 gateway task subscription/resume job state and event persistence, webhook
 callback event persistence, and event journal list/tail/replay/export.
 Adapter-binding repositories, retention enforcement, compaction, and durable
-event producers for future reduce collective workers, background jobs, and
-adapter callbacks are implemented by later tickets.
+event producers for future background jobs and adapter callbacks are implemented
+by later tickets.

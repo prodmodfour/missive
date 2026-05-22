@@ -2,14 +2,14 @@
 
 `missive` is still early-stage. The current security implementation focuses on
 safe authentication inputs for implemented outbound Agent Card, send, stream,
-broadcast, barrier polling, task, and push requests, redaction at output
+broadcast, barrier polling, reduce reducer-agent, task, and push requests, redaction at output
 boundaries, and keeping runtime state out of the repository.
 
 ## Authentication inputs
 
 Implemented outbound A2A HTTP requests (`agent inspect` when it fetches,
-`agent refresh`, `send`, `stream`, `bcast`, `barrier`, remote `task`, and `push`
-operations) can receive auth material from three sources:
+`agent refresh`, `send`, `stream`, `bcast`, `barrier`, `reduce --reducer-agent`,
+remote `task`, and `push` operations) can receive auth material from three sources:
 
 1. Config auth refs linked from an agent with `auth_ref = "name"`.
 2. `--bearer-token-env ENV`, which reads `ENV` and sends
@@ -50,9 +50,10 @@ parse keyring refs but fail clearly if a keyring-backed token is needed.
 Precedence for a single request is: config auth ref first,
 `--bearer-token-env` second, and repeated `--header` values last. Later values
 replace earlier values with the same HTTP header name. `missive send`,
-`missive stream`, `missive bcast`, remote `missive barrier` polling, remote
-`missive task`, and `missive push` operations apply the resolved headers to the
-optional Agent Card fetch and to the A2A protocol request.
+`missive stream`, `missive bcast`, remote `missive barrier` polling,
+`missive reduce --reducer-agent`, remote `missive task`, and `missive push`
+operations apply the resolved headers to the optional Agent Card fetch and to the
+A2A protocol request.
 
 ## Storage tradeoffs
 
@@ -86,8 +87,8 @@ same output redaction and also redact raw message, task, and event payload JSON
 before including those records in stdout. Event producers created in current CLI
 paths store redacted event payloads for agent registry changes, send/stream/bcast
 requests, send responses, streaming updates, changed remote task records,
-broadcast, barrier, and gather lifecycle/member results, and push notification
-config create/get/list/delete operations. `missive push` also redacts
+broadcast, barrier, gather, and reduce lifecycle/member/provenance results, and
+push notification config create/get/list/delete operations. `missive push` also redacts
 `authentication.credentials` before persisting local `push_configs.remote_config_json` rows.
 
 Redaction is a guardrail, not a substitute for secret hygiene. Do not place real
@@ -113,7 +114,13 @@ implemented yet.
 `missive gather --output-dir` exports already persisted artifacts using sanitized,
 rank-prefixed filenames and refuses to overwrite existing files unless `--force`
 is supplied. Remote URL/file-reference artifacts are exported as JSON manifests
-rather than fetched from untrusted locations.
+rather than fetched from untrusted locations. `missive reduce --command` executes
+a user-supplied local shell command with the generated prompt on stdin; missive
+does not sandbox that command, so use only trusted local reducers and keep their
+stdout/stderr free of secrets. `missive reduce --reducer-agent` sends gathered
+member text/provenance to the selected remote agent as ordinary A2A message
+content, so only use reducer agents that are allowed to see those gathered
+outputs.
 
 ## Push callback authentication
 
@@ -173,8 +180,9 @@ fetching or dereferencing remote/local URLs.
 ## Current limitations
 
 Authentication is wired into implemented Agent Card fetch/refresh,
-non-streaming send, broadcast send, streaming send, task get/list/wait/cancel, push config
-requests, and the inbound webhook header-token hook. Gateway subscriptions
+non-streaming send, broadcast send, streaming send, reduce reducer-agent send,
+task get/list/wait/cancel, push config requests, and the inbound webhook
+header-token hook. Gateway subscriptions
 currently send A2A service parameters but do not yet resolve outbound auth refs,
 keyring entries, `--bearer-token-env`, or `--header` values, so authenticated
 remote subscription resume remains a known limitation. Future gateway worker and

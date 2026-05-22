@@ -7,7 +7,8 @@ negotiation, non-streaming `SendMessage` calls for `missive send` and
 `missive bcast`, SSE `SendStreamingMessage` calls for `missive stream`, remote
 task `GetTask`/`ListTasks`/`CancelTask`, barrier `GetTask` polling for group
 member tasks, local gather output/artifact collection from persisted A2A task
-state, and local A2A `contextId` continuity management through `missive context`.
+state, reduce prompts sent through A2A `SendMessage` when `--reducer-agent` is
+used, and local A2A `contextId` continuity management through `missive context`.
 
 ## Public Agent Card discovery
 
@@ -59,8 +60,8 @@ The effective protocol defaults come from `[protocol]` or
 `--service-param NAME=VALUE` flag adds or overrides an extra service parameter.
 Current implemented uses are Agent Card discovery/refresh, non-streaming
 `missive send`, `missive bcast`, streaming `missive stream`, remote `missive task`
-get/list/wait/cancel calls, barrier remote polling, and push-config calls so
-request metadata remains consistent.
+get/list/wait/cancel calls, barrier remote polling, reduce reducer-agent calls,
+and push-config calls so request metadata remains consistent.
 
 When an HTTP response body reports the official A2A
 `VERSION_NOT_SUPPORTED` error code/reason, missive maps it to a protocol error
@@ -83,9 +84,9 @@ repeatable `--header Name:Value` inputs for Agent Card fetch/refresh requests.
 Auth resolution is deliberately outside protocol type parsing: config and CLI
 code locate secrets in environment variables or platform keyrings, while the A2A
 client only validates and applies already-resolved headers. `missive send`,
-`missive stream`, `missive bcast`, `missive barrier` remote polling, remote
-`missive task`, and push operations use the same auth headers for the optional
-Agent Card fetch and the A2A request.
+`missive stream`, `missive bcast`, `missive barrier` remote polling,
+`missive reduce --reducer-agent`, remote `missive task`, and push operations use
+the same auth headers for the optional Agent Card fetch and the A2A request.
 
 ## Interface negotiation
 
@@ -196,6 +197,31 @@ the same summaries as `missive task artifact` commands. `--output-dir` exports
 those already persisted artifacts with safe rank-prefixed filenames; it never
 dereferences URL/file-reference artifacts and instead writes their JSON manifest
 shape.
+
+## Reduce reducer-agent SendMessage
+
+`missive reduce <group> --context <id>` is local by default and does not call
+A2A endpoints. It reads the same persisted local task/message/artifact rows as
+`gather`, builds a source-attributed provenance block, and records the final
+reduced result as a local `messages` row with direction `local`.
+
+When `--reducer-agent ALIAS` is supplied, missive builds an official A2A
+`SendMessageRequest` whose user message contains the generated reduce prompt.
+The prompt is either the selected `--template` after placeholder expansion or a
+default strategy-specific prompt containing `{{inputs}}`-style provenance plus a
+deterministic local baseline. The request uses the selected reduce context id,
+adds non-secret reduce metadata, enforces the selected profile's request-size
+limit, applies service parameters/auth headers, negotiates the reducer agent's
+HTTP+JSON or JSON-RPC interface, and persists the request/response through the
+same send path as `missive send`.
+
+Reducer-agent direct `Message` responses use the response text as the final
+`reduced_text`. Task responses use the task status message text when present and
+otherwise report the returned task id/state. The command also writes one local
+reduced-output message containing the final text and provenance metadata, and it
+appends redacted `missive.reduce.*` journal events. No proprietary wire protocol
+is introduced for reduction; the only remote operation is ordinary A2A
+`SendMessage` to the reducer agent.
 
 ## Streaming SendStreamingMessage
 
@@ -406,6 +432,6 @@ cargo test -p missive-cli --test a2a_conformance_fixtures --all-features
 ```
 
 Authentication material is resolved for implemented Agent Card fetch/refresh,
-non-streaming send, streaming send, task get/list/wait/cancel, and push config
-requests. These paths share `AuthHeaders` plus the CLI/config auth resolver
+non-streaming send, streaming send, reduce reducer-agent send, task
+get/list/wait/cancel, and push config requests. These paths share `AuthHeaders` plus the CLI/config auth resolver
 instead of inventing separate outbound secret handling paths.

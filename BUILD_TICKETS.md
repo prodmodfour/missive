@@ -1118,7 +1118,7 @@ Validation:
 
 ## 037 — Implement reduce collective
 
-Status: TODO
+Status: DONE
 
 Phase: Collectives
 
