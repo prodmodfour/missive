@@ -3,5 +3,62 @@
 version = 4
 
 [[package]]
-name = "missive"
+name = "missive-a2a"
 version = "0.1.0"
+dependencies = [
+ "missive-core",
+]
+
+[[package]]
+name = "missive-adapters"
+version = "0.1.0"
+dependencies = [
+ "missive-core",
+]
+
+[[package]]
+name = "missive-cli"
+version = "0.1.0"
+dependencies = [
+ "missive-a2a",
+ "missive-adapters",
+ "missive-core",
+ "missive-gateway",
+ "missive-observe",
+ "missive-router",
+ "missive-store",
+]
+
+[[package]]
+name = "missive-core"
+version = "0.1.0"
+
+[[package]]
+name = "missive-gateway"
+version = "0.1.0"
+dependencies = [
+ "missive-core",
+ "missive-router",
+ "missive-store",
+]
+
+[[package]]
+name = "missive-observe"
+version = "0.1.0"
+dependencies = [
+ "missive-core",
+]
+
+[[package]]
+name = "missive-router"
+version = "0.1.0"
+dependencies = [
+ "missive-core",
+]
+
+[[package]]
+name = "missive-store"
+version = "0.1.0"
+dependencies = [
+ "missive-core",
+]

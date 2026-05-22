@@ -2,7 +2,18 @@
 
 ## Current state
 
-Ticket 000 is complete. The repository now has a bootstrap Rust workspace root for `missive`, including a placeholder `missive` binary, root package metadata, `rust-toolchain.toml`, license/contribution/security/changelog files, `.gitignore`, and an initial `docs/adr/` directory.
+Tickets 000 and 001 are complete. The repository now uses the target Cargo workspace layout for `missive` with these crates:
+
+* `crates/missive-cli` — package `missive-cli`, binary `missive`, and placeholder CLI entry point
+* `crates/missive-core` — core domain primitive scaffolding
+* `crates/missive-a2a` — A2A protocol/client integration scaffolding
+* `crates/missive-store` — persistence scaffolding
+* `crates/missive-router` — routing and collectives scaffolding
+* `crates/missive-gateway` — gateway daemon scaffolding
+* `crates/missive-adapters` — adapter scaffolding
+* `crates/missive-observe` — observability scaffolding
+
+The root `Cargo.toml` is now a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The former root placeholder package was removed.
 
 The autonomous build system remains at the repository root and continues to drive work through `BUILD_TICKETS.md`.
 
@@ -30,22 +41,31 @@ Checks run by the gate included:
 * optional `cargo machete` check because it was installed
 * optional `cargo audit` check because it was installed
 
+Additional targeted validation run during this cycle:
+
+```bash
+cargo metadata --format-version 1 --no-deps
+cargo build --workspace
+cargo run -p missive-cli --bin missive
+cargo test --workspace --all-features
+cargo machete
+```
+
 No new tools were installed during this cycle. `cargo audit` updated/read the local RustSec advisory database as part of validation.
 
 ## Latest cycle notes
 
-Implemented ticket 000 — Bootstrap repository skeleton.
+Implemented ticket 001 — Define Cargo workspace and crate layout.
 
 Included:
 
-* `Cargo.toml` workspace/package root with edition 2024 and package name `missive`
-* `src/lib.rs` and `src/main.rs` placeholder binary implementation
-* `Cargo.lock` for the bootstrap binary package
-* `rust-toolchain.toml` with stable Rust plus rustfmt/clippy components
-* `.gitignore` entries for Rust outputs, runtime state, secrets, local databases, logs, sockets, fuzz artifacts, and editor/OS noise
-* project-facing `README.md`
-* `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`
-* `docs/adr/README.md` as the initial ADR directory placeholder
+* virtual root Cargo workspace with all eight target crates under `crates/`
+* shared workspace package metadata and shared dependency version table
+* `missive-cli` manifest with `[[bin]] name = "missive"`
+* minimal compileable library targets for all crates
+* placeholder `missive` binary that reports the workspace crate count
+* unit tests covering crate metadata and the target crate layout
+* README updates describing the new workspace layout and current placeholder binary command
 
 ## Known blockers
 
@@ -53,8 +73,8 @@ None known.
 
 ## Limitations
 
-The `missive` binary is currently only a bootstrap placeholder. Ticket 001 will replace/extend this with the target Cargo workspace crate layout.
+The `missive` binary is still a placeholder. Real CLI flags, subcommands, output rendering, configuration, A2A integration, persistence, gateway behaviour, adapters, and collectives remain for later tickets.
 
 ## Next recommended ticket
 
-Ticket 001 — Define Cargo workspace and crate layout.
+Ticket 002 — Install and document autonomous build tooling.

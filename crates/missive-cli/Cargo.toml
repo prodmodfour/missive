@@ -1,0 +1,24 @@
+[package]
+name = "missive-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Command-line interface for missive."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "missive"
+path = "src/main.rs"
+
+[dependencies]
+missive-adapters.workspace = true
+missive-a2a.workspace = true
+missive-core.workspace = true
+missive-gateway.workspace = true
+missive-observe.workspace = true
+missive-router.workspace = true
+missive-store.workspace = true

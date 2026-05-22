@@ -1,0 +1,14 @@
+[package]
+name = "missive-a2a"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A2A protocol integration layer for missive."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+missive-core.workspace = true

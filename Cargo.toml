@@ -1,11 +1,38 @@
-[package]
-name = "missive"
+[workspace]
+members = [
+    "crates/missive-adapters",
+    "crates/missive-a2a",
+    "crates/missive-cli",
+    "crates/missive-core",
+    "crates/missive-gateway",
+    "crates/missive-observe",
+    "crates/missive-router",
+    "crates/missive-store",
+]
+default-members = ["crates/missive-cli"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 license = "Apache-2.0"
-description = "Bootstrap skeleton for the missive A2A-native agent communication CLI."
 publish = false
 
-[workspace]
-members = ["."]
-resolver = "3"
+[workspace.dependencies]
+missive-adapters = { path = "crates/missive-adapters", version = "0.1.0" }
+missive-a2a = { path = "crates/missive-a2a", version = "0.1.0" }
+missive-core = { path = "crates/missive-core", version = "0.1.0" }
+missive-gateway = { path = "crates/missive-gateway", version = "0.1.0" }
+missive-observe = { path = "crates/missive-observe", version = "0.1.0" }
+missive-router = { path = "crates/missive-router", version = "0.1.0" }
+missive-store = { path = "crates/missive-store", version = "0.1.0" }
+
+clap = { version = "4.5", features = ["derive"] }
+miette = { version = "7.2", features = ["fancy"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }

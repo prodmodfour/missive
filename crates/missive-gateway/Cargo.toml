@@ -1,0 +1,16 @@
+[package]
+name = "missive-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Gateway daemon scaffolding for missive."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+missive-core.workspace = true
+missive-router.workspace = true
+missive-store.workspace = true

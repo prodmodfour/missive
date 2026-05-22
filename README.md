@@ -4,20 +4,34 @@
 
 ## Current status
 
-This repository is at bootstrap stage. It contains:
+This repository is at early workspace stage. It contains:
 
-* a minimal Rust workspace root with a binary package named `missive`
+* a Cargo workspace with the target crate layout under `crates/`
+* a `missive-cli` package that exposes the binary named `missive`
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
 * starter documentation directories, including `docs/adr/`
 
-The current binary is only a placeholder:
+Current crates:
 
-```bash
-cargo run
+```text
+crates/missive-cli        command parsing, output rendering, exit codes
+crates/missive-core       domain types, errors, config, IDs, envelopes
+crates/missive-a2a        A2A protocol/client integration and compatibility fixtures
+crates/missive-store      SQLite migrations and repository APIs
+crates/missive-router     agent selection, policies, groups, collectives
+crates/missive-gateway    daemon, subscriptions, webhooks, jobs, sessions
+crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
+crates/missive-observe    tracing, logs, diagnostics, event export helpers
 ```
 
-Future tickets add the real crate layout, CLI commands, A2A integration, persistence, gateway, adapters, collectives, tests, and packaging.
+The current binary is still only a placeholder:
+
+```bash
+cargo run -p missive-cli --bin missive
+```
+
+Future tickets add real CLI commands, A2A integration, persistence, gateway, adapters, collectives, tests, and packaging.
 
 ## Build and validation
 

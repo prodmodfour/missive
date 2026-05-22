@@ -41,7 +41,7 @@ Validation:
 
 ## 001 — Define Cargo workspace and crate layout
 
-Status: TODO
+Status: DONE
 
 Phase: Foundation
 
