@@ -67,7 +67,8 @@ strings:
 * auth refs: `AuthRefUpsert`, `AuthRefRecord`, and CRUD methods for non-secret
   environment/keyring reference rows used by agent registry auth-ref links
 * agents: `AgentUpsert`, `AgentRecord`, and CRUD methods for registry rows used
-  by `missive agent add/list/show/remove/rename`
+  by `missive agent add/list/show/inspect/refresh/remove/rename`, including
+  cached Agent Card JSON, ETag, Last-Modified, and fetch timestamp fields
 * contexts: `ContextUpsert`, `ContextRecord`, and CRUD methods for context state
 * tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
@@ -96,6 +97,6 @@ should use for multi-row state changes.
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
 and the CLI now uses the auth-ref and agent repositories for `missive agent`
-registry commands. Message/artifact/push-config and adapter-binding repositories, retention
-enforcement, compaction, event replay, and durable A2A protocol persistence are
+registry commands plus public Agent Card cache updates. Message/artifact/push-config and adapter-binding repositories, retention
+enforcement, compaction, event replay, and durable A2A protocol persistence beyond public Agent Cards are
 implemented by later tickets.

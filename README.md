@@ -8,7 +8,7 @@ This repository is at early workspace stage. It contains:
 
 * a Cargo workspace with the target crate layout under `crates/`
 * a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, human/JSON/NDJSON/quiet output renderers, and initial agent registry commands
+* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, human/JSON/NDJSON/quiet output renderers, agent registry commands, and public A2A Agent Card discovery/cache inspection
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
@@ -27,18 +27,20 @@ crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
 crates/missive-observe    tracing, logs, diagnostics, event export helpers
 ```
 
-The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/remove/rename`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
+The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
 
 ```bash
 cargo run -p missive-cli --bin missive -- --help
 cargo run -p missive-cli --bin missive -- agent --help
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent add echo http://127.0.0.1:8080 --tag local
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent inspect echo --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent refresh echo
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --json
 cargo run -p missive-cli --bin missive -- events --ndjson
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, state paths, examples, validation, and redaction, and [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract. Future tickets add A2A integration, more command behaviour, gateway runtime behaviour, adapters, collectives, tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current Agent Card discovery mapping, and [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract. Future tickets add A2A interface negotiation, message sending, streaming, gateway runtime behaviour, adapters, collectives, tests, and packaging.
 
 ## Build and validation
 

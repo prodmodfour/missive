@@ -124,7 +124,7 @@ pub struct GlobalArgs {
 pub enum Commands {
     /// Manage configured A2A agents and cached Agent Cards.
     #[command(
-        long_about = "Manage configured A2A agent aliases in the local SQLite registry. Agent Card discovery, refresh, and capability inspection are implemented by later A2A tickets."
+        long_about = "Manage configured A2A agent aliases in the local SQLite registry, inspect public A2A Agent Cards, and refresh the local Agent Card cache."
     )]
     Agent {
         /// Agent registry operation to run. With no operation, missive emits a parsed command status.

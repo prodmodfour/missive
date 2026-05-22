@@ -429,7 +429,7 @@ Validation:
 
 ## 014 — Implement public Agent Card discovery
 
-Status: TODO
+Status: DONE
 
 Phase: A2A
 

@@ -1,16 +1,19 @@
-//! Agent registry CLI commands.
+//! Agent registry and public Agent Card CLI commands.
 //!
-//! This module implements the first non-skeletal CLI behavior for `missive`:
-//! local profile-scoped agent registry management backed by the SQLite store.
-//! A2A Agent Card discovery and remote inspection remain intentionally out of
-//! scope for this ticket.
+//! This module implements profile-scoped agent registry management backed by
+//! the SQLite store plus public A2A Agent Card discovery and caching for
+//! `missive agent inspect` / `missive agent refresh`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use clap::{Args, Subcommand};
+use missive_a2a::{
+    AgentCard, AgentCardCacheValidators, AgentCardClient, AgentCardFetchOutcome,
+    public_agent_card_url,
+};
 use missive_core::{
-    AgentAlias, LoadedConfig, Metadata, MissiveError, Result, TransportName,
+    AgentAlias, LoadedConfig, Metadata, MissiveError, MissiveTimestamp, Result, TransportName,
     config::{AgentConfig, AuthRefConfig, AuthRefKind as ConfigAuthRefKind},
 };
 use missive_store::{
@@ -18,7 +21,7 @@ use missive_store::{
     AuthSecretStorage, ProcessLock, ProcessLockKind, StatePathResolver, Store,
 };
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use url::Url;
 
 use crate::output::{OutputMode, redact_json, redact_text, render_success};
@@ -39,6 +42,10 @@ pub enum AgentCommands {
     List,
     /// Show one local or config-seeded agent registry entry.
     Show(AgentAliasArgs),
+    /// Inspect an agent's cached or freshly fetched public A2A Agent Card.
+    Inspect(AgentInspectArgs),
+    /// Refresh an agent's public A2A Agent Card cache.
+    Refresh(AgentAliasArgs),
     /// Rename one writable local agent registry entry.
     Rename(AgentRenameArgs),
 }
@@ -52,6 +59,8 @@ impl AgentCommands {
             Self::Remove(_) => "remove",
             Self::List => "list",
             Self::Show(_) => "show",
+            Self::Inspect(_) => "inspect",
+            Self::Refresh(_) => "refresh",
             Self::Rename(_) => "rename",
         }
     }
@@ -91,6 +100,16 @@ pub struct AgentAliasArgs {
     pub alias: String,
 }
 
+/// Arguments for `missive agent inspect`.
+#[derive(Debug, Clone, Args)]
+pub struct AgentInspectArgs {
+    /// Agent alias.
+    pub alias: String,
+    /// Bypass the local Agent Card cache and revalidate/fetch from the remote endpoint.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub refresh: bool,
+}
+
 /// Arguments for `missive agent rename`.
 #[derive(Debug, Clone, Args)]
 pub struct AgentRenameArgs {
@@ -120,6 +139,12 @@ struct AgentView {
     #[serde(skip_serializing_if = "Option::is_none")]
     notes: Option<String>,
     metadata: Metadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_card_fetched_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_card_etag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_card_last_modified: Option<String>,
     read_only: bool,
     created_at: String,
     updated_at: String,
@@ -145,6 +170,11 @@ impl AgentView {
             tags: record.tags.clone(),
             notes: record.notes.clone(),
             metadata: record.metadata.clone(),
+            agent_card_fetched_at: record
+                .agent_card_fetched_at
+                .map(MissiveTimestamp::to_rfc3339),
+            agent_card_etag: record.agent_card_etag.clone(),
+            agent_card_last_modified: record.agent_card_last_modified.clone(),
             read_only: record.read_only,
             created_at: record.created_at.to_rfc3339(),
             updated_at: record.updated_at.to_rfc3339(),
@@ -176,6 +206,73 @@ struct AgentActionOutput {
     message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct AgentCardInspectionOutput {
+    profile: String,
+    agent: AgentView,
+    cache: AgentCardCacheView,
+    card: ParsedAgentCardView,
+    raw_card: Value,
+    message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct AgentCardCacheView {
+    status: String,
+    discovery_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fetched_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    etag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_modified: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ParsedAgentCardView {
+    name: String,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<AgentProviderView>,
+    agent_version: String,
+    protocol_versions: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    documentation_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon_url: Option<String>,
+    supported_interfaces: Vec<AgentInterfaceView>,
+    capabilities: Value,
+    default_input_modes: Vec<String>,
+    default_output_modes: Vec<String>,
+    skills: Vec<AgentSkillView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct AgentProviderView {
+    url: String,
+    organization: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct AgentInterfaceView {
+    url: String,
+    protocol_binding: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tenant: Option<String>,
+    protocol_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct AgentSkillView {
+    id: String,
+    name: String,
+    description: String,
+    tags: Vec<String>,
+    examples: Vec<String>,
+    input_modes: Vec<String>,
+    output_modes: Vec<String>,
+}
+
 /// Executes one agent registry subcommand.
 pub(crate) fn execute_agent_command<W>(
     command: &AgentCommands,
@@ -194,6 +291,8 @@ where
         AgentCommands::Remove(args) => remove_agent(args, registry, mode, writer),
         AgentCommands::List => list_agents(registry, mode, writer),
         AgentCommands::Show(args) => show_agent(args, registry, mode, writer),
+        AgentCommands::Inspect(args) => inspect_agent(args, registry, mode, writer),
+        AgentCommands::Refresh(args) => refresh_agent(args, registry, mode, writer),
         AgentCommands::Rename(args) => rename_agent(args, registry, mode, writer),
     }
 }
@@ -250,13 +349,19 @@ fn config_auth_ref_upsert(name: &str, auth_ref: &AuthRefConfig) -> AuthRefUpsert
 
 fn sync_config_agents(store: &Store, loaded_config: &LoadedConfig) -> Result<()> {
     for (alias, agent) in &loaded_config.config.agents {
-        store.upsert_agent(&config_agent_upsert(alias, agent)?)?;
+        let parsed_alias = AgentAlias::new(alias.clone())?;
+        let existing = store.get_agent(&parsed_alias)?;
+        store.upsert_agent(&config_agent_upsert(alias, agent, existing.as_ref())?)?;
     }
 
     Ok(())
 }
 
-fn config_agent_upsert(alias: &str, agent: &AgentConfig) -> Result<AgentUpsert> {
+fn config_agent_upsert(
+    alias: &str,
+    agent: &AgentConfig,
+    existing: Option<&AgentRecord>,
+) -> Result<AgentUpsert> {
     let alias = AgentAlias::new(alias.to_owned())?;
     let mut input = AgentUpsert::new(alias, agent.base_url.clone());
     input.source = AgentSource::ConfigSeed;
@@ -267,6 +372,12 @@ fn config_agent_upsert(alias: &str, agent: &AgentConfig) -> Result<AgentUpsert> 
     input.notes = agent.notes.clone();
     input.metadata = agent.metadata.clone();
     input.read_only = true;
+    if let Some(existing) = existing.filter(|existing| existing.base_url == agent.base_url) {
+        input.agent_card_json = existing.agent_card_json.clone();
+        input.agent_card_etag = existing.agent_card_etag.clone();
+        input.agent_card_last_modified = existing.agent_card_last_modified.clone();
+        input.agent_card_fetched_at = existing.agent_card_fetched_at;
+    }
     Ok(input)
 }
 
@@ -380,6 +491,42 @@ where
     render_agent_show(writer, mode, &output)
 }
 
+fn inspect_agent<W>(
+    args: &AgentInspectArgs,
+    registry: AgentRegistry,
+    mode: OutputMode,
+    writer: &mut W,
+) -> Result<()>
+where
+    W: Write,
+{
+    let alias = parse_alias(&args.alias)?;
+    let record = get_existing_agent(&registry.store, &alias)?;
+    let output = if args.refresh || record.agent_card_json.is_none() {
+        fetch_and_cache_agent_card(&registry.store, &registry.profile, &record, args.refresh)?
+    } else {
+        cached_agent_card_output(&registry, &record)?
+    };
+
+    render_agent_card_inspection(writer, mode, "agent_inspect", &output)
+}
+
+fn refresh_agent<W>(
+    args: &AgentAliasArgs,
+    registry: AgentRegistry,
+    mode: OutputMode,
+    writer: &mut W,
+) -> Result<()>
+where
+    W: Write,
+{
+    let alias = parse_alias(&args.alias)?;
+    let record = get_existing_agent(&registry.store, &alias)?;
+    let output = fetch_and_cache_agent_card(&registry.store, &registry.profile, &record, true)?;
+
+    render_agent_card_inspection(writer, mode, "agent_refresh", &output)
+}
+
 fn rename_agent<W>(
     args: &AgentRenameArgs,
     mut registry: AgentRegistry,
@@ -486,6 +633,225 @@ fn agent_upsert_from_record(record: &AgentRecord, alias: AgentAlias) -> AgentUps
         agent_card_last_modified: record.agent_card_last_modified.clone(),
         agent_card_fetched_at: record.agent_card_fetched_at,
         read_only: record.read_only,
+    }
+}
+
+fn cached_agent_card_output(
+    registry: &AgentRegistry,
+    record: &AgentRecord,
+) -> Result<AgentCardInspectionOutput> {
+    let raw_card = record.agent_card_json.clone().ok_or_else(|| {
+        MissiveError::protocol(format!(
+            "agent {:?} has no cached A2A Agent Card",
+            record.alias.as_str()
+        ))
+        .with_help("Run 'missive agent inspect <alias> --refresh' to fetch the public Agent Card.")
+    })?;
+    let card = parse_cached_agent_card(record, raw_card.clone())?;
+    let discovery_url = public_agent_card_url(&record.base_url)?.to_string();
+    let cache = AgentCardCacheView {
+        status: "cached".to_owned(),
+        discovery_url,
+        fetched_at: record
+            .agent_card_fetched_at
+            .map(MissiveTimestamp::to_rfc3339),
+        etag: record.agent_card_etag.clone(),
+        last_modified: record.agent_card_last_modified.clone(),
+    };
+
+    Ok(agent_card_output(
+        registry.profile.clone(),
+        record,
+        cache,
+        &card,
+        raw_card,
+    ))
+}
+
+fn fetch_and_cache_agent_card(
+    store: &Store,
+    profile: &str,
+    record: &AgentRecord,
+    refresh_requested: bool,
+) -> Result<AgentCardInspectionOutput> {
+    let validators = validators_from_record(record);
+    let client = AgentCardClient::new()?;
+    let outcome = client.fetch_public_agent_card(&record.base_url, validators.as_ref())?;
+
+    match outcome {
+        AgentCardFetchOutcome::Fetched(fetch) => {
+            let fetched_at = MissiveTimestamp::now_utc();
+            let updated_record = cache_agent_card(
+                store,
+                record,
+                fetch.raw_json.clone(),
+                fetch.validators,
+                fetched_at,
+            )?;
+            let cache = AgentCardCacheView {
+                status: if refresh_requested {
+                    "refreshed".to_owned()
+                } else {
+                    "fetched".to_owned()
+                },
+                discovery_url: fetch.url,
+                fetched_at: Some(fetched_at.to_rfc3339()),
+                etag: updated_record.agent_card_etag.clone(),
+                last_modified: updated_record.agent_card_last_modified.clone(),
+            };
+            Ok(agent_card_output(
+                profile.to_owned(),
+                &updated_record,
+                cache,
+                &fetch.card,
+                fetch.raw_json,
+            ))
+        }
+        AgentCardFetchOutcome::NotModified(not_modified) => {
+            let raw_card = record.agent_card_json.clone().ok_or_else(|| {
+                MissiveError::protocol(format!(
+                    "agent {:?} Agent Card endpoint returned 304 Not Modified without a local cache",
+                    record.alias.as_str()
+                ))
+                .with_help("Run 'missive agent refresh <alias>' after the remote endpoint returns a full card body.")
+            })?;
+            let card = parse_cached_agent_card(record, raw_card.clone())?;
+            let validators = merge_validators(record, not_modified.validators);
+            let fetched_at = MissiveTimestamp::now_utc();
+            let updated_record =
+                cache_agent_card(store, record, raw_card.clone(), validators, fetched_at)?;
+            let cache = AgentCardCacheView {
+                status: "not_modified".to_owned(),
+                discovery_url: not_modified.url,
+                fetched_at: Some(fetched_at.to_rfc3339()),
+                etag: updated_record.agent_card_etag.clone(),
+                last_modified: updated_record.agent_card_last_modified.clone(),
+            };
+            Ok(agent_card_output(
+                profile.to_owned(),
+                &updated_record,
+                cache,
+                &card,
+                raw_card,
+            ))
+        }
+    }
+}
+
+fn parse_cached_agent_card(record: &AgentRecord, raw_card: Value) -> Result<AgentCard> {
+    AgentCard::from_json(raw_card).map_err(|error| {
+        MissiveError::protocol(format!(
+            "cached A2A Agent Card for agent {:?} is malformed",
+            record.alias.as_str()
+        ))
+        .with_source(error)
+        .with_help("Run 'missive agent refresh <alias>' to replace the cached Agent Card.")
+    })
+}
+
+fn cache_agent_card(
+    store: &Store,
+    record: &AgentRecord,
+    raw_card: Value,
+    validators: AgentCardCacheValidators,
+    fetched_at: MissiveTimestamp,
+) -> Result<AgentRecord> {
+    let mut input = agent_upsert_from_record(record, record.alias.clone());
+    input.agent_card_json = Some(raw_card);
+    input.agent_card_etag = validators.etag;
+    input.agent_card_last_modified = validators.last_modified;
+    input.agent_card_fetched_at = Some(fetched_at);
+    store.upsert_agent(&input)
+}
+
+fn validators_from_record(record: &AgentRecord) -> Option<AgentCardCacheValidators> {
+    let validators = AgentCardCacheValidators {
+        etag: record.agent_card_etag.clone(),
+        last_modified: record.agent_card_last_modified.clone(),
+    };
+    (!validators.is_empty()).then_some(validators)
+}
+
+fn merge_validators(
+    record: &AgentRecord,
+    updated: AgentCardCacheValidators,
+) -> AgentCardCacheValidators {
+    AgentCardCacheValidators {
+        etag: updated.etag.or_else(|| record.agent_card_etag.clone()),
+        last_modified: updated
+            .last_modified
+            .or_else(|| record.agent_card_last_modified.clone()),
+    }
+}
+
+fn agent_card_output(
+    profile: String,
+    record: &AgentRecord,
+    cache: AgentCardCacheView,
+    card: &AgentCard,
+    raw_card: Value,
+) -> AgentCardInspectionOutput {
+    let parsed = ParsedAgentCardView::from_card(card, &raw_card);
+    let message = format!(
+        "Inspected A2A Agent Card for '{}' ({})",
+        record.alias.as_str(),
+        parsed.name
+    );
+    AgentCardInspectionOutput {
+        profile,
+        agent: AgentView::from_record(record),
+        cache,
+        card: parsed,
+        raw_card,
+        message,
+    }
+}
+
+impl ParsedAgentCardView {
+    fn from_card(card: &AgentCard, raw_card: &Value) -> Self {
+        let summary = card.summary();
+        let capabilities = raw_card
+            .get("capabilities")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        Self {
+            name: summary.name,
+            description: summary.description,
+            provider: summary.provider.map(|provider| AgentProviderView {
+                url: provider.url,
+                organization: provider.organization,
+            }),
+            agent_version: summary.agent_version,
+            protocol_versions: summary.protocol_versions,
+            documentation_url: summary.documentation_url,
+            icon_url: summary.icon_url,
+            supported_interfaces: summary
+                .supported_interfaces
+                .into_iter()
+                .map(|interface| AgentInterfaceView {
+                    url: interface.url,
+                    protocol_binding: interface.protocol_binding,
+                    tenant: interface.tenant,
+                    protocol_version: interface.protocol_version,
+                })
+                .collect(),
+            capabilities,
+            default_input_modes: summary.default_input_modes,
+            default_output_modes: summary.default_output_modes,
+            skills: summary
+                .skills
+                .into_iter()
+                .map(|skill| AgentSkillView {
+                    id: skill.id,
+                    name: skill.name,
+                    description: skill.description,
+                    tags: skill.tags,
+                    examples: skill.examples,
+                    input_modes: skill.input_modes,
+                    output_modes: skill.output_modes,
+                })
+                .collect(),
+        }
     }
 }
 
@@ -835,6 +1201,28 @@ where
     .map_err(|error| MissiveError::io("writing agent show output", error))?;
     writeln!(writer, "  metadata: {}", metadata_json(&agent.metadata)?)
         .map_err(|error| MissiveError::io("writing agent show output", error))?;
+    writeln!(
+        writer,
+        "  agent_card: {}",
+        agent
+            .agent_card_fetched_at
+            .as_deref()
+            .map(|fetched_at| format!("cached at {fetched_at}"))
+            .unwrap_or_else(|| "not cached".to_owned())
+    )
+    .map_err(|error| MissiveError::io("writing agent show output", error))?;
+    if let Some(etag) = &agent.agent_card_etag {
+        writeln!(writer, "  agent_card_etag: {}", redact_text(etag))
+            .map_err(|error| MissiveError::io("writing agent show output", error))?;
+    }
+    if let Some(last_modified) = &agent.agent_card_last_modified {
+        writeln!(
+            writer,
+            "  agent_card_last_modified: {}",
+            redact_text(last_modified)
+        )
+        .map_err(|error| MissiveError::io("writing agent show output", error))?;
+    }
     writeln!(writer, "  created_at: {}", agent.created_at)
         .map_err(|error| MissiveError::io("writing agent show output", error))?;
     writeln!(writer, "  updated_at: {}", agent.updated_at)
@@ -860,6 +1248,190 @@ where
             .map_err(|error| MissiveError::io("writing agent show output", error))?;
     }
     Ok(())
+}
+
+fn render_agent_card_inspection<W>(
+    writer: &mut W,
+    mode: OutputMode,
+    kind: &str,
+    output: &AgentCardInspectionOutput,
+) -> Result<()>
+where
+    W: Write,
+{
+    match mode {
+        OutputMode::Human => write_agent_card_human(writer, output),
+        OutputMode::Json | OutputMode::Ndjson | OutputMode::Quiet => {
+            render_success(writer, mode, kind, output, &output.message)
+        }
+    }
+}
+
+fn write_agent_card_human<W>(writer: &mut W, output: &AgentCardInspectionOutput) -> Result<()>
+where
+    W: Write,
+{
+    let card = &output.card;
+    writeln!(
+        writer,
+        "Agent Card for {} ({})",
+        redact_text(&output.agent.alias),
+        redact_text(&card.name)
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(writer, "  profile: {}", redact_text(&output.profile))
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(writer, "  cache_status: {}", output.cache.status)
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(
+        writer,
+        "  discovery_url: {}",
+        redact_text(&output.cache.discovery_url)
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    if let Some(fetched_at) = &output.cache.fetched_at {
+        writeln!(writer, "  fetched_at: {fetched_at}")
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    }
+    if let Some(etag) = &output.cache.etag {
+        writeln!(writer, "  etag: {}", redact_text(etag))
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    }
+    if let Some(last_modified) = &output.cache.last_modified {
+        writeln!(writer, "  last_modified: {}", redact_text(last_modified))
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    }
+    writeln!(writer, "  description: {}", redact_text(&card.description))
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    if let Some(provider) = &card.provider {
+        writeln!(
+            writer,
+            "  provider: {} ({})",
+            redact_text(&provider.organization),
+            redact_text(&provider.url)
+        )
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    } else {
+        writeln!(writer, "  provider: -")
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    }
+    writeln!(
+        writer,
+        "  agent_version: {}",
+        redact_text(&card.agent_version)
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(
+        writer,
+        "  protocol_versions: {}",
+        join_or_dash(&card.protocol_versions)
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(
+        writer,
+        "  default_input_modes: {}",
+        join_or_dash(&card.default_input_modes)
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(
+        writer,
+        "  default_output_modes: {}",
+        join_or_dash(&card.default_output_modes)
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    writeln!(
+        writer,
+        "  capabilities: {}",
+        json_for_human(&card.capabilities)?
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    write_agent_card_interfaces(writer, &card.supported_interfaces)?;
+    write_agent_card_skills(writer, &card.skills)?;
+
+    Ok(())
+}
+
+fn write_agent_card_interfaces<W>(writer: &mut W, interfaces: &[AgentInterfaceView]) -> Result<()>
+where
+    W: Write,
+{
+    writeln!(writer, "  supported_interfaces:")
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    for interface in interfaces {
+        let tenant = interface
+            .tenant
+            .as_deref()
+            .map(|tenant| format!(" tenant={}", redact_text(tenant)))
+            .unwrap_or_default();
+        writeln!(
+            writer,
+            "    {} {} {}{}",
+            redact_text(&interface.protocol_binding),
+            redact_text(&interface.protocol_version),
+            redact_text(&interface.url),
+            tenant,
+        )
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    }
+    Ok(())
+}
+
+fn write_agent_card_skills<W>(writer: &mut W, skills: &[AgentSkillView]) -> Result<()>
+where
+    W: Write,
+{
+    writeln!(writer, "  skills:")
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    for skill in skills {
+        writeln!(
+            writer,
+            "    {} ({})",
+            redact_text(&skill.id),
+            redact_text(&skill.name)
+        )
+        .map_err(|error| MissiveError::io("writing agent card output", error))?;
+        if !skill.description.is_empty() {
+            writeln!(
+                writer,
+                "      description: {}",
+                redact_text(&skill.description)
+            )
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+        }
+        writeln!(writer, "      tags: {}", join_or_dash(&skill.tags))
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+        if !skill.input_modes.is_empty() {
+            writeln!(
+                writer,
+                "      input_modes: {}",
+                join_or_dash(&skill.input_modes)
+            )
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+        }
+        if !skill.output_modes.is_empty() {
+            writeln!(
+                writer,
+                "      output_modes: {}",
+                join_or_dash(&skill.output_modes)
+            )
+            .map_err(|error| MissiveError::io("writing agent card output", error))?;
+        }
+    }
+    Ok(())
+}
+
+fn join_or_dash(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_owned()
+    } else {
+        redact_text(&values.join(", "))
+    }
+}
+
+fn json_for_human(value: &Value) -> Result<String> {
+    serde_json::to_string(&redact_json(value)).map_err(|error| {
+        MissiveError::orchestration("failed to render JSON for human output").with_source(error)
+    })
 }
 
 fn render_agent_action<W>(
