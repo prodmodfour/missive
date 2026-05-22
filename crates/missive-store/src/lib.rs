@@ -1,7 +1,13 @@
 #![doc = "Local persistence scaffolding for missive."]
 
+pub mod migrations;
 pub mod paths;
 
+pub use migrations::{
+    AppliedMigration, CURRENT_SCHEMA_VERSION, Migration, MigrationReport, SQLITE_APPLICATION_ID,
+    applied_migrations, embedded_migrations, migrate_connection, migrate_database,
+    open_sqlite_database, schema_version,
+};
 pub use paths::{
     DEFAULT_DATABASE_FILE, ENV_HOME, ENV_MISSIVE_HOME, ENV_XDG_CACHE_HOME, ENV_XDG_DATA_HOME,
     ENV_XDG_STATE_HOME, ProcessLock, ProcessLockKind, StatePathResolver, StatePathSource,

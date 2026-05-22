@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 fs2.workspace = true
 missive-core.workspace = true
+rusqlite.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

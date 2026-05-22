@@ -37,7 +37,7 @@ cargo run -p missive-cli --bin missive -- events --ndjson
 cargo run -p missive-cli --bin missive -- agent --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for the current skeleton and output envelope, and [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, state paths, examples, validation, and redaction. Future tickets add command behaviour, A2A integration, persistence, gateway runtime behaviour, adapters, collectives, tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for the current skeleton and output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, state paths, examples, validation, and redaction, and [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract. Future tickets add command behaviour, A2A integration, repository APIs, gateway runtime behaviour, adapters, collectives, tests, and packaging.
 
 ## Build and validation
 

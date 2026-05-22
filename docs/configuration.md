@@ -118,6 +118,10 @@ state mutations and migrations; `gateway.lock` coordinates one gateway process
 per profile. Lock files may remain after a process exits, but the OS-level lock
 is released when the owning process or file descriptor closes.
 
+The SQLite schema is managed by embedded migrations in `missive-store`; see
+[`docs/storage.md`](storage.md) for the migration strategy, table purposes, and
+retention notes.
+
 ## Validation and redaction
 
 Config validation checks:

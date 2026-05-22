@@ -339,7 +339,7 @@ Validation:
 
 ## 011 — Design SQLite schema and migrations
 
-Status: TODO
+Status: DONE
 
 Phase: Store
 
