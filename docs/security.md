@@ -119,9 +119,21 @@ not print the raw credential. The environment variable name and non-secret local
 metadata may still appear in shell history or automation logs if users include
 them there; do not pass real credentials in examples or committed scripts.
 
-Webhook receiving and validation are implemented by later tickets. Until then,
-only configure callback URLs that point at trusted local or test endpoints and do
-not expose long-lived production webhook credentials through missive demos.
+`missive webhook run --auth-token-env ENV` reads the expected inbound callback
+token from the local environment and compares it to the configured request
+header. By default the receiver expects `Authorization: Bearer <token>`; use
+`--auth-header HEADER` and `--auth-scheme none` for a raw custom-header token.
+The token is kept in process memory only, is never written to SQLite, and is
+redacted from CLI startup/NDJSON output. Missing or mismatched auth returns
+`401` and records only a redacted rejection event.
+
+The webhook receiver is local HTTP only. For remote agents, terminate HTTPS in a
+trusted tunnel, reverse proxy, or local ingress and forward to
+`http://127.0.0.1:<port>/a2a/push`; no specific vendor is required. Treat public
+callback URLs and tunnel configuration as sensitive operational data and avoid
+committing them. The current receiver validates JSON shape and optional header
+tokens, but it does not yet implement JWT/signature verification, replay
+protection, rate limits, or credential rotation.
 
 ## Artifact exports
 
@@ -136,9 +148,10 @@ fetching or dereferencing remote/local URLs.
 ## Current limitations
 
 Authentication is wired into implemented Agent Card fetch/refresh,
-non-streaming send, streaming send, task get/list/wait/cancel, and push config
-requests. Future gateway and adapter tickets must reuse the same resolution and
-redaction path when they add outbound requests.
+non-streaming send, streaming send, task get/list/wait/cancel, push config
+requests, and the inbound webhook header-token hook. Future gateway daemon and
+adapter tickets must reuse the same resolution and redaction path when they add
+outbound requests.
 
-Webhook receiver verification, adapter trust boundaries, trace/log sinks, rate
-limits, and insecure local token storage policy are not implemented yet.
+Webhook signature/JWT verification, adapter trust boundaries, trace/log sinks,
+rate limits, and insecure local token storage policy are not implemented yet.

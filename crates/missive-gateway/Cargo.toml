@@ -11,6 +11,11 @@ description = "Gateway daemon scaffolding for missive."
 path = "src/lib.rs"
 
 [dependencies]
+axum.workspace = true
+missive-a2a.workspace = true
 missive-core.workspace = true
 missive-router.workspace = true
 missive-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

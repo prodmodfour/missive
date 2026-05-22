@@ -5,9 +5,9 @@ configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
-`missive context create/list/show/fork/close/export`, and `missive push
-create/get/list/delete`; other top-level commands still emit skeletal parsed
-status until their ordered tickets land.
+`missive context create/list/show/fork/close/export`, `missive push
+create/get/list/delete`, and `missive webhook run`; other top-level commands
+still emit skeletal parsed status until their ordered tickets land.
 
 Run help with:
 
@@ -19,6 +19,8 @@ missive stream --help
 missive task --help
 missive context --help
 missive push --help
+missive webhook --help
+missive webhook run --help
 ```
 
 ## Global flags
@@ -51,9 +53,11 @@ requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a name
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
 Agent Card HTTP requests plus implemented send, stream, remote task, and push
-config calls. Task wait uses global `--timeout`; tracing and broader
-command-specific timeout semantics are intentionally left to their ordered
-implementation tickets.
+config calls. `missive webhook run` records the effective protocol version on
+inbound callback events when the callback omits `A2A-Version`. Task wait and
+webhook run use global `--timeout` as bounded execution budgets; tracing and
+broader command-specific timeout semantics are intentionally left to their
+ordered implementation tickets.
 
 ## Top-level commands
 
@@ -79,9 +83,9 @@ manpage     Generate manual pages
 Each top-level command has a help page. Running an unimplemented command other
 than help currently loads and validates configuration, then emits a
 command-status record through the selected renderer. Implemented command groups
-with no selected subcommand, such as `missive context --json`, still emit that
-parsed command-status record so automation can distinguish parser support from a
-specific operation.
+with no selected subcommand, such as `missive context --json` or `missive
+webhook --json`, still emit that parsed command-status record so automation can
+distinguish parser support from a specific operation.
 
 ## Agent registry commands
 
@@ -480,14 +484,57 @@ soft-deletes any active local row by setting `deleted_at`; the event journal
 keeps the redacted delete response for audit. Machine-readable output uses
 `push_create`, `push_get`, `push_list`, and `push_delete` envelope kinds.
 
+## Webhook receiver
+
+`missive webhook run` starts a local HTTP receiver for A2A push notification
+callbacks. The receiver validates inbound request authentication when configured,
+parses callback bodies as official A2A `StreamResponse` payloads, persists
+redacted `a2a.push.*` event rows, prints streaming output in human or NDJSON
+mode as callbacks arrive, and exposes `GET /healthz` and `GET /readyz`.
+
+```bash
+MISSIVE_WEBHOOK_TOKEN=change-me \
+  MISSIVE_HOME=/tmp/missive-demo \
+  missive webhook run \
+    --bind-address 127.0.0.1 \
+    --port 7347 \
+    --path /a2a/push \
+    --auth-token-env MISSIVE_WEBHOOK_TOKEN \
+    --ndjson
+```
+
+Use `--auth-header`, `--auth-scheme`, and `--auth-token-env` to require a simple
+header-token check. The default expects `Authorization: Bearer <token>`; use
+`--auth-scheme none` to compare a raw header value. Missing or mismatched auth
+returns `401` and records a redacted `a2a.push.rejected` event. Invalid JSON or
+schema-incompatible A2A callback payloads return `400` and also record redacted
+rejection events. Valid `task`, `message`, `statusUpdate`, and `artifactUpdate`
+payloads return `202` after the event is persisted. If matching context/task rows
+already exist, the event links to them; otherwise the raw redacted payload still
+contains the A2A ids.
+
+`--bind-address` and `--port` override the selected profile's
+`gateway.bind_address`. `--path` changes the callback path. `--max-events N`
+stops gracefully after N accepted callbacks, which is useful for CI and
+one-shot demos. The global `--timeout 30s` also stops the receiver gracefully
+after the duration elapses. `missive webhook run` serves local HTTP only; for
+remote A2A agents, put any trusted HTTPS tunnel, reverse proxy, or local ingress
+in front of it and forward the public callback URL to
+`http://127.0.0.1:<port>/a2a/push`. No specific tunneling vendor is required.
+
+Machine-readable stream output uses `webhook_started`, `webhook_event`,
+`webhook_rejected`, and `webhook_stopped` envelope kinds. `--json` emits only the
+final `webhook_stopped` summary after the receiver shuts down; use `--ndjson` for
+one object per runtime event.
+
 ## Event commands
 
 `missive events` exposes the selected profile's append-only SQLite event
 journal. The current producers record local agent registry changes, A2A
-send/stream request records, A2A send responses, streaming updates, and remote
-task changes observed by send/task commands. Future group, gateway, webhook, and
-adapter tickets will append the same event table through the existing typed store
-API.
+send/stream request records, A2A send responses, streaming updates, remote
+task changes observed by send/task commands, push-config changes, and webhook
+callback acceptance/rejection events. Future group, gateway daemon, and adapter
+tickets will append the same event table through the existing typed store API.
 
 Implemented commands:
 
@@ -526,9 +573,11 @@ The current renderer supports four modes:
   top-level fields
 * config `output.format = "ndjson"` or `--ndjson` — one JSON object per line;
   stream emits one `stream_event` line per SSE event plus a `stream_result`
-  summary, `events export` and `events tail` emit one `event_record` line per
-  event, while other implemented commands emit one command-specific envelope and
-  skeletal commands emit one command-status event
+  summary, webhook run emits `webhook_started`/`webhook_event`/
+  `webhook_rejected`/`webhook_stopped` lines, `events export` and `events tail`
+  emit one `event_record` line per event, while other implemented commands emit
+  one command-specific envelope and skeletal commands emit one command-status
+  event
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are

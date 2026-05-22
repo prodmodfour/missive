@@ -1,5 +1,13 @@
 #![doc = "Gateway daemon scaffolding for missive."]
 
+pub mod webhook;
+
+pub use webhook::{
+    DEFAULT_MAX_BODY_BYTES, DEFAULT_WEBHOOK_PATH, WebhookAccepted, WebhookAuth, WebhookAuthView,
+    WebhookReceiverConfig, WebhookReceiverSummary, WebhookRejected, WebhookRuntimeEvent,
+    WebhookStarted, WebhookTlsNote, run_webhook_receiver,
+};
+
 /// Cargo package name for this crate.
 pub const CRATE_NAME: &str = "missive-gateway";
 
@@ -14,8 +22,12 @@ pub const fn crate_info() -> missive_core::CrateInfo {
 
 /// Returns the lower-level crates the gateway will coordinate as it grows.
 #[must_use]
-pub fn dependent_crates() -> [missive_core::CrateInfo; 2] {
-    [missive_router::crate_info(), missive_store::crate_info()]
+pub fn dependent_crates() -> [missive_core::CrateInfo; 3] {
+    [
+        missive_a2a::crate_info(),
+        missive_router::crate_info(),
+        missive_store::crate_info(),
+    ]
 }
 
 #[cfg(test)]
@@ -31,10 +43,10 @@ mod tests {
     }
 
     #[test]
-    fn dependent_crates_include_router_and_store() {
+    fn dependent_crates_include_a2a_router_and_store() {
         let dependencies = dependent_crates();
         let names: Vec<_> = dependencies.iter().map(|info| info.name()).collect();
 
-        assert_eq!(names, ["missive-router", "missive-store"]);
+        assert_eq!(names, ["missive-a2a", "missive-router", "missive-store"]);
     }
 }

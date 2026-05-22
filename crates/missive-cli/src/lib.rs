@@ -19,6 +19,7 @@ pub mod push;
 pub mod send;
 pub mod stream;
 pub mod task;
+pub mod webhook;
 
 pub use output::{
     CommandStatus, ConfigLoadStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header,
@@ -235,9 +236,13 @@ pub enum Commands {
 
     /// Receive A2A push notification callbacks locally.
     #[command(
-        long_about = "Receive A2A push notification callbacks locally, validate payloads, and persist callback events. Webhook behavior is implemented by a later gateway ticket."
+        long_about = "Receive A2A push notification callbacks locally over HTTP, validate A2A StreamResponse payloads, persist redacted callback events, optionally print NDJSON as callbacks arrive, and expose /healthz for local readiness checks. HTTPS/TLS should terminate in a trusted local tunnel or reverse proxy before forwarding to this listener."
     )]
-    Webhook,
+    Webhook {
+        /// Webhook operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<webhook::WebhookCommands>,
+    },
 
     /// Manage A2A push notification configurations.
     #[command(
@@ -296,7 +301,7 @@ impl Commands {
             Self::Context { .. } => "context",
             Self::Group => "group",
             Self::Gateway => "gateway",
-            Self::Webhook => "webhook",
+            Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
             Self::Doctor => "doctor",
             Self::Logs => "logs",
@@ -439,6 +444,16 @@ where
             command: Some(push_command),
         }) => push::execute_push_command(
             push_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
+        Some(Commands::Webhook {
+            command: Some(webhook_command),
+        }) => webhook::execute_webhook_command(
+            webhook_command,
             &cli.globals,
             &loaded_config,
             environment,

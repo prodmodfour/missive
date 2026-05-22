@@ -250,6 +250,34 @@ redact those credentials. A local placeholder task row is created when needed so
 push config rows and events can link to the configured task id even before
 `missive task get/list` observes the remote task.
 
+## Push notification webhook receiver
+
+A2A push callbacks use the same official `StreamResponse` union shape as
+streaming updates: exactly one of `task`, `message`, `statusUpdate`, or
+`artifactUpdate`. `missive webhook run` validates incoming JSON against
+`missive_a2a::protocol::StreamResponse` before acknowledging the callback.
+Accepted callbacks are persisted as redacted event rows with event types
+`a2a.push.task`, `a2a.push.message`, `a2a.push.status_update`, or
+`a2a.push.artifact_update`; malformed JSON, schema-incompatible payloads, and
+auth failures are persisted as redacted `a2a.push.rejected` events. Valid
+callbacks return HTTP `202`; invalid callbacks return `400`; auth failures return
+`401`.
+
+The receiver records `A2A-Version` from inbound headers when present, otherwise
+it records the effective missive protocol version. It can require a simple
+header/token check through `--auth-token-env` with configurable header and
+scheme. It does not implement signature verification, JWT validation, replay
+protection, or remote task resubscription yet. The local HTTP listener exposes
+`/healthz` and `/readyz`; HTTPS must terminate in a trusted tunnel, reverse
+proxy, or local ingress before forwarding to the receiver.
+
+Webhook persistence appends events through `missive-store` from a blocking task.
+If a matching local context exists, or can be safely created, the event links to
+that `context_id`. If a matching task row already exists, for example because
+`missive push create` created a placeholder or `missive task` observed the task,
+the event also links to `task_id`; otherwise the event remains unlinked while the
+redacted raw payload still preserves the A2A ids.
+
 ## Context continuity
 
 A2A contexts are represented by opaque `contextId` values. `missive send` and
@@ -268,9 +296,9 @@ protocol and do not call a remote A2A "close context" endpoint; they preserve an
 organize the canonical A2A ids used by implemented message and task calls.
 
 Context export recursively redacts secret-like keys and HTTP authorization
-headers before printing. Dedicated A2A task resubscription, push/webhook updates,
-and event replay remain for later tickets. Artifact rows can be inspected and
-exported separately with `missive task artifact list/show/save/export`.
+headers before printing. Dedicated A2A task resubscription and task-state updates
+from webhook callbacks remain for later gateway tickets. Artifact rows can be
+inspected and exported separately with `missive task artifact list/show/save/export`.
 
 ## Error mapping
 
@@ -297,7 +325,7 @@ A2A v1.0 shapes through official serde types:
 * `Task`, including completed, input-required, and file-artifact task examples
 * `SendMessageRequest` and `SendMessageResponse`
 * `StreamResponse` task/message/status/artifact variants, including the push
-  webhook payload shape
+  webhook payload shape used by `missive webhook run`
 * `GetTaskRequest`, `ListTasksRequest`/`ListTasksResponse`,
   `CancelTaskRequest`, and `SubscribeToTaskRequest`
 * `TaskPushNotificationConfig` plus get/list/delete push config request and list

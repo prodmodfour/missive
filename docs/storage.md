@@ -94,9 +94,10 @@ strings:
   monotonic SQLite sequences; `EventInsert::record_a2a_protocol_version` records
   the selected A2A version in event metadata. Current CLI producers append
   redacted rows for agent registry mutations, A2A send/stream requests, A2A send
-  responses, `a2a.stream.*` updates, and changed remote task payloads observed by
-  send/task commands. `missive events list/tail/replay/export` reads these rows
-  without hand-written SQL in CLI code.
+  responses, `a2a.stream.*` updates, changed remote task payloads observed by
+  send/task commands, push-config CRUD, and webhook callback acceptance/rejection
+  events. `missive events list/tail/replay/export` reads these rows without
+  hand-written SQL in CLI code.
 * groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, and membership
   methods with rank uniqueness enforced by SQLite
 * gateway jobs: `GatewayJobUpsert`, `GatewayJobRecord`, `GatewayJobId`, and CRUD
@@ -127,7 +128,8 @@ public Agent Card cache updates, non-streaming `missive send` persistence,
 streaming `missive stream` request/event/artifact persistence, task
 get/list/wait/cancel state updates, `missive task artifact` local export
 commands, context create/list/show/fork/close/export state management, push
-notification config create/get/list/delete state, and event journal
-list/tail/replay/export. Adapter-binding repositories, retention enforcement,
-compaction, and durable event producers for future group/gateway, webhook, and
-adapter callbacks are implemented by later tickets.
+notification config create/get/list/delete state, webhook callback event
+persistence, and event journal list/tail/replay/export. Adapter-binding
+repositories, retention enforcement, compaction, and durable event producers for
+future group/gateway daemon and adapter callbacks are implemented by later
+tickets.
