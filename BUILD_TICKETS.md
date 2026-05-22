@@ -1295,7 +1295,7 @@ Validation:
 
 ## 043 — Define adapter trait and registry
 
-Status: TODO
+Status: DONE
 
 Phase: Adapters
 

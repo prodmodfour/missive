@@ -107,7 +107,9 @@ Supported sections in this ticket:
   `direct`, `capability-match`, `tag-match`, `round-robin`, `weighted`,
   `broadcast`, `first-success`, `quorum`, and `fallback`.
 * `adapters` — adapter kind, enablement, profile mapping, optional source-level
-  busy-input overrides, and non-secret settings for later adapter tickets.
+  busy-input overrides, and non-secret settings. The shared adapter trait and
+  registry can derive `AdapterDefinition` values from this schema today; concrete
+  stdio/file/HTTP/external platform workers arrive in later tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
   bytes, and concurrency defaults. `qos.max_request_bytes` is currently enforced
   by `missive send` and `missive stream` while parsing local text, file-reference,
@@ -136,7 +138,9 @@ is known, and `steer` appends follow-up input to the active task/context only
 when protocol state allows it. If steering is unsupported, the configured
 fallback is used; fallback cannot be `steer` to avoid recursive policy loops.
 
-Unknown fields are rejected so configuration typos fail early.
+Unknown fields are rejected so configuration typos fail early. See
+[`adapters.md`](adapters.md) for the adapter lifecycle and registry contract that
+consumes `[adapters.<name>]` entries.
 
 For implemented A2A HTTP requests (Agent Card fetch/refresh, non-streaming
 send, streaming send, remote task get/list/wait/cancel, and push config calls),
@@ -210,6 +214,8 @@ Config validation checks:
 * gateway bind address is an IP socket address such as `127.0.0.1:7347`
 * busy-input queue depth must be greater than zero, and unsupported steer
   fallback must be `queue` or `interrupt`
+* adapter definitions name a registry `kind`, can be disabled before startup,
+  and may only reference an existing `session_profile`
 * routing policy names in `routing.default_policy`, profile routing overrides,
   and group creation must be one of the built-in missive policy names
 * auth refs identify only environment variables or keyring coordinates, not raw

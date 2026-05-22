@@ -75,12 +75,13 @@ may need keyutils/keyring setup or an env-backed fallback.
 Gateway session rows store source kind/source identity, target agent alias,
 resume name, linked context id, reset policy fields, timestamps, reset count,
 and non-secret metadata. They are communication continuity records only, not
-agent memory. Busy-input state uses the same source kind/source identity concept
-when deciding queue, interrupt, or steer behavior, and queued inputs may later be
-persisted by adapter/job workers as ordinary gateway state. Source identities
-such as adapter user/channel identifiers can be operationally sensitive, so keep
-profile SQLite files outside the repository and prune them according to future
-adapter retention policy.
+agent memory. The adapter trait normalizes external platform identities into the
+same source kind/source id model before gateway/session/busy-input handling.
+Busy-input state uses that source identity when deciding queue, interrupt, or
+steer behavior, and queued inputs may later be persisted by adapter/job workers
+as ordinary gateway state. Source identities such as adapter user/channel
+identifiers can be operationally sensitive, so keep profile SQLite files outside
+the repository and prune them according to future adapter retention policy.
 
 `--header Name:Value` is useful for one-off auth headers such as `X-Api-Key`,
 but the full value can be visible in shell history and process listings. Prefer
@@ -203,7 +204,14 @@ jobs remain known limitations. Future gateway worker and adapter tickets must
 reuse the same resolution and redaction path when they add broader outbound
 requests.
 
-Webhook signature/JWT verification, adapter trust boundaries, trace/log sinks,
-rate limits beyond busy-input `max_queue_depth`, gateway subscription/job auth
-resolution, user-facing session management commands, and insecure local token
-storage policy are not implemented yet.
+Adapter workers are not live yet, but the trait and registry treat every
+external source as untrusted input. Future adapters must validate framing,
+message size, identity mapping, acknowledgements, and outbound rendering before
+emitting gateway events or displaying updates. Adapter `settings` metadata in
+config must remain non-secret; credentials should stay in auth refs, env vars,
+keyrings, or future explicit secret references.
+
+Webhook signature/JWT verification, live adapter trust-boundary enforcement,
+trace/log sinks, rate limits beyond busy-input `max_queue_depth`, gateway
+subscription/job auth resolution, user-facing session management commands, and
+insecure local token storage policy are not implemented yet.

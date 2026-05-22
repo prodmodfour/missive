@@ -1021,6 +1021,8 @@ name = "missive-adapters"
 version = "0.1.0"
 dependencies = [
  "missive-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1065,6 +1067,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "missive-a2a",
+ "missive-adapters",
  "missive-core",
  "missive-router",
  "missive-store",

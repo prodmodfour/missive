@@ -9,7 +9,7 @@ pub mod routing;
 pub mod timestamp;
 
 pub use config::{
-    AuthRefConfig, AuthRefKind, BusyInputConfig, BusyInputMode, CONFIG_REDACTED,
+    AdapterConfig, AuthRefConfig, AuthRefKind, BusyInputConfig, BusyInputMode, CONFIG_REDACTED,
     CONFIG_SCHEMA_VERSION, ColorMode, ConfigDiscovery, ConfigSource, ConfigSourceKind,
     DEFAULT_A2A_PROTOCOL_VERSION, ENV_CONFIG, ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig,
     MissiveConfig, OutputConfig, OutputFormat, ProfileConfig, ProtocolConfig, QosConfig,

@@ -182,7 +182,13 @@ running jobs. Gateway session unit tests additionally use fixed clocks to cover
 daily, idle, and combined reset policy boundaries without wall-clock sleeps.
 Gateway busy-input unit tests cover queue, interrupt, steer, unsupported-steer
 fallback to queue/interrupt, queue-depth limits, and the no-active-operation
-start path without needing live adapters. The webhook
+start path without needing live adapters. `crates/missive-adapters` unit tests
+cover deriving adapter definitions from config, duplicate/missing registry
+factories, disabled adapter handling, cross-adapter event rejection, and a fake
+adapter that maps identity, emits lifecycle/inbound-message events, accepts
+outbound updates, and records acknowledgements. `crates/missive-gateway` also
+has a fake adapter event-sink test proving adapter inbound messages can enter
+the daemon event bus and update runtime output. The webhook
 command integration test similarly spawns the binary, waits for local
 `/healthz`, posts unauthorized, malformed, and valid A2A `StreamResponse`
 payloads over loopback HTTP, verifies graceful `--max-events` shutdown, checks

@@ -52,11 +52,12 @@ pub const fn crate_info() -> missive_core::CrateInfo {
 
 /// Returns the lower-level crates the gateway will coordinate as it grows.
 #[must_use]
-pub fn dependent_crates() -> [missive_core::CrateInfo; 3] {
+pub fn dependent_crates() -> [missive_core::CrateInfo; 4] {
     [
         missive_a2a::crate_info(),
         missive_router::crate_info(),
         missive_store::crate_info(),
+        missive_adapters::crate_info(),
     ]
 }
 
@@ -73,10 +74,18 @@ mod tests {
     }
 
     #[test]
-    fn dependent_crates_include_a2a_router_and_store() {
+    fn dependent_crates_include_a2a_router_store_and_adapters() {
         let dependencies = dependent_crates();
         let names: Vec<_> = dependencies.iter().map(|info| info.name()).collect();
 
-        assert_eq!(names, ["missive-a2a", "missive-router", "missive-store"]);
+        assert_eq!(
+            names,
+            [
+                "missive-a2a",
+                "missive-router",
+                "missive-store",
+                "missive-adapters"
+            ]
+        );
     }
 }

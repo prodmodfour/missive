@@ -450,6 +450,17 @@ where
             component,
             &component.message,
         ),
+        GatewayRuntimeEvent::Adapter(adapter_event) => {
+            let message = adapter_event.summary();
+            render_stream_item(
+                writer,
+                mode,
+                "gateway_adapter_event",
+                sequence,
+                adapter_event,
+                &message,
+            )
+        }
     }
 }
 

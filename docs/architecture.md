@@ -38,6 +38,8 @@ Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`,
 
 `crates/missive-core` owns configuration discovery and schema validation. Discovery precedence is explicit `--config`, `MISSIVE_CONFIG`, repository-local config when `MISSIVE_REPO_CONFIG=1`, XDG config locations, then built-in defaults. The schema covers profiles, config-seeded agents, auth refs, storage defaults, output defaults, gateway defaults including busy-input policy, adapters including source-level busy-input overrides, and quality-of-service settings. Config parsing and redacted rendering live in core so future CLI, gateway, adapter, and diagnostic code can share the same validation and secret-handling contract.
 
+`crates/missive-adapters` now defines the adapter trait and registry boundary. Adapter implementations map external identities into normalized source identities, emit inbound messages through `AdapterEventSink`, receive outbound updates, and acknowledge accepted/rejected/delivered/failed states. `AdapterRegistry` resolves configured adapter definitions by kind without pulling platform-specific code into the gateway. `crates/missive-gateway` depends on this contract and wraps its local event bus with an adapter event sink; no concrete adapter workers are started by `gateway run` yet.
+
 `crates/missive-cli` also owns the initial output rendering contract:
 
 * human mode writes redacted terminal status text

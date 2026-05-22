@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 axum.workspace = true
+missive-adapters.workspace = true
 missive-a2a.workspace = true
 missive-core.workspace = true
 missive-router.workspace = true

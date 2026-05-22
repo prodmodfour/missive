@@ -1,6 +1,6 @@
 # Gateway daemon
 
-`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, A2A task subscription/resume, and gateway-managed background communication jobs. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
+`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, A2A task subscription/resume, gateway-managed background communication jobs, and the adapter event-bus bridge. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
 
 ## Run
 
@@ -106,7 +106,7 @@ The daemon exposes unauthenticated local JSON endpoints:
 
 The paths can be changed with `--health-path`, `--ready-path`, and `--status-path`; they must be distinct non-root HTTP paths.
 
-A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, active or idle `background_jobs`, plus idle placeholders for `webhook_receiver` and `adapters`.
+A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, active or idle `background_jobs`, plus an idle `webhook_receiver` placeholder and an `adapters` component whose event sink is ready for future adapter workers.
 
 ## Task subscriptions and resume
 
@@ -184,6 +184,12 @@ The reset evaluator lives in `crates/missive-gateway::session` and accepts an in
 
 Sessions are not long-term memory. They do not contain learned facts, summaries for model recall, vector indexes, prompts, or tool state. They only record communication routing state: source identity, target agent, resume name, linked context id, reset policy fields, timestamps, reset count, and non-secret metadata.
 
+## Adapter event bridge
+
+The gateway now depends on the shared `missive-adapters` trait crate. Adapter implementations emit `AdapterEvent` values through an `AdapterEventSink` instead of depending directly on gateway internals. The daemon wraps its local event bus with that sink, updates the `adapters` component when an adapter event is received, and forwards serialized adapter runtime events as `gateway_adapter_event` NDJSON items.
+
+No configured adapter is started by `gateway run` yet; the bridge is tested with a fake adapter event and reserved for the concrete adapter workers in later tickets. See [`adapters.md`](adapters.md) for lifecycle details.
+
 ## Busy input modes
 
 Gateway/adapters use the shared busy-input policy evaluator in
@@ -218,10 +224,10 @@ input source that invokes this evaluator automatically.
 
 ## Output
 
-Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_component`, and `gateway_stopped` envelopes as the runtime progresses. Subscription progress and retry/backoff details are reported as `gateway_component` updates for the `subscriptions` component; background job queue, success, failure, retry, and cancellation summaries are reported through the `background_jobs` component. `--json` emits one final `gateway_stopped` summary after shutdown. `--quiet` suppresses non-error output.
+Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_component`, optional `gateway_adapter_event`, and `gateway_stopped` envelopes as the runtime progresses. Subscription progress and retry/backoff details are reported as `gateway_component` updates for the `subscriptions` component; background job queue, success, failure, retry, and cancellation summaries are reported through the `background_jobs` component. Future adapter workers can emit serialized adapter events through `gateway_adapter_event`. `--json` emits one final `gateway_stopped` summary after shutdown. `--quiet` suppresses non-error output.
 
 ## Current limitations
 
 The subscription worker uses cached Agent Cards already stored in SQLite; run `missive agent inspect <alias>` or use an implemented send/stream/task command first if an agent row has no card cache. It currently sends configured A2A service parameters but does not resolve outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values for subscription calls, so authenticated remote subscriptions remain a later hardening item. It updates task state and event journal rows but does not yet persist subscribed messages or artifacts as dedicated message/artifact rows.
 
-The daemon still does not embed `missive webhook run`, run adapters, or expose an authenticated control API. Background jobs execute send/stream/wait/local-reduce work but do not yet persist every streamed message/artifact as dedicated rows, call reducer agents or command pipelines for reduce, expose a remote job control socket, or resolve gateway-safe outbound auth refs. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current adapter path invokes it automatically. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.
+The daemon still does not embed `missive webhook run`, start configured adapter workers, or expose an authenticated control API. The adapter trait, registry, and event-bus bridge exist, but stdio/file/HTTP/external adapters are later tickets. Background jobs execute send/stream/wait/local-reduce work but do not yet persist every streamed message/artifact as dedicated rows, call reducer agents or command pipelines for reduce, expose a remote job control socket, or resolve gateway-safe outbound auth refs. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current live adapter path invokes it automatically. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.

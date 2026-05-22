@@ -923,17 +923,19 @@ status endpoints are local unauthenticated JSON endpoints: `GET /healthz`,
 paths. Status output reports the selected profile, bound address, uptime,
 configured `job_concurrency`, event-bus count, and components: running
 `supervisor`, `event_bus`, `store`, `health_http`, an active or idle
-`subscriptions` component, plus idle placeholders for embedded
-`webhook_receiver`, `background_jobs`, and `adapters`. The subscriptions
-component scans local in-flight tasks, resumes persisted `task_subscription`
-gateway jobs, calls A2A `SubscribeToTask` for cached streaming-capable agents,
-updates task state from stream events, cleans up terminal jobs, and reports
-bounded retry/backoff details through component output.
+`subscriptions` component, active or idle `background_jobs`, an idle embedded
+`webhook_receiver` placeholder, and an `adapters` component with a ready event
+sink for later adapter workers. The subscriptions component scans local
+in-flight tasks, resumes persisted `task_subscription` gateway jobs, calls A2A
+`SubscribeToTask` for cached streaming-capable agents, updates task state from
+stream events, cleans up terminal jobs, and reports bounded retry/backoff
+details through component output.
 
-Machine-readable stream output uses `gateway_started`, `gateway_component`, and
-`gateway_stopped` envelope kinds. `--json` emits only the final
-`gateway_stopped` summary after shutdown; use `--ndjson` for one object per
-runtime event. The daemon appends redacted `missive.gateway.started`,
+Machine-readable stream output uses `gateway_started`, `gateway_component`,
+future `gateway_adapter_event`, and `gateway_stopped` envelope kinds. `--json`
+emits only the final `gateway_stopped` summary after shutdown; use `--ndjson`
+for one object per runtime event. The daemon appends redacted
+`missive.gateway.started`,
 `missive.gateway.stopped`, `missive.gateway.subscription.*`, and
 `a2a.subscription.*` rows to the local event journal as applicable.
 

@@ -16,6 +16,7 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use missive_a2a::{ServiceParameters, protocol};
+use missive_adapters::{AdapterEvent, AdapterEventSink};
 use missive_core::{EventId, Metadata, MissiveError, Result};
 use missive_store::{EventInsert, EventRecord, ProcessLock, ProcessLockKind, StatePaths, Store};
 use serde::Serialize;
@@ -97,13 +98,15 @@ impl GatewayDaemonConfig {
 }
 
 /// Event emitted by the gateway daemon to callers such as the CLI renderer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "runtime_event", rename_all = "snake_case")]
 pub enum GatewayRuntimeEvent {
     /// The socket is bound and the daemon is ready to answer health requests.
     Started(GatewayStarted),
     /// A supervised component changed or reported status.
     Component(GatewayComponentStatus),
+    /// An adapter emitted a gateway runtime event.
+    Adapter(AdapterEvent),
 }
 
 /// Startup details for a gateway daemon.
@@ -362,6 +365,38 @@ impl GatewayAppState {
 #[derive(Debug, Clone)]
 pub(crate) enum GatewayBusEvent {
     Component(GatewayComponentStatus),
+    Adapter(AdapterEvent),
+}
+
+#[derive(Clone)]
+pub(crate) struct GatewayAdapterEventSink {
+    bus_tx: mpsc::UnboundedSender<GatewayBusEvent>,
+}
+
+impl GatewayAdapterEventSink {
+    fn new(bus_tx: mpsc::UnboundedSender<GatewayBusEvent>) -> Self {
+        Self { bus_tx }
+    }
+}
+
+impl std::fmt::Debug for GatewayAdapterEventSink {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GatewayAdapterEventSink")
+            .field("bus_tx", &"<gateway bus sender>")
+            .finish()
+    }
+}
+
+impl AdapterEventSink for GatewayAdapterEventSink {
+    fn emit(&self, event: AdapterEvent) -> Result<()> {
+        self.bus_tx
+            .send(GatewayBusEvent::Adapter(event))
+            .map_err(|_| {
+                MissiveError::orchestration("gateway adapter event bus is closed")
+                    .with_help("Restart missive gateway run before starting adapter workers.")
+            })
+    }
 }
 
 /// Runs the local gateway daemon skeleton until it receives a shutdown signal or
@@ -381,6 +416,9 @@ pub async fn run_gateway_daemon(
         config.job_concurrency,
     ));
     let (bus_tx, bus_rx) = mpsc::unbounded_channel();
+    // Keep the adapter event bridge type-checked in the daemon; concrete
+    // adapter workers in later tickets will retain sink clones while running.
+    drop(GatewayAdapterEventSink::new(bus_tx.clone()));
     let supervisor_handle = tokio::spawn(supervisor_loop(state.clone(), bus_rx, event_tx.clone()));
 
     let (shutdown_tx, shutdown_rx) = watch::channel(None);
@@ -508,6 +546,20 @@ async fn supervisor_loop(
                 state.set_component(component.clone());
                 state.note_bus_event();
                 let _ = runtime_tx.send(GatewayRuntimeEvent::Component(component));
+            }
+            GatewayBusEvent::Adapter(adapter_event) => {
+                let component = GatewayComponentStatus::running(
+                    COMPONENT_ADAPTERS,
+                    format!(
+                        "last adapter event {} from {}",
+                        adapter_event.event_type(),
+                        adapter_event.adapter_name()
+                    ),
+                );
+                state.set_component(component.clone());
+                state.note_bus_event();
+                let _ = runtime_tx.send(GatewayRuntimeEvent::Component(component));
+                let _ = runtime_tx.send(GatewayRuntimeEvent::Adapter(adapter_event));
             }
         }
     }
@@ -766,7 +818,11 @@ fn local_url(addr: SocketAddr, path: &str) -> String {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use missive_core::{AgentAlias, ConfigDiscovery, TaskId};
+    use missive_adapters::{
+        ADAPTER_EVENT_TYPE_INBOUND_MESSAGE, AdapterEvent, AdapterIdentity, AdapterInboundMessage,
+        AdapterInboundPayload, AdapterSession,
+    };
+    use missive_core::{AgentAlias, ConfigDiscovery, MessageId, TaskId};
     use missive_store::{
         AgentUpsert, GatewayJobState, GatewayJobUpsert, StatePathResolver, Store, TaskState,
         TaskUpsert,
@@ -831,6 +887,61 @@ mod tests {
         assert_eq!(by_name[COMPONENT_SUBSCRIPTIONS], "idle");
         assert_eq!(by_name[COMPONENT_BACKGROUND_JOBS], "idle");
         assert_eq!(by_name[COMPONENT_ADAPTERS], "idle");
+    }
+
+    #[tokio::test]
+    async fn adapter_event_sink_forwards_inbound_messages_to_gateway_bus() {
+        let state = Arc::new(GatewayAppState::new("default".to_owned(), 2));
+        let (bus_tx, bus_rx) = mpsc::unbounded_channel();
+        let (runtime_tx, mut runtime_rx) = mpsc::unbounded_channel();
+        let supervisor_handle = tokio::spawn(supervisor_loop(state.clone(), bus_rx, runtime_tx));
+        let sink = GatewayAdapterEventSink::new(bus_tx.clone());
+
+        let identity = AdapterIdentity::new("fake", "fake", "source-1").expect("identity");
+        let session = AdapterSession::new("default").expect("session");
+        let message = AdapterInboundMessage::new(
+            "fake",
+            MessageId::new("msg-adapter-1").expect("message id"),
+            identity,
+            session,
+            AdapterInboundPayload::text("hello gateway bus"),
+        )
+        .expect("adapter message");
+
+        sink.emit(AdapterEvent::inbound_message(message))
+            .expect("emit adapter event");
+        drop(sink);
+        drop(bus_tx);
+
+        let mut saw_adapter = false;
+        let mut saw_component = false;
+        while let Some(event) = runtime_rx.recv().await {
+            match event {
+                GatewayRuntimeEvent::Adapter(AdapterEvent::InboundMessage(message)) => {
+                    saw_adapter = message.message_id.as_str() == "msg-adapter-1";
+                }
+                GatewayRuntimeEvent::Component(component)
+                    if component.name == COMPONENT_ADAPTERS
+                        && component
+                            .detail
+                            .contains(ADAPTER_EVENT_TYPE_INBOUND_MESSAGE) =>
+                {
+                    saw_component = true;
+                }
+                _ => {}
+            }
+        }
+        supervisor_handle.await.expect("supervisor join");
+
+        assert!(
+            saw_adapter,
+            "adapter inbound event should reach runtime output"
+        );
+        assert!(saw_component, "adapter component status should be updated");
+        assert_eq!(state.event_bus_events(), 1);
+        assert!(state.component_snapshot().iter().any(|component| {
+            component.name == COMPONENT_ADAPTERS && component.state == "running"
+        }));
     }
 
     fn streaming_agent_card(server: &MockA2aServer) -> Value {
