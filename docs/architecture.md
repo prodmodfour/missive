@@ -69,7 +69,11 @@ Path resolution is side-effect free: directories are created only when store or 
 
 The store layer exposes two process lock kinds for later tickets: `state.lock` for state mutations/migrations and `gateway.lock` for one gateway daemon per profile. Locks use OS-level whole-file locking and nonblocking acquisition maps lock contention to a storage error with deterministic diagnostics.
 
-`crates/missive-store` also owns the embedded SQLite migration strategy. Migration SQL files live under `crates/missive-store/migrations`, are recorded in a `schema_migrations` ledger with checksums, and are applied in version order inside transactions. The current schema version is `1` and creates tables for agents, contexts, tasks, messages, artifacts, events, groups, group members, auth refs, push configs, gateway jobs, and adapter bindings. See [`docs/storage.md`](storage.md) for table purpose and retention notes.
+`crates/missive-store` also owns the embedded SQLite migration strategy. Migration SQL files live under `crates/missive-store/migrations`, are recorded in a `schema_migrations` ledger with checksums, and are applied in version order inside transactions. The current schema version is `1` and creates tables for agents, contexts, tasks, messages, artifacts, events, groups, group members, auth refs, push configs, gateway jobs, and adapter bindings.
+
+The store crate now exposes a blocking typed repository facade, `Store`, for one migrated profile database. Repository methods cover agents, contexts, tasks, events, groups/group members, and gateway jobs using `missive-core` identifiers, `MissiveTimestamp`, `Metadata`, typed state/source enums, and validated store-specific ids. SQL remains private to `missive-store`; CLI, gateway, adapter, and router code should use the repository APIs rather than constructing queries. `Store::transaction` provides the transactional update helper for multi-row changes and rolls back if the closure returns an error or a SQLite constraint fails. Because the implementation uses synchronous `rusqlite`, async components should call it from a blocking task or store worker.
+
+See [`docs/storage.md`](storage.md) for table purpose, retention notes, and repository API details.
 
 ## Architecture decision records
 

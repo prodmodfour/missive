@@ -369,7 +369,7 @@ Validation:
 
 ## 012 — Implement store repository APIs
 
-Status: TODO
+Status: DONE
 
 Phase: Store
 

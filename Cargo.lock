@@ -659,6 +659,8 @@ dependencies = [
  "fs2",
  "missive-core",
  "rusqlite",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

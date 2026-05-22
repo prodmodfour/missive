@@ -2,7 +2,7 @@
 
 `missive` uses a local SQLite database for profile-scoped communication state. The
 schema is introduced by embedded migrations in `crates/missive-store/migrations`
-and applied by `missive-store` before future repository APIs read or mutate the
+and applied by `missive-store` before typed repository APIs read or mutate the
 store.
 
 ## Migration strategy
@@ -52,8 +52,44 @@ JSON payload columns intentionally store protocol-shaped data as text. This keep
 the early schema stable while A2A compatibility work evolves, but repository APIs
 must still validate and redact data before writing it.
 
+## Repository API contract
+
+`crates/missive-store` exposes a blocking `Store` facade around one migrated
+SQLite connection. `Store::open`, `Store::from_connection`, and
+`Store::open_in_memory` apply embedded migrations before returning a repository
+handle. The implementation uses `rusqlite`, so async callers should run store
+work from a dedicated blocking task or store worker instead of calling it on an
+async reactor thread.
+
+The public repository methods use typed records and upsert inputs rather than SQL
+strings:
+
+* agents: `AgentUpsert`, `AgentRecord`, and CRUD methods for registry rows
+* contexts: `ContextUpsert`, `ContextRecord`, and CRUD methods for context state
+* tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state
+* events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
+  monotonic SQLite sequences
+* groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, and membership
+  methods with rank uniqueness enforced by SQLite
+* gateway jobs: `GatewayJobUpsert`, `GatewayJobRecord`, `GatewayJobId`, and CRUD
+  methods for background job state
+
+Repository records reuse `missive-core` identifiers such as `AgentAlias`,
+`ContextId`, `TaskId`, `EventId`, `GroupName`, `RankName`, `TransportName`,
+`MissiveTimestamp`, and `Metadata`. Store-specific ids such as `GatewayJobId` and
+`AdapterBindingId` are validated wrappers. JSON columns are serialized and parsed
+at the repository boundary so callers receive typed `serde_json::Value`,
+`Metadata`, maps, and lists instead of raw JSON text.
+
+`Store::transaction` runs a closure against `StoreTransaction`, which exposes the
+same typed repository methods. The transaction commits only when the closure
+returns `Ok`; closure errors or SQL constraint failures roll back prior writes.
+This is the transaction helper future CLI, gateway, adapter, and routing code
+should use for multi-row state changes.
+
 ## Current limitations
 
-Ticket 011 defines and tests the schema/migration layer only. Typed repository
-APIs, CLI commands, retention enforcement, compaction, event replay, and durable
-A2A protocol persistence are implemented by later tickets.
+Typed repository APIs exist for the core store tables needed by upcoming tickets,
+but CLI commands do not call them yet. Message/artifact/push-config/auth-ref and
+adapter-binding repositories, retention enforcement, compaction, event replay,
+and durable A2A protocol persistence are implemented by later tickets.

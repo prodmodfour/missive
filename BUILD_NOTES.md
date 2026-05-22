@@ -2,24 +2,24 @@
 
 ## Current state
 
-Tickets 000, 001, 002, 003, 004, 005, 006, 007, 008, 009, 010, and 011 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000 through 012 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
 * `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI skeleton, global flags, configuration loading from CLI/env/discovery, output rendering contract, redaction helpers, help snapshots, and placeholder execution status
 * `crates/missive-core` — core domain primitive scaffolding, including shared error/result types, strongly typed IDs, timestamps, metadata maps, envelopes, configuration schema, config discovery, profile validation, and redacted config rendering
 * `crates/missive-a2a` — A2A protocol/client integration scaffolding
-* `crates/missive-store` — persistence scaffolding with local state path resolution, profile-specific data/state/cache directories, SQLite database path resolution, process locks for state mutation and gateway operation, and embedded SQLite schema migrations
+* `crates/missive-store` — persistence scaffolding with local state path resolution, profile-specific data/state/cache directories, SQLite database path resolution, process locks for state mutation and gateway operation, embedded SQLite schema migrations, and a blocking typed repository facade for core store tables
 * `crates/missive-router` — routing and collectives scaffolding
 * `crates/missive-gateway` — gateway daemon scaffolding
 * `crates/missive-adapters` — adapter scaffolding
 * `crates/missive-observe` — observability scaffolding
 
-The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer now depends on `rusqlite` with bundled SQLite for local migration tests and future repository APIs.
+The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer depends on `rusqlite` with bundled SQLite plus `serde`/`serde_json` for typed JSON repository boundaries.
 
 Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-tools.sh` is executable, idempotent, supports `--check`, and can install Rust components, optional cargo tools, and opt-in system dependencies.
 
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
 
-Architecture decision records live under `docs/adr/`, with a template and initial accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, and CLI-first UX. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command skeleton, configuration contract, output rendering contract, store path/lock contract, and SQLite migration contract.
+Architecture decision records live under `docs/adr/`, with a template and initial accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, and CLI-first UX. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive contract, CLI command skeleton, configuration contract, output rendering contract, store path/lock contract, SQLite migration contract, and typed repository contract.
 
 `missive-core` exposes `MissiveError`, `Result<T>`, `ErrorCategory`, `MissiveExitCode`, and `ErrorReport`. The error taxonomy covers I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures. Each category has a stable diagnostic code, deterministic exit code mapping for CLI use, human `Display` rendering, `miette::Diagnostic` metadata, and a serializable JSON/NDJSON report shape.
 
@@ -30,6 +30,8 @@ The core configuration layer exposes `MissiveConfig`, `ConfigDiscovery`, `Loaded
 The store path layer exposes `StatePathResolver`, `StatePaths`, `StatePlatform`, `StatePathSource`, `ProcessLockKind`, and `ProcessLock`. Runtime state defaults to XDG-compatible roots on Linux/Unix-like platforms, macOS `~/Library` fallbacks when XDG variables are absent, or `MISSIVE_HOME` when explicitly set. Paths include `profiles/<profile>`, relative database paths resolve under the selected profile state directory, and lock files live under `<state-dir>/locks/`.
 
 The store migration layer exposes `Migration`, `AppliedMigration`, `MigrationReport`, `embedded_migrations`, `open_sqlite_database`, `migrate_database`, `migrate_connection`, `applied_migrations`, `schema_version`, `CURRENT_SCHEMA_VERSION`, and `SQLITE_APPLICATION_ID`. Migration SQL lives under `crates/missive-store/migrations`, is applied in version order inside transactions, and records checksums in `schema_migrations`. Schema version 1 creates tables for agents, contexts, tasks, messages, artifacts, events, groups, group_members, auth_refs, push_configs, gateway_jobs, and adapter_bindings.
+
+The store repository layer exposes blocking `Store` and `StoreTransaction` APIs. `Store::open`, `Store::from_connection`, and `Store::open_in_memory` apply migrations before use. Typed methods cover agents, contexts, tasks, events, groups/group members, and gateway jobs with public upsert/record structs, state/source enums, core identifiers, validated `GatewayJobId`/`AdapterBindingId`, JSON serialization at the repository boundary, and transaction rollback on closure or SQL failures. SQL strings remain private to `missive-store` rather than leaking into CLI code.
 
 The `missive` binary uses clap derive and exposes help pages for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`. Global flags parse at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`.
 
@@ -72,28 +74,27 @@ cargo test -p missive-store --all-targets
 cargo clippy -p missive-store --all-targets --all-features -- -D warnings
 cargo test --workspace --all-targets --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo machete
-cargo audit
 ```
 
-The targeted checks covered fresh SQLite migration against a temporary database file, required table/index creation, migration idempotency, checksum mismatch detection, foreign-key enforcement, JSON validity constraints, and schema documentation coverage for table purpose/retention notes.
+The targeted checks covered opening/migrating a temporary store database, typed agent CRUD with JSON maps and metadata, context/task/event relationship persistence, group CRUD and rank uniqueness constraints, gateway job state/payload persistence, and transaction commit/rollback behavior for both explicit closure errors and SQL constraint failures.
 
-Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle. Implementing migrations added the direct workspace dependency `rusqlite` with bundled SQLite; Cargo resolved and downloaded the transitive crates recorded in `Cargo.lock`.
+Environment/tooling notes: no new cargo subcommands or OS packages were installed during this cycle. The store crate now directly declares workspace `serde` and `serde_json` dependencies that were already present in the workspace lockfile; `Cargo.lock` records those direct dependencies for `missive-store`.
 
 ## Latest cycle notes
 
-Implemented ticket 011 — Design SQLite schema and migrations.
+Implemented ticket 012 — Implement store repository APIs.
 
 Included:
 
-* added `crates/missive-store/migrations/0001_initial_schema.sql`
-* added `crates/missive-store/src/migrations.rs` with embedded ordered migrations, checksum verification, a `schema_migrations` ledger, transaction-scoped migration application, `PRAGMA user_version`, and missive SQLite connection pragmas
-* created schema version 1 tables for `agents`, `contexts`, `tasks`, `messages`, `artifacts`, `events`, `groups`, `group_members`, `auth_refs`, `push_configs`, `gateway_jobs`, and `adapter_bindings`
-* included supporting indexes for task/context lookup, message ordering, artifact lookup, group membership, push configs, gateway scheduling, adapter lookup, and event replay
-* added constraints for foreign keys, JSON validity, enum-like state fields, booleans, positive counters/weights, and non-empty identifiers
-* kept raw authentication token values out of the schema; `auth_refs` stores external env/keyring locations and non-secret metadata
-* documented migration strategy, table purposes, and retention notes in `docs/storage.md`
-* linked the storage schema docs from `README.md`, `docs/configuration.md`, and `docs/architecture.md`
+* added `crates/missive-store/src/repository.rs`
+* added `Store` and `StoreTransaction` as blocking repository facades over migrated `rusqlite` connections
+* added typed upsert/record structs and CRUD methods for agents, contexts, tasks, events, groups, group members, and gateway jobs
+* added typed enums for agent source, context state, task state/source, and gateway job state
+* added validated store-specific `GatewayJobId` and `AdapterBindingId` wrappers
+* serialized/deserialized JSON columns at the repository boundary for interface URL maps, binding preferences, tags, metadata, protocol payloads, event payloads, routing metadata, and gateway request/result payloads
+* added transaction helper coverage that commits on success and rolls back on explicit errors or SQLite constraint failures
+* exported repository types from `crates/missive-store/src/lib.rs`
+* documented the repository contract and blocking/async usage expectations in `docs/storage.md` and `docs/architecture.md`
 
 ## Known blockers
 
@@ -105,7 +106,9 @@ The `missive` binary has a real command tree, global parser, configuration disco
 
 Configuration supports schema validation and secret-free summaries, but it does not yet resolve or send authentication material. Auth refs point to environment variables or keyring entries for later auth handling.
 
-The store layer now resolves state paths, provides process locks, and can migrate a fresh SQLite database to schema version 1. Typed repository APIs, transaction helpers for domain updates, retention enforcement, compaction, and durable event/task persistence behaviour are not implemented yet.
+The store layer now resolves state paths, provides process locks, migrates fresh SQLite databases to schema version 1, and exposes typed repository APIs for agents, contexts, tasks, events, groups, group members, and gateway jobs. Message, artifact, push-config, auth-ref, and adapter-binding repositories, retention enforcement, compaction, event replay, and durable A2A protocol persistence behaviour remain for later tickets.
+
+The store repository is synchronous because it uses `rusqlite`; async gateway/adapter code should call it through a blocking task or store worker when those tickets wire runtime behaviour.
 
 The config schema includes gateway, adapter, and QoS defaults, but those values do not yet start a gateway, enforce timeouts, run adapters, or manage background jobs.
 
@@ -113,7 +116,7 @@ The `--json`, `--ndjson`, and `--quiet` flags override config output defaults. `
 
 Redaction is best-effort at the config and CLI output boundaries for structured values rendered through the current helpers. Authentication input handling, trace/log redaction, storage redaction beyond schema design, and adapter/webhook trust boundaries remain for later security and observability tickets.
 
-The core error, primitive, configuration, state path, lock, and migration contracts are available, but other crates still use placeholder APIs and have not yet converted operational paths to the shared types.
+The core error, primitive, configuration, state path, lock, migration, and repository contracts are available, but other crates still use placeholder APIs and have not yet converted operational paths to the shared types.
 
 Detailed protocol mapping, gateway operations, adapter lifecycle, collectives, testing, and runbook documentation remain for later implementation/documentation tickets.
 
@@ -123,4 +126,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 012 — Implement store repository APIs.
+Ticket 013 — Implement agent registry commands.

@@ -2,6 +2,7 @@
 
 pub mod migrations;
 pub mod paths;
+pub mod repository;
 
 pub use migrations::{
     AppliedMigration, CURRENT_SCHEMA_VERSION, Migration, MigrationReport, SQLITE_APPLICATION_ID,
@@ -12,6 +13,12 @@ pub use paths::{
     DEFAULT_DATABASE_FILE, ENV_HOME, ENV_MISSIVE_HOME, ENV_XDG_CACHE_HOME, ENV_XDG_DATA_HOME,
     ENV_XDG_STATE_HOME, ProcessLock, ProcessLockKind, StatePathResolver, StatePathSource,
     StatePaths, StatePlatform,
+};
+pub use repository::{
+    AdapterBindingId, AgentRecord, AgentSource, AgentUpsert, ContextRecord, ContextState,
+    ContextUpsert, EventInsert, EventRecord, GatewayJobId, GatewayJobRecord, GatewayJobState,
+    GatewayJobUpsert, GroupMemberRecord, GroupMemberUpsert, GroupRecord, GroupUpsert, Store,
+    StoreTransaction, TaskRecord, TaskSource, TaskState, TaskUpsert,
 };
 
 /// Cargo package name for this crate.
