@@ -729,7 +729,7 @@ Validation:
 
 ## 024 — Implement artifact handling and export
 
-Status: TODO
+Status: DONE
 
 Phase: Artifacts
 

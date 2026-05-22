@@ -3,10 +3,11 @@ Inspect local A2A task state, refresh/list tasks from a remote agent, poll task 
 Usage: missive task [OPTIONS] [COMMAND]
 
 Commands:
-  get     Show one local task, optionally refreshing it from its remote agent
-  list    List local tasks or one remote agent's tasks with filters
-  wait    Poll a task until it completes, fails, is cancelled, needs input, or times out
-  cancel  Request remote cancellation for one task
+  get       Show one local task, optionally refreshing it from its remote agent
+  list      List local tasks or one remote agent's tasks with filters
+  wait      Poll a task until it completes, fails, is cancelled, needs input, or times out
+  cancel    Request remote cancellation for one task
+  artifact  List, show, save, or export artifacts persisted for a task
 
 Options:
   -h, --help

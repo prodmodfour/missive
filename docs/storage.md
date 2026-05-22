@@ -79,6 +79,12 @@ strings:
   `missive task get/list/wait/cancel` reads these rows, filters them by agent,
   context, state, updated timestamp, and source, and persists remote A2A `Task`
   payloads returned by task operations
+* artifacts: `ArtifactUpsert`, `ArtifactRecord`, `ArtifactId`, `ArtifactKind`,
+  and CRUD/list methods for artifacts linked to tasks and contexts. Send,
+  stream, and task operations persist artifacts embedded in returned A2A `Task`
+  payloads; streaming `artifactUpdate` events update the same row and increment
+  its local version. `missive task artifact list/show/save/export` reads these
+  rows and writes safe local exports without trusting remote filenames.
 * messages: `MessageInsert`, `MessageRecord`, `MessageDirection`,
   `MessageRole`, and append/get/list/delete methods for request/response rows
   linked to agents, contexts, and tasks; `missive send` uses these rows for
@@ -95,8 +101,8 @@ strings:
 
 Repository records reuse `missive-core` identifiers such as `AgentAlias`,
 `ContextId`, `TaskId`, `EventId`, `GroupName`, `RankName`, `TransportName`,
-`MissiveTimestamp`, and `Metadata`. Store-specific ids such as `GatewayJobId` and
-`AdapterBindingId` are validated wrappers. Auth-ref repository rows persist only
+`MissiveTimestamp`, and `Metadata`. Store-specific ids such as `ArtifactId`,
+`GatewayJobId`, and `AdapterBindingId` are validated wrappers. Auth-ref repository rows persist only
 non-secret references such as environment variable names or keyring account
 coordinates; raw tokens are not stored, and CLI `--bearer-token-env`/`--header`
 values are never written to SQLite. JSON columns are serialized and parsed at the
@@ -112,11 +118,12 @@ should use for multi-row state changes.
 ## Current limitations
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
-and the CLI now uses the auth-ref, agent, context, task, message, and event
-repositories for `missive agent` registry commands, public Agent Card cache
+and the CLI now uses the auth-ref, agent, context, task, artifact, message, and
+event repositories for `missive agent` registry commands, public Agent Card cache
 updates, non-streaming `missive send` persistence, streaming `missive stream`
-request/event persistence, task get/list/wait/cancel state updates, and context
-create/list/show/fork/close/export state management. Artifact/push-config and
+request/event/artifact persistence, task get/list/wait/cancel state updates,
+`missive task artifact` local export commands, and context
+create/list/show/fork/close/export state management. Push-config and
 adapter-binding repositories, retention enforcement, compaction, event replay
-commands, dedicated artifact export, and broader durable A2A protocol persistence
-beyond current send/stream/task/context rows are implemented by later tickets.
+commands, and broader durable A2A protocol persistence beyond current
+send/stream/task/context/artifact rows are implemented by later tickets.

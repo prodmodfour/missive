@@ -10,6 +10,7 @@ use missive_a2a::ServiceParameters;
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
 
 pub mod agent;
+pub(crate) mod artifact;
 pub(crate) mod auth;
 pub mod context;
 pub mod output;

@@ -87,9 +87,9 @@ export payload.
 Redaction is a guardrail, not a substitute for secret hygiene. Do not place real
 tokens in config files, command examples, tests, fixtures, docs, event payloads,
 metadata, context names/summaries, notes, or committed runtime files. Local
-SQLite state can contain raw remote protocol payloads from tasks/messages before
-export-time redaction, so keep profile state directories outside the repository
-and protect them like local application data.
+SQLite state can contain raw remote protocol payloads from tasks/messages and
+raw A2A artifact JSON before export-time redaction, so keep profile state
+directories outside the repository and protect them like local application data.
 
 ## Local file inputs
 
@@ -101,6 +101,16 @@ the remote A2A agent and in local SQLite request-message rows. Use
 attach files you are willing to send to that agent. Both forms are bounded by the
 selected profile's `qos.max_request_bytes`; streaming/chunked upload is not
 implemented yet.
+
+## Artifact exports
+
+`missive task artifact save` and `missive task artifact export` write only
+artifacts already persisted in the selected local profile. Remote artifact names
+and file-part filenames are treated as untrusted: missive strips path separators,
+normalizes unsafe characters, and ensures directory exports remain under the
+chosen `--output-dir`. Existing files are not overwritten unless `--force` is
+supplied. URL/file-reference artifacts are exported as JSON manifests instead of
+fetching or dereferencing remote/local URLs.
 
 ## Current limitations
 

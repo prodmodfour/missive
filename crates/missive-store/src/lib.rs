@@ -15,12 +15,12 @@ pub use paths::{
     StatePaths, StatePlatform,
 };
 pub use repository::{
-    AdapterBindingId, AgentRecord, AgentSource, AgentUpsert, AuthRefKind, AuthRefRecord,
-    AuthRefUpsert, AuthSecretStorage, ContextRecord, ContextState, ContextUpsert, EventInsert,
-    EventRecord, GatewayJobId, GatewayJobRecord, GatewayJobState, GatewayJobUpsert,
-    GroupMemberRecord, GroupMemberUpsert, GroupRecord, GroupUpsert, MessageDirection,
-    MessageInsert, MessageRecord, MessageRole, Store, StoreTransaction, TaskRecord, TaskSource,
-    TaskState, TaskUpsert,
+    AdapterBindingId, AgentRecord, AgentSource, AgentUpsert, ArtifactId, ArtifactKind,
+    ArtifactRecord, ArtifactUpsert, AuthRefKind, AuthRefRecord, AuthRefUpsert, AuthSecretStorage,
+    ContextRecord, ContextState, ContextUpsert, EventInsert, EventRecord, GatewayJobId,
+    GatewayJobRecord, GatewayJobState, GatewayJobUpsert, GroupMemberRecord, GroupMemberUpsert,
+    GroupRecord, GroupUpsert, MessageDirection, MessageInsert, MessageRecord, MessageRole, Store,
+    StoreTransaction, TaskRecord, TaskSource, TaskState, TaskUpsert,
 };
 
 /// Cargo package name for this crate.

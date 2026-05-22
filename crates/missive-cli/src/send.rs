@@ -33,6 +33,7 @@ use crate::agent::{
     AgentRegistry, cache_agent_card, get_existing_agent, negotiate_record_interface,
     open_agent_registry, parse_cached_agent_card,
 };
+use crate::artifact::persist_task_artifacts;
 use crate::auth::auth_headers_for_agent;
 use crate::output::{OutputMode, render_success};
 use crate::{GlobalArgs, service_parameters_from_config_and_globals};
@@ -933,6 +934,7 @@ fn upsert_remote_task(
         task_upsert.completed_at = Some(MissiveTimestamp::now_utc());
     }
     transaction.upsert_task(&task_upsert)?;
+    persist_task_artifacts(transaction, task)?;
     Ok(())
 }
 

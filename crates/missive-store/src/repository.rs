@@ -145,6 +145,7 @@ macro_rules! store_identifier {
 
 store_identifier!(GatewayJobId, "gateway job id");
 store_identifier!(AdapterBindingId, "adapter binding id");
+store_identifier!(ArtifactId, "artifact id");
 
 /// Durable authentication reference kind stored without raw secret material.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -263,6 +264,29 @@ impl_string_enum!(TaskSource, "task source", {
     Remote => "remote",
     Local => "local",
     Gateway => "gateway",
+});
+
+/// Durable artifact content kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactKind {
+    /// Artifact contains primarily text parts.
+    Text,
+    /// Artifact contains structured JSON data parts.
+    Json,
+    /// Artifact references an external file URL.
+    File,
+    /// Artifact contains inline raw byte parts.
+    Bytes,
+    /// Artifact content kind could not be determined.
+    Unknown,
+}
+impl_string_enum!(ArtifactKind, "artifact kind", {
+    Text => "text",
+    Json => "json",
+    File => "file",
+    Bytes => "bytes",
+    Unknown => "unknown",
 });
 
 /// Direction/origin of a durable message row.
@@ -646,6 +670,79 @@ pub struct TaskRecord {
     pub updated_at: MissiveTimestamp,
     /// Completion timestamp.
     pub completed_at: Option<MissiveTimestamp>,
+}
+
+/// Input used to create or update an artifact row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactUpsert {
+    /// A2A artifact id.
+    pub artifact_id: ArtifactId,
+    /// Owning task id.
+    pub task_id: TaskId,
+    /// Optional owning context id.
+    pub context_id: Option<ContextId>,
+    /// Artifact display name from the remote agent.
+    pub name: Option<String>,
+    /// Primary MIME/media type.
+    pub mime_type: Option<String>,
+    /// Durable artifact kind.
+    pub kind: ArtifactKind,
+    /// Monotonic local version for updates to the same artifact id.
+    pub version: u64,
+    /// Protocol-shaped artifact content JSON.
+    pub content_json: Option<Value>,
+    /// Optional local path for large byte payloads managed outside SQLite.
+    pub bytes_path: Option<String>,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+}
+
+impl ArtifactUpsert {
+    /// Creates an artifact upsert with default `unknown` kind and version 1.
+    #[must_use]
+    pub fn new(artifact_id: ArtifactId, task_id: TaskId) -> Self {
+        Self {
+            artifact_id,
+            task_id,
+            context_id: None,
+            name: None,
+            mime_type: None,
+            kind: ArtifactKind::Unknown,
+            version: 1,
+            content_json: None,
+            bytes_path: None,
+            metadata: Metadata::new(),
+        }
+    }
+}
+
+/// Stored artifact row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactRecord {
+    /// A2A artifact id.
+    pub artifact_id: ArtifactId,
+    /// Owning task id.
+    pub task_id: TaskId,
+    /// Optional owning context id.
+    pub context_id: Option<ContextId>,
+    /// Artifact display name from the remote agent.
+    pub name: Option<String>,
+    /// Primary MIME/media type.
+    pub mime_type: Option<String>,
+    /// Durable artifact kind.
+    pub kind: ArtifactKind,
+    /// Monotonic local version for updates to the same artifact id.
+    pub version: u64,
+    /// Protocol-shaped artifact content JSON.
+    pub content_json: Option<Value>,
+    /// Optional local path for large byte payloads managed outside SQLite.
+    pub bytes_path: Option<String>,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+    /// Creation time recorded by SQLite.
+    pub created_at: MissiveTimestamp,
+    /// Last update time recorded by SQLite.
+    pub updated_at: MissiveTimestamp,
 }
 
 /// Input used to append a durable message row.
@@ -1165,6 +1262,31 @@ impl Store {
         delete_task(&self.connection, task_id)
     }
 
+    /// Creates or updates an artifact and returns the stored row.
+    pub fn upsert_artifact(&self, input: &ArtifactUpsert) -> Result<ArtifactRecord> {
+        upsert_artifact(&self.connection, input)
+    }
+
+    /// Reads one artifact by id.
+    pub fn get_artifact(&self, artifact_id: &ArtifactId) -> Result<Option<ArtifactRecord>> {
+        get_artifact(&self.connection, artifact_id)
+    }
+
+    /// Lists artifacts in deterministic task/version/id order.
+    pub fn list_artifacts(&self) -> Result<Vec<ArtifactRecord>> {
+        list_artifacts(&self.connection)
+    }
+
+    /// Lists artifacts for one task in deterministic version/id order.
+    pub fn list_artifacts_for_task(&self, task_id: &TaskId) -> Result<Vec<ArtifactRecord>> {
+        list_artifacts_for_task(&self.connection, task_id)
+    }
+
+    /// Deletes an artifact by id. Returns `true` when a row was removed.
+    pub fn delete_artifact(&self, artifact_id: &ArtifactId) -> Result<bool> {
+        delete_artifact(&self.connection, artifact_id)
+    }
+
     /// Appends a message and returns the stored row.
     pub fn insert_message(&self, input: &MessageInsert) -> Result<MessageRecord> {
         insert_message(&self.connection, input)
@@ -1352,6 +1474,31 @@ impl StoreTransaction<'_> {
     /// Deletes a task by id. Returns `true` when a row was removed.
     pub fn delete_task(&self, task_id: &TaskId) -> Result<bool> {
         delete_task(&self.transaction, task_id)
+    }
+
+    /// Creates or updates an artifact and returns the stored row.
+    pub fn upsert_artifact(&self, input: &ArtifactUpsert) -> Result<ArtifactRecord> {
+        upsert_artifact(&self.transaction, input)
+    }
+
+    /// Reads one artifact by id.
+    pub fn get_artifact(&self, artifact_id: &ArtifactId) -> Result<Option<ArtifactRecord>> {
+        get_artifact(&self.transaction, artifact_id)
+    }
+
+    /// Lists artifacts in deterministic task/version/id order.
+    pub fn list_artifacts(&self) -> Result<Vec<ArtifactRecord>> {
+        list_artifacts(&self.transaction)
+    }
+
+    /// Lists artifacts for one task in deterministic version/id order.
+    pub fn list_artifacts_for_task(&self, task_id: &TaskId) -> Result<Vec<ArtifactRecord>> {
+        list_artifacts_for_task(&self.transaction, task_id)
+    }
+
+    /// Deletes an artifact by id. Returns `true` when a row was removed.
+    pub fn delete_artifact(&self, artifact_id: &ArtifactId) -> Result<bool> {
+        delete_artifact(&self.transaction, artifact_id)
     }
 
     /// Appends a message and returns the stored row.
@@ -1781,6 +1928,115 @@ fn delete_task(connection: &Connection, task_id: &TaskId) -> Result<bool> {
         "DELETE FROM tasks WHERE task_id = ?1",
         task_id.as_str(),
         "deleting task",
+    )
+}
+
+fn upsert_artifact(connection: &Connection, input: &ArtifactUpsert) -> Result<ArtifactRecord> {
+    if let Some(name) = &input.name {
+        validate_len("artifact name", name, 512)?;
+    }
+    if let Some(mime_type) = &input.mime_type {
+        validate_len("artifact mime_type", mime_type, 255)?;
+    }
+    if let Some(bytes_path) = &input.bytes_path {
+        validate_len("artifact bytes_path", bytes_path, 4096)?;
+    }
+    let version = i64::try_from(input.version).map_err(|error| {
+        MissiveError::validation("artifact version is too large to store in SQLite")
+            .with_source(error)
+    })?;
+    let content_json = optional_json_text("artifact content", input.content_json.as_ref())?;
+    let metadata_json = to_json_text("artifact metadata", &input.metadata)?;
+
+    connection
+        .execute(
+            "INSERT INTO artifacts (
+                artifact_id, task_id, context_id, name, mime_type, kind, version,
+                content_json, bytes_path, metadata_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT(artifact_id) DO UPDATE SET
+                task_id = excluded.task_id,
+                context_id = excluded.context_id,
+                name = excluded.name,
+                mime_type = excluded.mime_type,
+                kind = excluded.kind,
+                version = excluded.version,
+                content_json = excluded.content_json,
+                bytes_path = excluded.bytes_path,
+                metadata_json = excluded.metadata_json,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            params![
+                input.artifact_id.as_str(),
+                input.task_id.as_str(),
+                input.context_id.as_ref().map(ContextId::as_str),
+                input.name.as_deref(),
+                input.mime_type.as_deref(),
+                input.kind.as_str(),
+                version,
+                content_json.as_deref(),
+                input.bytes_path.as_deref(),
+                metadata_json,
+            ],
+        )
+        .map_err(|error| storage_error("upserting artifact", error))?;
+
+    get_artifact(connection, &input.artifact_id)?
+        .ok_or_else(|| missing_after_write("artifact", input.artifact_id.as_str()))
+}
+
+fn get_artifact(
+    connection: &Connection,
+    artifact_id: &ArtifactId,
+) -> Result<Option<ArtifactRecord>> {
+    connection
+        .query_row(
+            "SELECT artifact_id, task_id, context_id, name, mime_type, kind, version,
+                content_json, bytes_path, metadata_json, created_at, updated_at
+             FROM artifacts WHERE artifact_id = ?1",
+            params![artifact_id.as_str()],
+            read_artifact_row,
+        )
+        .optional()
+        .map_err(|error| storage_error("reading artifact", error))
+}
+
+fn list_artifacts(connection: &Connection) -> Result<Vec<ArtifactRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT artifact_id, task_id, context_id, name, mime_type, kind, version,
+                content_json, bytes_path, metadata_json, created_at, updated_at
+             FROM artifacts ORDER BY task_id, version, artifact_id",
+        )
+        .map_err(|error| storage_error("preparing artifact list", error))?;
+    collect_rows(
+        statement.query_map([], read_artifact_row),
+        "listing artifacts",
+    )
+}
+
+fn list_artifacts_for_task(
+    connection: &Connection,
+    task_id: &TaskId,
+) -> Result<Vec<ArtifactRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT artifact_id, task_id, context_id, name, mime_type, kind, version,
+                content_json, bytes_path, metadata_json, created_at, updated_at
+             FROM artifacts WHERE task_id = ?1 ORDER BY version, artifact_id",
+        )
+        .map_err(|error| storage_error("preparing task artifact list", error))?;
+    collect_rows(
+        statement.query_map(params![task_id.as_str()], read_artifact_row),
+        "listing task artifacts",
+    )
+}
+
+fn delete_artifact(connection: &Connection, artifact_id: &ArtifactId) -> Result<bool> {
+    delete_by_key(
+        connection,
+        "DELETE FROM artifacts WHERE artifact_id = ?1",
+        artifact_id.as_str(),
+        "deleting artifact",
     )
 }
 
@@ -2253,6 +2509,23 @@ fn read_task_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
     })
 }
 
+fn read_artifact_row(row: &Row<'_>) -> rusqlite::Result<ArtifactRecord> {
+    Ok(ArtifactRecord {
+        artifact_id: parse_sql(0, row.get(0)?)?,
+        task_id: parse_sql(1, row.get(1)?)?,
+        context_id: optional_parse_sql(2, row.get(2)?)?,
+        name: row.get(3)?,
+        mime_type: row.get(4)?,
+        kind: parse_sql(5, row.get(5)?)?,
+        version: u64_from_sql(6, row.get(6)?)?,
+        content_json: optional_json_from_sql(7, row.get(7)?)?,
+        bytes_path: row.get(8)?,
+        metadata: json_from_sql(9, row.get(9)?)?,
+        created_at: timestamp_from_sql(10, row.get(10)?)?,
+        updated_at: timestamp_from_sql(11, row.get(11)?)?,
+    })
+}
+
 fn read_message_row(row: &Row<'_>) -> rusqlite::Result<MessageRecord> {
     Ok(MessageRecord {
         message_id: parse_sql(0, row.get(0)?)?,
@@ -2711,6 +2984,65 @@ mod tests {
         assert!(store.delete_event(&event_id).expect("delete event"));
         assert!(store.delete_task(&task_id).expect("delete task"));
         assert!(store.delete_context(&context_id).expect("delete context"));
+    }
+
+    #[test]
+    fn artifact_crud_round_trip_and_cascades_with_task() {
+        let store = Store::open_in_memory().expect("store");
+        let agent = seed_agent(&store, "echo");
+        let context = context_id("ctx-artifact");
+        store
+            .upsert_context(&ContextUpsert::new(context.clone()))
+            .expect("context");
+        let task = seed_task(&store, &agent, "task-artifact");
+
+        let artifact_id = ArtifactId::new("artifact-1").expect("artifact id");
+        let mut artifact = ArtifactUpsert::new(artifact_id.clone(), task.clone());
+        artifact.context_id = Some(context.clone());
+        artifact.name = Some("result.json".to_owned());
+        artifact.mime_type = Some("application/json".to_owned());
+        artifact.kind = ArtifactKind::Json;
+        artifact.content_json =
+            Some(json!({"artifactId": "artifact-1", "parts": [{"data": {"answer": 42}}]}));
+        artifact
+            .metadata
+            .insert_str("origin", "repository-test")
+            .expect("metadata");
+
+        let created = store.upsert_artifact(&artifact).expect("artifact upsert");
+        assert_eq!(created.artifact_id, artifact_id);
+        assert_eq!(created.task_id, task);
+        assert_eq!(created.context_id.as_ref(), Some(&context));
+        assert_eq!(created.kind, ArtifactKind::Json);
+        assert_eq!(created.version, 1);
+        assert_eq!(created.metadata.get_str("origin"), Some("repository-test"));
+
+        let mut updated = artifact.clone();
+        updated.version = 2;
+        updated.kind = ArtifactKind::Text;
+        updated.content_json =
+            Some(json!({"artifactId": "artifact-1", "parts": [{"text": "chunk"}]}));
+        let updated_record = store.upsert_artifact(&updated).expect("artifact update");
+        assert_eq!(updated_record.version, 2);
+        assert_eq!(updated_record.kind, ArtifactKind::Text);
+        assert_eq!(
+            store
+                .list_artifacts_for_task(&task)
+                .expect("task artifacts"),
+            vec![updated_record.clone()]
+        );
+        assert_eq!(
+            store.list_artifacts().expect("artifacts"),
+            vec![updated_record]
+        );
+
+        assert!(store.delete_task(&task).expect("delete task"));
+        assert!(
+            store
+                .get_artifact(&artifact_id)
+                .expect("artifact cascaded")
+                .is_none()
+        );
     }
 
     #[test]

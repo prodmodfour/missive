@@ -287,7 +287,7 @@ fn status_event(state: &str, text: Option<&str>) -> Value {
     })
 }
 
-fn artifact_event() -> Value {
+fn artifact_event(text: &str, last_chunk: bool) -> Value {
     json!({
         "artifactUpdate": {
             "taskId": "task-stream-1",
@@ -295,10 +295,10 @@ fn artifact_event() -> Value {
             "artifact": {
                 "artifactId": "artifact-1",
                 "name": "answer",
-                "parts": [{"text": "partial answer"}]
+                "parts": [{"text": text, "mediaType": "text/plain"}]
             },
             "append": true,
-            "lastChunk": false
+            "lastChunk": last_chunk
         }
     })
 }
@@ -333,7 +333,8 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
         let body = [
             sse_data(task_event("TASK_STATE_SUBMITTED")),
             sse_data(status_event("TASK_STATE_WORKING", Some("thinking"))),
-            sse_data(artifact_event()),
+            sse_data(artifact_event("partial answer ", false)),
+            sse_data(artifact_event("complete", true)),
             sse_data(status_event("TASK_STATE_COMPLETED", None)),
         ]
         .join("");
@@ -363,7 +364,7 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
     assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
     assert!(stderr.is_empty(), "stderr: {stderr}");
     let lines = ndjson_lines(&stdout);
-    assert_eq!(lines.len(), 5);
+    assert_eq!(lines.len(), 6);
     for (index, value) in lines.iter().enumerate() {
         assert_eq!(value["sequence"], index);
     }
@@ -374,12 +375,14 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
     assert_eq!(lines[1]["data"]["text"], "thinking");
     assert_eq!(lines[2]["data"]["event_type"], "artifact_update");
     assert_eq!(lines[2]["data"]["artifact_id"], "artifact-1");
-    assert_eq!(lines[3]["data"]["state"], "completed");
-    assert_eq!(lines[4]["kind"], "stream_result");
-    assert_eq!(lines[4]["data"]["event_count"], 4);
-    assert_eq!(lines[4]["data"]["status_update_count"], 2);
-    assert_eq!(lines[4]["data"]["artifact_update_count"], 1);
-    assert_eq!(lines[4]["data"]["final_state"], "completed");
+    assert_eq!(lines[3]["data"]["event_type"], "artifact_update");
+    assert_eq!(lines[3]["data"]["artifact_id"], "artifact-1");
+    assert_eq!(lines[4]["data"]["state"], "completed");
+    assert_eq!(lines[5]["kind"], "stream_result");
+    assert_eq!(lines[5]["data"]["event_count"], 5);
+    assert_eq!(lines[5]["data"]["status_update_count"], 2);
+    assert_eq!(lines[5]["data"]["artifact_update_count"], 2);
+    assert_eq!(lines[5]["data"]["final_state"], "completed");
 
     let requests = server.requests();
     assert_eq!(requests.len(), 2);
@@ -405,11 +408,12 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
 
     let store = open_store(&home);
     let events = store.list_events().expect("events");
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 5);
     assert_eq!(events[0].event_type, "a2a.stream.task");
     assert_eq!(events[1].event_type, "a2a.stream.status_update");
     assert_eq!(events[2].event_type, "a2a.stream.artifact_update");
-    assert_eq!(events[3].event_type, "a2a.stream.status_update");
+    assert_eq!(events[3].event_type, "a2a.stream.artifact_update");
+    assert_eq!(events[4].event_type, "a2a.stream.status_update");
     assert!(events.iter().all(|event| event.redacted));
 
     let task = store
@@ -422,6 +426,21 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
         Some("ctx-stream-1".to_owned())
     );
 
+    let artifacts = store
+        .list_artifacts_for_task(&"task-stream-1".parse().expect("task id"))
+        .expect("task artifacts");
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0].artifact_id.as_str(), "artifact-1");
+    assert_eq!(artifacts[0].version, 2);
+    assert_eq!(artifacts[0].kind.as_str(), "text");
+    let artifact_json = artifacts[0]
+        .content_json
+        .as_ref()
+        .expect("artifact content");
+    assert_eq!(artifact_json["parts"].as_array().expect("parts").len(), 2);
+    assert_eq!(artifact_json["parts"][0]["text"], "partial answer ");
+    assert_eq!(artifact_json["parts"][1]["text"], "complete");
+
     let messages = store.list_messages().expect("messages");
     assert_eq!(messages[0].direction, MessageDirection::Request);
     assert_eq!(
@@ -429,7 +448,7 @@ fn stream_ndjson_persists_status_artifact_and_completion_events() {
             .iter()
             .filter(|message| message.direction == MessageDirection::StreamEvent)
             .count(),
-        4
+        5
     );
     assert!(messages.iter().any(|message| {
         task.last_message_id.as_ref().map(ToString::to_string)

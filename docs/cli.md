@@ -293,8 +293,9 @@ Each stream event is appended to the SQLite `events` journal as
 metadata. A `messages` row with direction `stream_event` is also written for each
 parsed event, status updates update the local `tasks` row state, and task/artifact
 updates are linked to their task/context IDs when the remote payload includes
-them. Artifact content is retained in event/message JSON for now; dedicated
-artifact listing, saving, and export commands land in a later ticket.
+them. Artifacts embedded in task payloads are persisted to dedicated `artifacts`
+rows, and `artifactUpdate` chunks with `append=true` are merged into the same row
+with an incremented local version.
 
 Malformed SSE data, JSON-RPC stream errors, unsupported protocol-version
 responses, and stream payloads that are not one of `task`, `message`,
@@ -315,6 +316,10 @@ MISSIVE_HOME=/tmp/missive-demo missive task get task-123 --json
 MISSIVE_HOME=/tmp/missive-demo missive task get task-123 --agent echo --remote --history-length 10 --json
 MISSIVE_HOME=/tmp/missive-demo missive task wait task-123 --agent echo --timeout 2m --interval 2s --json
 MISSIVE_HOME=/tmp/missive-demo missive task cancel task-123 --agent echo
+MISSIVE_HOME=/tmp/missive-demo missive task artifact list task-123 --json
+MISSIVE_HOME=/tmp/missive-demo missive task artifact show task-123 artifact-1 --json
+MISSIVE_HOME=/tmp/missive-demo missive task artifact save task-123 artifact-1 --output ./artifact.txt
+MISSIVE_HOME=/tmp/missive-demo missive task artifact export task-123 --output-dir ./artifacts
 ```
 
 Local `task list` filters SQLite rows by `--agent`, `--context`, `--state`,
@@ -351,8 +356,25 @@ returned task, and renders `task_cancel`. If no local task row exists yet, pass
 `--agent` so missive knows which remote agent to call.
 
 Task output includes the mapped local state, source, agent, context, protocol
-version, status text when present, artifact/history counts, timestamps, metadata,
-and redacted raw remote task JSON when available.
+version, status text when present, artifact/history counts, artifact metadata
+summaries from dedicated rows, timestamps, metadata, and redacted raw remote task
+JSON when available.
+
+`missive task artifact` operates on artifacts already persisted in the selected
+profile's SQLite store. Run `task get --remote`, `task list --remote
+--include-artifacts`, `send`, or `stream` first when a remote task has not been
+cached locally. `task artifact list` renders stored artifact ids, names, kinds,
+MIME types, versions, metadata, and text previews. `task artifact show` adds a
+part summary and raw A2A artifact JSON in machine-readable output. `task artifact
+save` writes one artifact to a user-selected path or, when `--output` points at
+an existing directory, to a sanitized filename derived from the remote artifact.
+`task artifact export` writes every artifact for a task into `--output-dir` and
+creates the directory when missing. Remote filenames and artifact names are
+sanitized so `../` path traversal cannot escape the chosen directory; existing
+files are not overwritten unless `--force` is supplied. Text parts are written as
+UTF-8 text, JSON data parts as pretty JSON, inline raw parts as bytes, and URL
+file-reference artifacts as JSON manifests rather than fetching remote or local
+URLs.
 
 ## Context commands
 
@@ -402,9 +424,9 @@ only.
 all currently linked `tasks`, `messages`, and `events`. Use `--json` or
 `--ndjson` for the full export payload; human mode prints a concise redacted
 summary. Export payloads recursively redact secret-like keys and HTTP auth
-headers before they reach stdout. Dedicated event replay and artifact export
-commands are later tickets, so context export includes only the rows currently
-stored in these tables.
+headers before they reach stdout. Dedicated event replay remains a later ticket,
+and context export does not include artifact rows/files; use `missive task
+artifact export` for task artifacts.
 
 `missive send --context CONTEXT_ID` and `missive stream --context CONTEXT_ID`
 continue to take explicit A2A context ids. Use `missive context show <name>

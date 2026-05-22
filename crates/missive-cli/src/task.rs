@@ -20,13 +20,17 @@ use missive_core::{
     MissiveTimestamp, Result, TaskId,
 };
 use missive_store::{
-    AgentRecord, ContextUpsert, Store, StoreTransaction, TaskRecord, TaskSource, TaskState,
-    TaskUpsert,
+    AgentRecord, ArtifactRecord, ContextUpsert, Store, StoreTransaction, TaskRecord, TaskSource,
+    TaskState, TaskUpsert,
 };
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::agent::{AgentRegistry, get_existing_agent, open_agent_registry};
+use crate::artifact::{
+    ArtifactSummaryView, TaskArtifactCommands, execute_task_artifact_command,
+    first_artifact_text_from_records, persist_task_artifacts,
+};
 use crate::auth::auth_headers_for_agent;
 use crate::output::{OutputMode, redact_text, render_success};
 use crate::send::{resolve_send_interface, store_task_state};
@@ -47,6 +51,12 @@ pub enum TaskCommands {
     Wait(TaskWaitArgs),
     /// Request remote cancellation for one task.
     Cancel(TaskCancelArgs),
+    /// List, show, save, or export artifacts persisted for a task.
+    Artifact {
+        /// Artifact operation to run.
+        #[command(subcommand)]
+        command: TaskArtifactCommands,
+    },
 }
 
 impl TaskCommands {
@@ -58,6 +68,7 @@ impl TaskCommands {
             Self::List(_) => "list",
             Self::Wait(_) => "wait",
             Self::Cancel(_) => "cancel",
+            Self::Artifact { .. } => "artifact",
         }
     }
 }
@@ -193,6 +204,7 @@ struct TaskView {
     #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<String>,
     artifact_count: usize,
+    artifacts: Vec<ArtifactSummaryView>,
     history_count: usize,
     metadata: Metadata,
     created_at: String,
@@ -349,6 +361,9 @@ where
             mode,
             writer,
         ),
+        TaskCommands::Artifact { command } => {
+            execute_task_artifact_command(command, &mut registry, mode, writer)
+        }
     }
 }
 
@@ -385,7 +400,7 @@ where
             environment,
             service_parameters,
         )?;
-        let view = TaskView::from_record(&result.record);
+        let view = task_view_from_store(&registry.store, &result.record)?;
         TaskGetOutput {
             profile: registry.profile.clone(),
             source: "remote".to_owned(),
@@ -410,7 +425,7 @@ where
                 source.as_str()
             )));
         }
-        let view = TaskView::from_record(&record);
+        let view = task_view_from_store(&registry.store, &record)?;
         TaskGetOutput {
             profile: registry.profile.clone(),
             source: "local".to_owned(),
@@ -459,8 +474,8 @@ where
             .records
             .iter()
             .filter(|record| filters.matches(record))
-            .map(TaskView::from_record)
-            .collect::<Vec<_>>();
+            .map(|record| task_view_from_store(&registry.store, record))
+            .collect::<Result<Vec<_>>>()?;
         TaskListOutput {
             profile: registry.profile.clone(),
             source: "remote".to_owned(),
@@ -479,8 +494,8 @@ where
             .list_tasks()?
             .into_iter()
             .filter(|record| filters.matches(record))
-            .map(|record| TaskView::from_record(&record))
-            .collect::<Vec<_>>();
+            .map(|record| task_view_from_store(&registry.store, &record))
+            .collect::<Result<Vec<_>>>()?;
         TaskListOutput {
             profile: registry.profile.clone(),
             source: "local".to_owned(),
@@ -544,7 +559,7 @@ where
         };
         let state = record.state;
         let agent = Some(record.agent_alias.as_str().to_owned());
-        let task = Some(TaskView::from_record(&record));
+        let task = Some(task_view_from_store(&registry.store, &record)?);
 
         if wait_state_is_decisive(state) {
             let status = state.as_str().to_owned();
@@ -629,7 +644,7 @@ where
         &outcome.task,
         service_parameters,
     )?;
-    let view = TaskView::from_record(&record);
+    let view = task_view_from_store(&registry.store, &record)?;
     let output = TaskCancelOutput {
         profile: registry.profile.clone(),
         selected_interface: TaskInterfaceView::from(&selected_interface),
@@ -766,6 +781,11 @@ fn get_existing_task(store: &Store, task_id: &TaskId) -> Result<TaskRecord> {
     })
 }
 
+fn task_view_from_store(store: &Store, record: &TaskRecord) -> Result<TaskView> {
+    let artifacts = store.list_artifacts_for_task(&record.task_id)?;
+    Ok(TaskView::from_record_and_artifacts(record, &artifacts))
+}
+
 fn ensure_optional_agent_filter(record: &TaskRecord, agent: Option<&str>) -> Result<()> {
     let Some(agent) = agent else {
         return Ok(());
@@ -829,7 +849,9 @@ fn upsert_remote_task(
     ) {
         upsert.completed_at = Some(MissiveTimestamp::now_utc());
     }
-    transaction.upsert_task(&upsert)
+    let record = transaction.upsert_task(&upsert)?;
+    persist_task_artifacts(transaction, task)?;
+    Ok(record)
 }
 
 fn protocol_task_state(state: TaskState) -> missive_a2a::protocol::TaskState {
@@ -917,7 +939,7 @@ impl TaskFiltersView {
 }
 
 impl TaskView {
-    fn from_record(record: &TaskRecord) -> Self {
+    fn from_record_and_artifacts(record: &TaskRecord, artifacts: &[ArtifactRecord]) -> Self {
         let parsed = record
             .remote_task_json
             .as_ref()
@@ -925,6 +947,14 @@ impl TaskView {
         let status_message = parsed
             .as_ref()
             .and_then(|task| task.status.message.as_ref());
+        let artifact_views = artifacts
+            .iter()
+            .map(ArtifactSummaryView::from_record)
+            .collect::<Vec<_>>();
+        let parsed_artifact_count = parsed
+            .as_ref()
+            .and_then(|task| task.artifacts.as_ref())
+            .map_or(0, Vec::len);
         Self {
             task_id: record.task_id.as_str().to_owned(),
             agent: record.agent_alias.as_str().to_owned(),
@@ -947,11 +977,14 @@ impl TaskView {
             text: status_message
                 .and_then(Message::text)
                 .map(ToOwned::to_owned)
+                .or_else(|| first_artifact_text_from_records(artifacts))
                 .or_else(|| parsed.as_ref().and_then(first_artifact_text)),
-            artifact_count: parsed
-                .as_ref()
-                .and_then(|task| task.artifacts.as_ref())
-                .map_or(0, Vec::len),
+            artifact_count: if artifact_views.is_empty() {
+                parsed_artifact_count
+            } else {
+                artifact_views.len()
+            },
+            artifacts: artifact_views,
             history_count: parsed
                 .as_ref()
                 .and_then(|task| task.history.as_ref())
@@ -1158,6 +1191,26 @@ where
     }
     writeln!(writer, "  artifacts: {}", task.artifact_count)
         .map_err(|error| MissiveError::io("writing task output", error))?;
+    for artifact in &task.artifacts {
+        writeln!(
+            writer,
+            "    {}  kind={}  version={}  name={}  mime={}",
+            redact_text(&artifact.artifact_id),
+            redact_text(&artifact.kind),
+            artifact.version,
+            artifact
+                .name
+                .as_deref()
+                .map(redact_text)
+                .unwrap_or_else(|| "-".to_owned()),
+            artifact
+                .mime_type
+                .as_deref()
+                .map(redact_text)
+                .unwrap_or_else(|| "-".to_owned())
+        )
+        .map_err(|error| MissiveError::io("writing task output", error))?;
+    }
     writeln!(writer, "  history: {}", task.history_count)
         .map_err(|error| MissiveError::io("writing task output", error))?;
     writeln!(writer, "  updated_at: {}", redact_text(&task.updated_at))

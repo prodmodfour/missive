@@ -178,8 +178,11 @@ with event types `a2a.stream.task`, `a2a.stream.message`,
 `a2a.stream.status_update`, or `a2a.stream.artifact_update`; a corresponding
 `messages` row with direction `stream_event` is also written. Task and status
 events update the local `tasks` row state and preserve A2A protocol-version
-metadata. Dedicated artifact rows, artifact export, task subscription/resume, and
-push configuration remain mapped for later tickets.
+metadata. Artifacts embedded in task events are persisted as dedicated artifact
+rows. `artifactUpdate` events upsert the referenced artifact row, and appended
+chunks merge their parts into the existing A2A artifact JSON while incrementing a
+local version. Task subscription/resume and push configuration remain mapped for
+later tickets.
 
 ## Task GetTask/ListTasks/CancelTask
 
@@ -203,8 +206,10 @@ Both transports send `A2A-Version`, optional `A2A-Extensions`, configured extra
 service parameters, and resolved auth headers. A task returned by any of these
 operations is persisted to the local `tasks` table with raw remote task JSON,
 context id, mapped state, protocol-version metadata, and status-message id when
-present. `ListTasks` persists each returned task before applying local output
-filters.
+present. Any artifacts embedded in the returned task are also persisted to the
+local `artifacts` table with kind, name, MIME type, metadata, raw A2A artifact
+JSON, and an incremented version when the same artifact id is observed again.
+`ListTasks` persists each returned task before applying local output filters.
 
 `task wait` repeatedly calls `GetTask` unless `--local` is supplied. The wait
 loop treats `completed`, `failed`, `cancelled`, and `input_required` as decisive
@@ -231,7 +236,8 @@ organize the canonical A2A ids used by implemented message and task calls.
 
 Context export recursively redacts secret-like keys and HTTP authorization
 headers before printing. Dedicated A2A task resubscription, push/webhook updates,
-event replay, and artifact export remain for later tickets.
+and event replay remain for later tickets. Artifact rows can be inspected and
+exported separately with `missive task artifact list/show/save/export`.
 
 ## Error mapping
 

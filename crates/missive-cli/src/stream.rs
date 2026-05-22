@@ -30,6 +30,7 @@ use crate::agent::{
     AgentRegistry, cache_agent_card, get_existing_agent, negotiate_record_interface,
     open_agent_registry, parse_cached_agent_card,
 };
+use crate::artifact::{persist_artifact_update, persist_task_artifacts};
 use crate::auth::auth_headers_for_agent;
 use crate::output::{OutputMode, redact_json, render_stream_item, render_success};
 use crate::send::{
@@ -482,7 +483,26 @@ fn persist_task_state_for_event(
                 service_parameters,
             )
         }
-        StreamResponse::ArtifactUpdate(_) | StreamResponse::Message(_) => {
+        StreamResponse::ArtifactUpdate(update) => {
+            persist_artifact_update(transaction, update)?;
+            let Some(task_id) = &ids.task_id else {
+                return Ok(());
+            };
+            let state = transaction
+                .get_task(task_id)?
+                .map(|task| task.state)
+                .unwrap_or(StoreTaskState::Unknown);
+            ensure_task_from_parts(
+                transaction,
+                agent,
+                task_id,
+                ids.context_id.as_ref(),
+                state,
+                stream_message_id,
+                service_parameters,
+            )
+        }
+        StreamResponse::Message(_) => {
             let Some(task_id) = &ids.task_id else {
                 return Ok(());
             };
@@ -563,6 +583,7 @@ fn upsert_remote_task(
         MissiveError::protocol("encoding A2A stream task event for persistence").with_source(error)
     })?);
     transaction.upsert_task(&task_upsert)?;
+    persist_task_artifacts(transaction, task)?;
     Ok(())
 }
 
