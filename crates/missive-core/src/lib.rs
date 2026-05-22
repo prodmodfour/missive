@@ -1,8 +1,18 @@
 #![doc = "Core domain primitives for the missive command-line tool and control plane."]
 
+pub mod envelope;
 pub mod error;
+pub mod ids;
+pub mod metadata;
+pub mod timestamp;
 
+pub use envelope::Envelope;
 pub use error::{ErrorCategory, ErrorReport, MissiveError, MissiveExitCode, Result};
+pub use ids::{
+    AgentAlias, ContextId, EventId, GroupName, MessageId, RankName, TaskId, TransportName,
+};
+pub use metadata::Metadata;
+pub use timestamp::MissiveTimestamp;
 
 /// Canonical project and binary name.
 pub const PROJECT_NAME: &str = "missive";

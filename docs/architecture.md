@@ -29,6 +29,18 @@ CLI/adapters -> command model -> router/session/context -> A2A client -> remote 
 
 Human-facing rendering uses normal `Display` text plus `miette::Diagnostic` codes and optional help text. Machine-facing rendering should serialize `ErrorReport` instead of parsing human messages.
 
+## Core primitive contract
+
+`crates/missive-core` owns the small domain primitives that other crates should share instead of passing raw strings everywhere:
+
+* `AgentAlias`, `GroupName`, `RankName`, and `TransportName` are validated lowercase identifiers with deterministic `Display`, `FromStr`, and serde-as-string behaviour.
+* `ContextId`, `TaskId`, `MessageId`, and `EventId` are opaque A2A/local identifiers that reject empty values, whitespace, control characters, and unbounded strings while preserving the server-provided text exactly.
+* `MissiveTimestamp` renders and parses RFC3339 timestamps for durable records and machine-readable output.
+* `Metadata` is a deterministic JSON object backed by an ordered map, with helper methods for insertion, lookup, merge, and key validation.
+* `Envelope<T>` combines an event id, timestamp, metadata, and typed payload for later event journals, gateway jobs, and adapter streams.
+
+Validation failures use `MissiveError::validation` so CLI and JSON renderers can produce consistent diagnostics.
+
 ## Architecture decision records
 
 The ADR index lives in [`docs/adr/`](adr/README.md). Initial accepted records are:

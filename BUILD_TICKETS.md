@@ -190,7 +190,7 @@ Validation:
 
 ## 006 — Implement IDs, timestamps, metadata, and envelope primitives
 
-Status: TODO
+Status: DONE
 
 Phase: Core
 
