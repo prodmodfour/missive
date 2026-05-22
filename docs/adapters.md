@@ -2,7 +2,7 @@
 
 Adapters are the boundary between external/local message sources and missive's gateway control plane. They are not agent frameworks and they do not replace A2A; adapters translate source input into missive gateway events and receive redacted gateway updates that can be rendered back to the source.
 
-The shared trait and registry are in place, and the current concrete adapters are `stdio` and `file-drop`. HTTP and external chat adapters remain later tickets.
+The shared trait and registry are in place. The current concrete adapters are foreground `stdio`, foreground `file-drop`, and an opt-in daemon-mounted `http` inbound control endpoint. External chat adapters remain later tickets.
 
 ## Crate contract
 
@@ -18,8 +18,9 @@ The shared trait and registry are in place, and the current concrete adapters ar
 * `AdapterRegistry` and `AdapterFactory` — deterministic factory lookup by adapter kind.
 * `StdioAdapter`, `StdioInputFrame`, `StdioOutputFrame`, and frame helpers — the built-in stdin/stdout JSON/NDJSON adapter boundary.
 * `FileDropAdapter`, `FileDropInputFile`, `FileDropOutputFile`, `FileDropPaths`, and handoff helpers — the built-in local directory adapter boundary.
+* `HttpAdapter`, `HttpInputFrame`, and `HttpFrameSource` — the built-in local HTTP control-message schema and adapter-event mapping used by `missive gateway run --http-adapter`.
 
-The registry is intentionally generic. The built-in `stdio` and `file-drop` factories can be registered with `register_stdio_adapter` and `register_file_drop_adapter`; later tickets should add factories such as `http`. External chat/platform adapters should stay feature-gated or stubbed until their own ticket.
+The registry is intentionally generic. The built-in factories can be registered with `register_stdio_adapter`, `register_file_drop_adapter`, and `register_http_adapter`. External chat/platform adapters should stay feature-gated or stubbed until their own ticket.
 
 ## Configuration schema
 
@@ -70,7 +71,7 @@ The intended gateway lifecycle is:
 8. Gateway workers call `deliver_update` for source-visible progress/results and `acknowledge` for accepted/rejected/delivered/failed delivery state.
 9. On shutdown or configuration changes, the gateway calls `stop` and records lifecycle state.
 
-The current daemon exposes the adapter event-bus bridge and reports adapter bus events as `gateway_adapter_event` in runtime output when an adapter worker emits them. It does not start configured adapters yet; use `missive adapter stdio` or `missive adapter file-drop` as foreground local adapters today.
+The current daemon exposes the adapter event-bus bridge and reports adapter bus events as `gateway_adapter_event` in runtime output when an adapter worker emits them. It can mount the local HTTP inbound adapter when `missive gateway run --http-adapter` is passed. It does not start configured stdio/file-drop adapters from config yet; use `missive adapter stdio` or `missive adapter file-drop` as foreground local adapters today.
 
 ## stdin/stdout adapter
 
@@ -223,6 +224,46 @@ wrapped frame `data` is the normal `missive.output.v1` command envelope. Parse o
 validation failures use `ok:false`, `kind:"file_drop_error"`, and the same
 `missive::...` error report shape used elsewhere.
 
+## HTTP inbound adapter
+
+`missive gateway run --http-adapter` mounts a local HTTP control endpoint on the same gateway listener. The default endpoint is `POST /adapter/http/v1/messages`, and the default adapter health endpoint is `GET /adapter/http/healthz`.
+
+Use an environment-backed token for local automation:
+
+```bash
+MISSIVE_HTTP_ADAPTER_TOKEN=change-me \
+MISSIVE_HOME=/tmp/missive-demo \
+  missive gateway run \
+  --port 7347 \
+  --http-adapter \
+  --http-adapter-auth-token-env MISSIVE_HTTP_ADAPTER_TOKEN \
+  --ndjson
+```
+
+Then post one `missive.http.v1` JSON control frame:
+
+```bash
+curl -sS \
+  -H 'Authorization: Bearer change-me' \
+  -H 'Content-Type: application/json' \
+  -d '{"schema_version":"missive.http.v1","id":"req-1","command":"task_list"}' \
+  http://127.0.0.1:7347/adapter/http/v1/messages
+```
+
+Request frames support the same foreground command names and fields as the stdio adapter: `send`, `stream`, `task_get`, `task_list`, `task_wait`, and `task_cancel`. Accepted requests are validated, converted into `AdapterEvent::inbound_message`, forwarded to the gateway event bus, and appended to the event journal as `missive.adapter.http.accepted` with a redacted payload. Rejected requests are appended as `missive.adapter.http.rejected` when possible.
+
+HTTP adapter options on `gateway run` include:
+
+* `--http-adapter-path PATH`
+* `--http-adapter-health-path PATH`
+* `--http-adapter-auth-token-env ENV`
+* `--http-adapter-auth-header HEADER`
+* `--http-adapter-auth-scheme SCHEME|none`
+* `--http-adapter-max-body-bytes BYTES`
+* `--http-adapter-rate-limit N`
+
+`GET /adapter/http/healthz` reports accepted/rejected counters, body/rate limits, and a redacted auth view. The current HTTP adapter is an ingress/event-bus boundary; command dispatch, gateway session rotation, and busy-input execution for inbound HTTP frames remain later adapter-worker work.
+
 ## Gateway event bus
 
 Adapters do not depend on `missive-gateway`. They depend only on the `AdapterEventSink` trait. The gateway wraps its internal event bus with a sink implementation, so adapter events can be forwarded without creating a crate cycle.
@@ -240,4 +281,4 @@ Gateway event output uses redacted serialized adapter events. Source ids and cha
 
 ## Current limitations
 
-`missive adapter stdio` and `missive adapter file-drop` are foreground local adapters, not daemon-started workers. `missive gateway run` still does not start configured adapters from `[adapters]`, and HTTP plus external chat adapters remain later tickets. The file-drop adapter uses portable polling rather than OS-specific inotify/FSEvents, does not lock files that are written directly to a final `*.json` name, and relies on producers following the temporary-file-then-rename handoff contract. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio or file-drop foreground loops.
+`missive adapter stdio` and `missive adapter file-drop` are foreground local adapters, not daemon-started workers. `missive gateway run --http-adapter` accepts and journals HTTP control frames but does not yet execute them through session/job workers or apply busy-input queue/interrupt/steer actions. `missive gateway run` still does not start configured adapters from `[adapters]`, and external chat adapters remain later tickets. The file-drop adapter uses portable polling rather than OS-specific inotify/FSEvents, does not lock files that are written directly to a final `*.json` name, and relies on producers following the temporary-file-then-rename handoff contract. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio, file-drop, or HTTP adapter ingress paths.

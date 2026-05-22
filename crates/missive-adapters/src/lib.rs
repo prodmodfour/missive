@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub mod file_drop;
+pub mod http;
 pub mod stdio;
 
 pub use file_drop::{
@@ -19,6 +20,10 @@ pub use file_drop::{
     FileDropJobShowCommand, FileDropJobStartReduceCommand, FileDropJobStartSendCommand,
     FileDropJobStartStreamCommand, FileDropJobStartWaitCommand, FileDropOutputFile, FileDropPaths,
     FileDropSource, is_ready_file_name, new_file_drop_event_id, register_file_drop_adapter,
+};
+pub use http::{
+    HTTP_ADAPTER_FRAME_SCHEMA_VERSION, HTTP_ADAPTER_KIND, HttpAdapter, HttpControlCommand,
+    HttpFrameSource, HttpInputFrame, new_http_event_id, register_http_adapter,
 };
 pub use stdio::{
     STDIO_ADAPTER_KIND, STDIO_FRAME_SCHEMA_VERSION, STDIO_OUTPUT_KIND_COMMAND_OUTPUT,

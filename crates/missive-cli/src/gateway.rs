@@ -8,12 +8,14 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::{ArgAction, Args, Subcommand};
-use missive_core::{LoadedConfig, MissiveError, Result};
+use missive_core::{LoadedConfig, MissiveError, MissiveExitCode, Result};
 use missive_gateway::{
     DEFAULT_GATEWAY_HEALTH_PATH, DEFAULT_GATEWAY_READY_PATH, DEFAULT_GATEWAY_STATUS_PATH,
-    DEFAULT_SERVICE_PATH, GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent,
-    GatewayServiceAction, GatewayServiceOptions, GatewayServiceResult, GatewayServiceScope,
-    captured_environment_keys, execute_gateway_service_action, run_gateway_daemon,
+    DEFAULT_HTTP_ADAPTER_HEALTH_PATH, DEFAULT_HTTP_ADAPTER_MAX_BODY_BYTES,
+    DEFAULT_HTTP_ADAPTER_PATH, DEFAULT_HTTP_ADAPTER_RATE_LIMIT_PER_MINUTE, DEFAULT_SERVICE_PATH,
+    GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent, GatewayServiceAction,
+    GatewayServiceOptions, GatewayServiceResult, GatewayServiceScope, HttpInboundAdapterConfig,
+    HttpInboundAuth, captured_environment_keys, execute_gateway_service_action, run_gateway_daemon,
     validate_service_environment,
 };
 use missive_store::StatePathResolver;
@@ -93,6 +95,62 @@ pub struct GatewayRunArgs {
         default_value = DEFAULT_GATEWAY_STATUS_PATH
     )]
     pub status_path: String,
+
+    /// Enable the local HTTP inbound adapter for missive.http.v1 control messages.
+    #[arg(long = "http-adapter", action = ArgAction::SetTrue)]
+    pub http_adapter: bool,
+
+    /// HTTP path that receives HTTP adapter control POST requests.
+    #[arg(
+        long = "http-adapter-path",
+        value_name = "PATH",
+        default_value = DEFAULT_HTTP_ADAPTER_PATH
+    )]
+    pub http_adapter_path: String,
+
+    /// HTTP path for HTTP adapter health and counters.
+    #[arg(
+        long = "http-adapter-health-path",
+        value_name = "PATH",
+        default_value = DEFAULT_HTTP_ADAPTER_HEALTH_PATH
+    )]
+    pub http_adapter_health_path: String,
+
+    /// Require HTTP adapter requests to include this header when --http-adapter-auth-token-env is set.
+    #[arg(
+        long = "http-adapter-auth-header",
+        value_name = "HEADER",
+        default_value = "Authorization"
+    )]
+    pub http_adapter_auth_header: String,
+
+    /// Auth scheme prefix expected before the HTTP adapter token; use 'none' for a raw token.
+    #[arg(
+        long = "http-adapter-auth-scheme",
+        value_name = "SCHEME",
+        default_value = "Bearer"
+    )]
+    pub http_adapter_auth_scheme: String,
+
+    /// Read the expected inbound HTTP adapter token from this environment variable.
+    #[arg(long = "http-adapter-auth-token-env", value_name = "ENV")]
+    pub http_adapter_auth_token_env: Option<String>,
+
+    /// Maximum HTTP adapter request body size in bytes.
+    #[arg(
+        long = "http-adapter-max-body-bytes",
+        value_name = "BYTES",
+        default_value_t = DEFAULT_HTTP_ADAPTER_MAX_BODY_BYTES
+    )]
+    pub http_adapter_max_body_bytes: usize,
+
+    /// Maximum accepted HTTP adapter requests per minute for this gateway process.
+    #[arg(
+        long = "http-adapter-rate-limit",
+        value_name = "N",
+        default_value_t = DEFAULT_HTTP_ADAPTER_RATE_LIMIT_PER_MINUTE
+    )]
+    pub http_adapter_rate_limit: u64,
 }
 
 /// Arguments for `missive gateway install`.
@@ -351,6 +409,7 @@ fn build_daemon_config(
 
     let gateway_config = effective_gateway_config(loaded_config)?;
     let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
+    let http_adapter = http_adapter_config_from_args(args, environment)?;
     let config = GatewayDaemonConfig {
         profile: loaded_config.selected_profile.clone(),
         bind_addr,
@@ -361,9 +420,84 @@ fn build_daemon_config(
         status_path: args.status_path.clone(),
         job_concurrency: gateway_config.job_concurrency,
         service_parameters,
+        http_adapter,
     };
     config.validate()?;
     Ok(config)
+}
+
+fn http_adapter_config_from_args(
+    args: &GatewayRunArgs,
+    environment: &BTreeMap<String, String>,
+) -> Result<Option<HttpInboundAdapterConfig>> {
+    if !args.http_adapter {
+        if args.http_adapter_auth_token_env.is_some() {
+            return Err(MissiveError::validation(
+                "--http-adapter-auth-token-env requires --http-adapter",
+            )
+            .with_help(
+                "Enable the local HTTP inbound adapter before configuring its auth token.",
+            ));
+        }
+        return Ok(None);
+    }
+    if args.http_adapter_max_body_bytes == 0 {
+        return Err(MissiveError::validation(
+            "--http-adapter-max-body-bytes must be greater than zero",
+        ));
+    }
+    if args.http_adapter_rate_limit == 0 {
+        return Err(MissiveError::validation(
+            "--http-adapter-rate-limit must be greater than zero",
+        ));
+    }
+    let auth = http_adapter_auth_from_args(args, environment)?;
+    let config = HttpInboundAdapterConfig {
+        path: args.http_adapter_path.clone(),
+        health_path: args.http_adapter_health_path.clone(),
+        auth,
+        max_body_bytes: args.http_adapter_max_body_bytes,
+        rate_limit_per_minute: args.http_adapter_rate_limit,
+    };
+    config.validate()?;
+    Ok(Some(config))
+}
+
+fn http_adapter_auth_from_args(
+    args: &GatewayRunArgs,
+    environment: &BTreeMap<String, String>,
+) -> Result<HttpInboundAuth> {
+    let Some(env_name) = &args.http_adapter_auth_token_env else {
+        return Ok(HttpInboundAuth::Disabled);
+    };
+    let token = environment.get(env_name).cloned().ok_or_else(|| {
+        MissiveError::auth(format!(
+            "HTTP adapter auth token environment variable {env_name:?} is not set"
+        ))
+        .with_exit_code(MissiveExitCode::Permission)
+        .with_help(
+            "Set the environment variable before running missive gateway run --http-adapter.",
+        )
+    })?;
+    let scheme = normalize_auth_scheme(&args.http_adapter_auth_scheme)?;
+    Ok(HttpInboundAuth::Header {
+        name: args.http_adapter_auth_header.clone(),
+        token,
+        scheme,
+    })
+}
+
+fn normalize_auth_scheme(value: &str) -> Result<Option<String>> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    if value.is_empty() {
+        return Err(MissiveError::validation(
+            "HTTP adapter auth scheme cannot be empty; use 'none' for a raw token comparison",
+        ));
+    }
+    Ok(Some(value.to_owned()))
 }
 
 fn effective_gateway_config(loaded_config: &LoadedConfig) -> Result<&missive_core::GatewayConfig> {
@@ -574,6 +708,14 @@ mod tests {
             health_path: DEFAULT_GATEWAY_HEALTH_PATH.to_owned(),
             ready_path: DEFAULT_GATEWAY_READY_PATH.to_owned(),
             status_path: DEFAULT_GATEWAY_STATUS_PATH.to_owned(),
+            http_adapter: false,
+            http_adapter_path: DEFAULT_HTTP_ADAPTER_PATH.to_owned(),
+            http_adapter_health_path: DEFAULT_HTTP_ADAPTER_HEALTH_PATH.to_owned(),
+            http_adapter_auth_header: "Authorization".to_owned(),
+            http_adapter_auth_scheme: "Bearer".to_owned(),
+            http_adapter_auth_token_env: None,
+            http_adapter_max_body_bytes: DEFAULT_HTTP_ADAPTER_MAX_BODY_BYTES,
+            http_adapter_rate_limit: DEFAULT_HTTP_ADAPTER_RATE_LIMIT_PER_MINUTE,
         };
         let globals = GlobalArgs {
             timeout: Some("2s".to_owned()),

@@ -15,8 +15,11 @@ pub use busy::{
 };
 pub use daemon::{
     DEFAULT_GATEWAY_HEALTH_PATH, DEFAULT_GATEWAY_READY_PATH, DEFAULT_GATEWAY_STATUS_PATH,
-    GatewayComponentStatus, GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent,
-    GatewayStarted, GatewayStatusResponse, run_gateway_daemon,
+    DEFAULT_HTTP_ADAPTER_HEALTH_PATH, DEFAULT_HTTP_ADAPTER_MAX_BODY_BYTES,
+    DEFAULT_HTTP_ADAPTER_PATH, DEFAULT_HTTP_ADAPTER_RATE_LIMIT_PER_MINUTE, GatewayComponentStatus,
+    GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent, GatewayStarted,
+    GatewayStatusResponse, HttpInboundAdapterConfig, HttpInboundAuth, HttpInboundAuthView,
+    run_gateway_daemon,
 };
 pub use jobs::{
     BACKGROUND_JOB_KIND_REDUCE, BACKGROUND_JOB_KIND_SEND, BACKGROUND_JOB_KIND_STREAM,

@@ -1,6 +1,6 @@
 # Gateway daemon
 
-`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, A2A task subscription/resume, gateway-managed background communication jobs, and the adapter event-bus bridge. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
+`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, optional authenticated HTTP inbound adapter endpoint, lifecycle events, graceful shutdown, A2A task subscription/resume, gateway-managed background communication jobs, and the adapter event-bus bridge. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
 
 ## Run
 
@@ -21,6 +21,52 @@ MISSIVE_HOME=/tmp/missive-demo missive gateway run \
 ```
 
 `--timeout <DURATION>` is the non-interactive graceful shutdown budget for `gateway run`; without it, the process runs until Ctrl-C or process supervision stops it.
+
+## HTTP inbound adapter
+
+Pass `--http-adapter` to mount a local HTTP endpoint for `missive.http.v1` control frames on the gateway listener. This endpoint is separate from the A2A push webhook receiver: it accepts local control messages for the gateway adapter bus, not remote A2A push callbacks.
+
+Recommended authenticated local run:
+
+```bash
+MISSIVE_HTTP_ADAPTER_TOKEN=change-me \
+MISSIVE_HOME=/tmp/missive-demo \
+  missive gateway run \
+  --bind-address 127.0.0.1 \
+  --port 7347 \
+  --http-adapter \
+  --http-adapter-auth-token-env MISSIVE_HTTP_ADAPTER_TOKEN \
+  --ndjson
+```
+
+Submit a validated control frame:
+
+```bash
+curl -sS \
+  -H 'Authorization: Bearer change-me' \
+  -H 'Content-Type: application/json' \
+  -d '{"schema_version":"missive.http.v1","id":"req-1","command":"task_list"}' \
+  http://127.0.0.1:7347/adapter/http/v1/messages
+```
+
+The default paths are:
+
+* `POST /adapter/http/v1/messages` — accepts one `missive.http.v1` control frame.
+* `GET /adapter/http/healthz` — reports adapter status, accepted/rejected counters, limits, and redacted auth configuration.
+
+Tunable options:
+
+* `--http-adapter-path PATH`
+* `--http-adapter-health-path PATH`
+* `--http-adapter-auth-token-env ENV`
+* `--http-adapter-auth-header HEADER`
+* `--http-adapter-auth-scheme SCHEME|none`
+* `--http-adapter-max-body-bytes BYTES` (default 1 MiB)
+* `--http-adapter-rate-limit N` (default 60 accepted attempts per minute for the process)
+
+Accepted requests return `202` with the request id, generated adapter message id, and event-journal row. Invalid JSON/schema returns `400`, missing or mismatched auth returns `401`, rate limiting returns `429`, and oversized bodies are rejected by the HTTP body limit. The event journal records redacted `missive.adapter.http.accepted` and `missive.adapter.http.rejected` rows when the request reaches missive handler code.
+
+Today the HTTP adapter forwards validated frames to the gateway adapter event bus and persists redacted journal rows. It does not yet dispatch those frames into send/stream/task workers, create gateway sessions, or apply busy-input policy automatically.
 
 ## Service installation
 
@@ -106,7 +152,7 @@ The daemon exposes unauthenticated local JSON endpoints:
 
 The paths can be changed with `--health-path`, `--ready-path`, and `--status-path`; they must be distinct non-root HTTP paths.
 
-A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, active or idle `background_jobs`, plus an idle `webhook_receiver` placeholder and an `adapters` component whose event sink is ready for future adapter workers.
+A status response includes the selected profile, bound address, uptime, configured `job_concurrency`, local event-bus count, and supervised components. Current component states include `supervisor`, `event_bus`, `store`, `sessions`, `health_http`, active `subscriptions`, active or idle `background_jobs`, plus an idle `webhook_receiver` placeholder and an `adapters` component. When `--http-adapter` is enabled, the `adapters` component reports the mounted HTTP control path and rate limit, and accepted requests later update it through `gateway_adapter_event` runtime output.
 
 ## Task subscriptions and resume
 
@@ -188,7 +234,7 @@ Sessions are not long-term memory. They do not contain learned facts, summaries 
 
 The gateway now depends on the shared `missive-adapters` trait crate. Adapter implementations emit `AdapterEvent` values through an `AdapterEventSink` instead of depending directly on gateway internals. The daemon wraps its local event bus with that sink, updates the `adapters` component when an adapter event is received, and forwards serialized adapter runtime events as `gateway_adapter_event` NDJSON items.
 
-No configured adapter is started by `gateway run` yet; the bridge is tested with a fake adapter event and reserved for daemon-managed adapter workers in later tickets. The concrete stdio adapter is available today as the foreground `missive adapter stdio` subprocess loop, and the concrete file-drop adapter is available as the foreground `missive adapter file-drop` inbox/outbox loop. See [`adapters.md`](adapters.md) for lifecycle, frame, and file handoff details.
+No configured stdio/file-drop adapter is started from config by `gateway run` yet; the bridge is tested with fake adapter events and the opt-in HTTP adapter. The HTTP adapter can be mounted with `--http-adapter` and emits accepted control frames as `gateway_adapter_event` runtime output. The concrete stdio adapter is available today as the foreground `missive adapter stdio` subprocess loop, and the concrete file-drop adapter is available as the foreground `missive adapter file-drop` inbox/outbox loop. See [`adapters.md`](adapters.md) for lifecycle, frame, file handoff, and HTTP control-frame details.
 
 ## Busy input modes
 
@@ -224,10 +270,10 @@ input source that invokes this evaluator automatically.
 
 ## Output
 
-Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_component`, optional `gateway_adapter_event`, and `gateway_stopped` envelopes as the runtime progresses. Subscription progress and retry/backoff details are reported as `gateway_component` updates for the `subscriptions` component; background job queue, success, failure, retry, and cancellation summaries are reported through the `background_jobs` component. Future adapter workers can emit serialized adapter events through `gateway_adapter_event`. `--json` emits one final `gateway_stopped` summary after shutdown. `--quiet` suppresses non-error output.
+Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_component`, optional `gateway_adapter_event`, and `gateway_stopped` envelopes as the runtime progresses. Subscription progress and retry/backoff details are reported as `gateway_component` updates for the `subscriptions` component; background job queue, success, failure, retry, and cancellation summaries are reported through the `background_jobs` component. The HTTP adapter emits serialized accepted control frames through `gateway_adapter_event` after validation. `--json` emits one final `gateway_stopped` summary after shutdown. `--quiet` suppresses non-error output.
 
 ## Current limitations
 
 The subscription worker uses cached Agent Cards already stored in SQLite; run `missive agent inspect <alias>` or use an implemented send/stream/task command first if an agent row has no card cache. It currently sends configured A2A service parameters but does not resolve outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values for subscription calls, so authenticated remote subscriptions remain a later hardening item. It updates task state and event journal rows but does not yet persist subscribed messages or artifacts as dedicated message/artifact rows.
 
-The daemon still does not embed `missive webhook run`, start configured adapter workers, or expose an authenticated control API. The adapter trait, registry, event-bus bridge, foreground stdio adapter, and foreground file-drop adapter exist, but daemon-managed stdio/file-drop/HTTP/external adapters are later tickets. Background jobs execute send/stream/wait/local-reduce work but do not yet persist every streamed message/artifact as dedicated rows, call reducer agents or command pipelines for reduce, expose a remote job control socket, or resolve gateway-safe outbound auth refs. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current adapter path invokes it automatically. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.
+The daemon still does not embed `missive webhook run` or start configured stdio/file-drop/external adapter workers from config. The HTTP adapter is an authenticated control ingress and event-bus boundary, but it does not yet execute submitted frames through send/stream/task workers, apply sessions, or run busy-input policy automatically. Background jobs execute send/stream/wait/local-reduce work but do not yet persist every streamed message/artifact as dedicated rows, call reducer agents or command pipelines for reduce, expose a remote job control socket, or resolve gateway-safe outbound auth refs. Busy-input queue/interrupt/steer semantics are implemented as a deterministic policy evaluator plus configuration schema, but no current adapter path invokes it automatically. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.

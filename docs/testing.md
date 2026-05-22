@@ -170,16 +170,21 @@ state, `missive.gateway.job.*` events, and `job cancel --remote` issuing A2A
 `missive` binary, waits for the local `/healthz` endpoint, checks `/status`
 component JSON over loopback HTTP, verifies graceful `--timeout` shutdown,
 checks NDJSON lifecycle output, and inspects persisted `missive.gateway.*` event
-journal rows. It also covers service management dry runs: generated Linux
-systemd unit content, planned `systemctl` commands, refusal to embed
-secret-looking environment variables, and the safety requirement that `--system`
-installs provide an explicit `MISSIVE_HOME`. The `missive-gateway` crate tests
-also exercise service file generation for systemd and launchd, subscription
-resume by seeding an in-flight task plus a persisted `task_subscription` job,
-serving local mock `SubscribeToTask` SSE updates, verifying terminal cleanup,
-checking bounded retry/backoff metadata for malformed streams, and background
-job helpers for public job-kind recognition plus restart pickup of expired
-running jobs. Gateway session unit tests additionally use fixed clocks to cover
+journal rows. The same test file covers the opt-in HTTP adapter by starting the
+gateway with `--http-adapter`, checking `/adapter/http/healthz`, posting
+authenticated and unauthenticated `missive.http.v1` frames over loopback HTTP,
+asserting invalid request rejection, verifying graceful shutdown, and proving the
+configured token is not present in stdout or event journal rows. It also covers
+service management dry runs: generated Linux systemd unit content, planned
+`systemctl` commands, refusal to embed secret-looking environment variables, and
+the safety requirement that `--system` installs provide an explicit
+`MISSIVE_HOME`. The `missive-gateway` crate tests also exercise service file
+generation for systemd and launchd, HTTP adapter config/auth/rate-limit helpers,
+subscription resume by seeding an in-flight task plus a persisted
+`task_subscription` job, serving local mock `SubscribeToTask` SSE updates,
+verifying terminal cleanup, checking bounded retry/backoff metadata for malformed
+streams, and background job helpers for public job-kind recognition plus restart
+pickup of expired running jobs. Gateway session unit tests additionally use fixed clocks to cover
 daily, idle, and combined reset policy boundaries without wall-clock sleeps.
 Gateway busy-input unit tests cover queue, interrupt, steer, unsupported-steer
 fallback to queue/interrupt, queue-depth limits, and the no-active-operation
@@ -190,7 +195,8 @@ stdio frame parser/writer, stdio invalid-frame diagnostics, stdio streaming
 output frame sequencing, file-drop schema validation, atomic ready-file handoff,
 file-drop registry creation, and fake/stdio/file-drop adapters that map identity,
 emit lifecycle/inbound-message events, accept outbound updates, and record
-acknowledgements. `crates/missive-cli` also has `adapter_stdio_command`
+acknowledgements. HTTP adapter unit tests cover `missive.http.v1` frame
+validation, adapter registry creation, and inbound-message mapping. `crates/missive-cli` also has `adapter_stdio_command`
 integration coverage for valid long-running task frames, invalid frame recovery,
 and wrapped streaming NDJSON output through the reusable local A2A mock server,
 plus `adapter_file_drop_command` coverage for temp-directory handoff, ignored

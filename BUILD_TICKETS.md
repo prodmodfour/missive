@@ -1385,7 +1385,7 @@ Validation:
 
 ## 046 — Implement HTTP inbound adapter
 
-Status: TODO
+Status: DONE
 
 Phase: Adapters
 

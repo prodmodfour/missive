@@ -25,13 +25,32 @@ fn unused_local_port() -> u16 {
 }
 
 fn http_request(port: u16, method: &str, path: &str) -> (u16, String) {
+    http_request_with_body(port, method, path, &[], "")
+}
+
+fn http_request_with_body(
+    port: u16,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String) {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect gateway");
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("read timeout");
-    let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+    let mut request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
     );
+    for (name, value) in headers {
+        request.push_str(name);
+        request.push_str(": ");
+        request.push_str(value);
+        request.push_str("\r\n");
+    }
+    request.push_str("\r\n");
+    request.push_str(body);
     stream.write_all(request.as_bytes()).expect("write request");
 
     let mut response = String::new();
@@ -235,6 +254,129 @@ fn gateway_run_serves_status_and_shuts_down_cleanly() {
             .iter()
             .any(|event| event.event_type == "missive.gateway.stopped")
     );
+}
+
+#[test]
+fn gateway_run_http_adapter_auth_validates_and_redacts_requests() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let environment = isolated_env(&home);
+    let port = unused_local_port();
+    let token = "value-hidden-in-output";
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_missive"))
+        .env_clear()
+        .env("MISSIVE_HOME", &home)
+        .env("MISSIVE_HTTP_ADAPTER_TOKEN", token)
+        .arg("gateway")
+        .arg("run")
+        .arg("--bind-address")
+        .arg("127.0.0.1")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--http-adapter")
+        .arg("--http-adapter-auth-token-env")
+        .arg("MISSIVE_HTTP_ADAPTER_TOKEN")
+        .arg("--http-adapter-rate-limit")
+        .arg("4")
+        .arg("--timeout")
+        .arg("900ms")
+        .arg("--ndjson")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn gateway");
+
+    wait_for_health(&mut child, port);
+
+    let (adapter_health_status, adapter_health_response) =
+        http_request(port, "GET", "/adapter/http/healthz");
+    assert_eq!(
+        adapter_health_status, 200,
+        "response: {adapter_health_response}"
+    );
+    let adapter_health: Value =
+        serde_json::from_str(response_body(&adapter_health_response)).expect("adapter health JSON");
+    assert_eq!(adapter_health["component"], "http_adapter");
+    assert_eq!(adapter_health["auth"]["token"], "[REDACTED]");
+
+    let valid_body = r#"{
+        "schema_version":"missive.http.v1",
+        "id":"http-1",
+        "source":{"source_id":"client-1","resume_name":"default"},
+        "command":"send",
+        "agent":"echo",
+        "message":"hello via HTTP",
+        "metadata":{"api_token":"value-hidden-in-output"}
+    }"#;
+    let (unauthorized_status, unauthorized_response) = http_request_with_body(
+        port,
+        "POST",
+        "/adapter/http/v1/messages",
+        &[("Content-Type", "application/json")],
+        valid_body,
+    );
+    assert_eq!(
+        unauthorized_status, 401,
+        "response: {unauthorized_response}"
+    );
+    assert!(!unauthorized_response.contains(token));
+
+    let (accepted_status, accepted_response) = http_request_with_body(
+        port,
+        "POST",
+        "/adapter/http/v1/messages",
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", "Bearer value-hidden-in-output"),
+        ],
+        valid_body,
+    );
+    assert_eq!(accepted_status, 202, "response: {accepted_response}");
+    let accepted: Value =
+        serde_json::from_str(response_body(&accepted_response)).expect("accepted response JSON");
+    assert_eq!(accepted["ok"], true);
+    assert_eq!(accepted["id"], "http-1");
+    assert_eq!(accepted["event_type"], "missive.adapter.http.accepted");
+
+    let invalid_body = r#"{"schema_version":"missive.http.v1","id":"bad","command":"send"}"#;
+    let (invalid_status, invalid_response) = http_request_with_body(
+        port,
+        "POST",
+        "/adapter/http/v1/messages",
+        &[
+            ("Content-Type", "application/json"),
+            ("Authorization", "Bearer value-hidden-in-output"),
+        ],
+        invalid_body,
+    );
+    assert_eq!(invalid_status, 400, "response: {invalid_response}");
+    assert!(!invalid_response.contains(token));
+
+    let (status, stdout, stderr) = wait_for_child(child, Duration::from_secs(10));
+    assert_eq!(
+        status.code(),
+        Some(MissiveExitCode::Success.as_i32()),
+        "stderr: {stderr}"
+    );
+    assert!(stderr.is_empty(), "stderr: {stderr}");
+    assert!(!stdout.contains(token), "stdout leaked token: {stdout}");
+    assert!(stdout.contains("gateway_adapter_event"));
+
+    let store = open_store(&environment);
+    let events = store.list_events().expect("events");
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "missive.adapter.http.accepted")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "missive.adapter.http.rejected")
+    );
+    let serialized_events = serde_json::to_string(&events).expect("events JSON");
+    assert!(!serialized_events.contains(token));
 }
 
 #[test]

@@ -3,13 +3,36 @@ Run the local gateway daemon
 Usage: missive gateway run [OPTIONS]
 
 Options:
-      --bind-address <IP>   IP address to bind. Defaults to the selected profile gateway bind address
-      --port <PORT>         TCP port to bind. Defaults to the selected profile gateway bind port
-      --health-path <PATH>  HTTP path for liveness checks [default: /healthz]
-      --ready-path <PATH>   HTTP path for readiness checks [default: /readyz]
-      --status-path <PATH>  HTTP path for detailed component status [default: /status]
-  -h, --help                Print help
-  -V, --version             Print version
+      --bind-address <IP>
+          IP address to bind. Defaults to the selected profile gateway bind address
+      --port <PORT>
+          TCP port to bind. Defaults to the selected profile gateway bind port
+      --health-path <PATH>
+          HTTP path for liveness checks [default: /healthz]
+      --ready-path <PATH>
+          HTTP path for readiness checks [default: /readyz]
+      --status-path <PATH>
+          HTTP path for detailed component status [default: /status]
+      --http-adapter
+          Enable the local HTTP inbound adapter for missive.http.v1 control messages
+      --http-adapter-path <PATH>
+          HTTP path that receives HTTP adapter control POST requests [default: /adapter/http/v1/messages]
+      --http-adapter-health-path <PATH>
+          HTTP path for HTTP adapter health and counters [default: /adapter/http/healthz]
+      --http-adapter-auth-header <HEADER>
+          Require HTTP adapter requests to include this header when --http-adapter-auth-token-env is set [default: Authorization]
+      --http-adapter-auth-scheme <SCHEME>
+          Auth scheme prefix expected before the HTTP adapter token; use 'none' for a raw token [default: Bearer]
+      --http-adapter-auth-token-env <ENV>
+          Read the expected inbound HTTP adapter token from this environment variable
+      --http-adapter-max-body-bytes <BYTES>
+          Maximum HTTP adapter request body size in bytes [default: 1048576]
+      --http-adapter-rate-limit <N>
+          Maximum accepted HTTP adapter requests per minute for this gateway process [default: 60]
+  -h, --help
+          Print help
+  -V, --version
+          Print version
 
 Global options:
       --json                        Emit a single JSON document for command output when the command supports it

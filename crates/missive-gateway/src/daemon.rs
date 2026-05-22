@@ -7,20 +7,28 @@
 //! contract.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::State;
-use axum::routing::get;
+use axum::body::Bytes;
+use axum::extract::{ConnectInfo, DefaultBodyLimit, State};
+use axum::http::header::{CONTENT_TYPE, HeaderName};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use missive_a2a::{ServiceParameters, protocol};
-use missive_adapters::{AdapterEvent, AdapterEventSink};
+use missive_adapters::{
+    AdapterDefinition, AdapterEvent, AdapterEventSink, HTTP_ADAPTER_KIND, HttpAdapter,
+    HttpInputFrame,
+};
 use missive_core::{EventId, Metadata, MissiveError, Result};
 use missive_store::{EventInsert, EventRecord, ProcessLock, ProcessLockKind, StatePaths, Store};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio::time::sleep;
@@ -37,7 +45,21 @@ pub const DEFAULT_GATEWAY_READY_PATH: &str = "/readyz";
 /// Default status endpoint for the local gateway daemon.
 pub const DEFAULT_GATEWAY_STATUS_PATH: &str = "/status";
 
+/// Default HTTP inbound adapter control endpoint when explicitly enabled.
+pub const DEFAULT_HTTP_ADAPTER_PATH: &str = "/adapter/http/v1/messages";
+
+/// Default HTTP inbound adapter health endpoint when explicitly enabled.
+pub const DEFAULT_HTTP_ADAPTER_HEALTH_PATH: &str = "/adapter/http/healthz";
+
+/// Default maximum accepted HTTP adapter request body size.
+pub const DEFAULT_HTTP_ADAPTER_MAX_BODY_BYTES: usize = 1024 * 1024;
+
+/// Default process-local HTTP adapter request budget per minute.
+pub const DEFAULT_HTTP_ADAPTER_RATE_LIMIT_PER_MINUTE: u64 = 60;
+
 const GATEWAY_SOURCE: &str = "gateway:daemon";
+const HTTP_ADAPTER_SOURCE: &str = "adapter:http";
+const REDACTED: &str = "[REDACTED]";
 const COMPONENT_SUPERVISOR: &str = "supervisor";
 const COMPONENT_EVENT_BUS: &str = "event_bus";
 const COMPONENT_STORE: &str = "store";
@@ -69,6 +91,8 @@ pub struct GatewayDaemonConfig {
     pub job_concurrency: u16,
     /// A2A service parameters used by gateway-managed outbound protocol calls.
     pub service_parameters: ServiceParameters,
+    /// Optional local HTTP inbound adapter endpoint for control messages.
+    pub http_adapter: Option<HttpInboundAdapterConfig>,
 }
 
 impl GatewayDaemonConfig {
@@ -82,11 +106,20 @@ impl GatewayDaemonConfig {
         validate_endpoint_path("--health-path", &self.health_path)?;
         validate_endpoint_path("--ready-path", &self.ready_path)?;
         validate_endpoint_path("--status-path", &self.status_path)?;
-        validate_distinct_paths(&[
-            ("--health-path", &self.health_path),
-            ("--ready-path", &self.ready_path),
-            ("--status-path", &self.status_path),
-        ])?;
+        let mut paths = vec![
+            ("--health-path", self.health_path.as_str()),
+            ("--ready-path", self.ready_path.as_str()),
+            ("--status-path", self.status_path.as_str()),
+        ];
+        if let Some(http_adapter) = &self.http_adapter {
+            http_adapter.validate()?;
+            paths.push(("--http-adapter-path", http_adapter.path.as_str()));
+            paths.push((
+                "--http-adapter-health-path",
+                http_adapter.health_path.as_str(),
+            ));
+        }
+        validate_distinct_paths(&paths)?;
         if self.job_concurrency == 0 {
             return Err(MissiveError::validation(
                 "gateway job concurrency must be greater than zero",
@@ -95,6 +128,159 @@ impl GatewayDaemonConfig {
         self.service_parameters.validate()?;
         Ok(())
     }
+}
+
+/// Runtime configuration for the opt-in local HTTP inbound adapter.
+#[derive(Debug, Clone)]
+pub struct HttpInboundAdapterConfig {
+    /// HTTP path that receives `missive.http.v1` POST control messages.
+    pub path: String,
+    /// HTTP path for adapter-specific health and counters.
+    pub health_path: String,
+    /// Optional inbound auth validation.
+    pub auth: HttpInboundAuth,
+    /// Maximum accepted request body size in bytes.
+    pub max_body_bytes: usize,
+    /// Process-local request budget per rolling minute.
+    pub rate_limit_per_minute: u64,
+}
+
+impl HttpInboundAdapterConfig {
+    /// Validates the HTTP adapter configuration before it is mounted.
+    pub fn validate(&self) -> Result<()> {
+        validate_endpoint_path("--http-adapter-path", &self.path)?;
+        validate_endpoint_path("--http-adapter-health-path", &self.health_path)?;
+        self.auth.validate()?;
+        if self.max_body_bytes == 0 {
+            return Err(MissiveError::validation(
+                "HTTP adapter maximum body size must be greater than zero",
+            ));
+        }
+        if self.rate_limit_per_minute == 0 {
+            return Err(MissiveError::validation(
+                "HTTP adapter rate limit must be greater than zero",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Inbound authentication check for HTTP adapter control messages.
+#[derive(Clone, PartialEq, Eq, Default)]
+pub enum HttpInboundAuth {
+    /// Do not require an auth header.
+    #[default]
+    Disabled,
+    /// Require one header to match the configured token and optional scheme.
+    Header {
+        /// HTTP header name to inspect.
+        name: String,
+        /// Secret token value resolved outside this crate.
+        token: String,
+        /// Optional auth scheme prefix. `None` means the raw header value must equal the token.
+        scheme: Option<String>,
+    },
+}
+
+impl fmt::Debug for HttpInboundAuth {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Disabled => formatter.write_str("Disabled"),
+            Self::Header { name, scheme, .. } => formatter
+                .debug_struct("Header")
+                .field("name", name)
+                .field("token", &REDACTED)
+                .field("scheme", scheme)
+                .finish(),
+        }
+    }
+}
+
+impl HttpInboundAuth {
+    fn validate(&self) -> Result<()> {
+        match self {
+            Self::Disabled => Ok(()),
+            Self::Header {
+                name,
+                token,
+                scheme,
+            } => {
+                validate_header_name("HTTP adapter", name)?;
+                if token.is_empty() {
+                    return Err(MissiveError::auth(
+                        "HTTP adapter auth token cannot be empty when auth validation is enabled",
+                    ));
+                }
+                if let Some(scheme) = scheme {
+                    validate_auth_scheme("HTTP adapter", scheme)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Returns a secret-free representation suitable for output and status endpoints.
+    #[must_use]
+    pub fn redacted_view(&self) -> HttpInboundAuthView {
+        match self {
+            Self::Disabled => HttpInboundAuthView {
+                required: false,
+                header: None,
+                scheme: None,
+                token: None,
+            },
+            Self::Header { name, scheme, .. } => HttpInboundAuthView {
+                required: true,
+                header: Some(name.clone()),
+                scheme: scheme.clone(),
+                token: Some(REDACTED.to_owned()),
+            },
+        }
+    }
+
+    fn validate_headers(&self, headers: &HeaderMap) -> std::result::Result<bool, String> {
+        match self {
+            Self::Disabled => Ok(false),
+            Self::Header {
+                name,
+                token,
+                scheme,
+            } => {
+                let header_name = HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|_| format!("configured auth header {name:?} is invalid"))?;
+                let Some(actual) = headers.get(&header_name) else {
+                    return Err(format!("missing required auth header {name}"));
+                };
+                let actual = actual
+                    .to_str()
+                    .map_err(|_| format!("auth header {name} contains non-UTF-8 data"))?;
+                let expected = expected_auth_header_value(scheme.as_deref(), token);
+                if constant_time_eq(actual.as_bytes(), expected.as_bytes()) {
+                    Ok(true)
+                } else {
+                    Err(format!(
+                        "auth header {name} did not match the configured token"
+                    ))
+                }
+            }
+        }
+    }
+}
+
+/// Secret-free auth description for structured output and status endpoints.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HttpInboundAuthView {
+    /// Whether control messages must pass auth validation.
+    pub required: bool,
+    /// Header inspected when auth is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub header: Option<String>,
+    /// Scheme prefix expected when auth is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheme: Option<String>,
+    /// Redacted token marker when auth is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
 }
 
 /// Event emitted by the gateway daemon to callers such as the CLI renderer.
@@ -221,6 +407,60 @@ pub struct GatewayDaemonSummary {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct HttpAdapterHealthResponse {
+    ok: bool,
+    status: &'static str,
+    component: &'static str,
+    profile: String,
+    path: String,
+    accepted: u64,
+    rejected: u64,
+    max_body_bytes: usize,
+    rate_limit_per_minute: u64,
+    auth: HttpInboundAuthView,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct HttpAdapterAcceptedResponse {
+    ok: bool,
+    id: String,
+    message_id: String,
+    event_id: String,
+    sequence: i64,
+    event_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ErrorResponse {
+    ok: bool,
+    error: String,
+    reason: String,
+}
+
+#[derive(Debug, Clone)]
+struct HttpAdapterRejection {
+    status: StatusCode,
+    reason: &'static str,
+    message: String,
+    remote_addr: Option<String>,
+    content_type: Option<String>,
+    payload: Option<Value>,
+    auth_validated: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HttpAdapterMetadataInput<'a> {
+    path: &'a str,
+    request_id: Option<&'a str>,
+    command: Option<&'a str>,
+    content_type: Option<&'a str>,
+    remote_addr: Option<&'a str>,
+    auth_validated: bool,
+    valid_payload: bool,
+    rate_limited: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ShutdownReason {
     Timeout,
@@ -284,10 +524,17 @@ struct GatewayAppState {
     started_at: Instant,
     components: Mutex<BTreeMap<String, GatewayComponentStatus>>,
     event_bus_events: AtomicU64,
+    http_adapter: Option<HttpInboundAdapterState>,
 }
 
 impl GatewayAppState {
-    fn new(profile: String, job_concurrency: u16) -> Self {
+    fn new(
+        profile: String,
+        job_concurrency: u16,
+        http_adapter: Option<HttpInboundAdapterConfig>,
+        state_paths: StatePaths,
+        bus_tx: mpsc::UnboundedSender<GatewayBusEvent>,
+    ) -> Self {
         let state = Self {
             profile,
             bind_address: Mutex::new(None),
@@ -295,8 +542,10 @@ impl GatewayAppState {
             started_at: Instant::now(),
             components: Mutex::new(BTreeMap::new()),
             event_bus_events: AtomicU64::new(0),
+            http_adapter: http_adapter
+                .map(|config| HttpInboundAdapterState::new(config, state_paths, bus_tx)),
         };
-        for component in initial_components(job_concurrency) {
+        for component in initial_components(job_concurrency, state.http_adapter.is_some()) {
             state.set_component(component);
         }
         state
@@ -360,6 +609,109 @@ impl GatewayAppState {
             components: self.component_snapshot(),
         }
     }
+
+    fn close_http_adapter_bus(&self) {
+        if let Some(http_adapter) = &self.http_adapter {
+            http_adapter.close_bus();
+        }
+    }
+}
+
+#[derive(Debug)]
+struct HttpInboundAdapterState {
+    config: HttpInboundAdapterConfig,
+    state_paths: StatePaths,
+    bus_tx: Mutex<Option<mpsc::UnboundedSender<GatewayBusEvent>>>,
+    accepted: AtomicU64,
+    rejected: AtomicU64,
+    rate_limiter: HttpRateLimiter,
+}
+
+impl HttpInboundAdapterState {
+    fn new(
+        config: HttpInboundAdapterConfig,
+        state_paths: StatePaths,
+        bus_tx: mpsc::UnboundedSender<GatewayBusEvent>,
+    ) -> Self {
+        Self {
+            rate_limiter: HttpRateLimiter::new(config.rate_limit_per_minute),
+            config,
+            state_paths,
+            bus_tx: Mutex::new(Some(bus_tx)),
+            accepted: AtomicU64::new(0),
+            rejected: AtomicU64::new(0),
+        }
+    }
+
+    fn accepted_count(&self) -> u64 {
+        self.accepted.load(Ordering::SeqCst)
+    }
+
+    fn rejected_count(&self) -> u64 {
+        self.rejected.load(Ordering::SeqCst)
+    }
+
+    fn emit_adapter_event(&self, event: AdapterEvent) -> Result<()> {
+        let guard = self
+            .bus_tx
+            .lock()
+            .expect("HTTP adapter bus sender mutex poisoned");
+        let sender = guard.as_ref().ok_or_else(|| {
+            MissiveError::orchestration("gateway adapter event bus is closed")
+                .with_help("Restart missive gateway run before sending HTTP adapter requests.")
+        })?;
+        sender.send(GatewayBusEvent::Adapter(event)).map_err(|_| {
+            MissiveError::orchestration("gateway adapter event bus is closed")
+                .with_help("Restart missive gateway run before sending HTTP adapter requests.")
+        })
+    }
+
+    fn close_bus(&self) {
+        *self
+            .bus_tx
+            .lock()
+            .expect("HTTP adapter bus sender mutex poisoned") = None;
+    }
+}
+
+#[derive(Debug)]
+struct HttpRateLimiter {
+    limit_per_minute: u64,
+    window: Mutex<HttpRateWindow>,
+}
+
+impl HttpRateLimiter {
+    fn new(limit_per_minute: u64) -> Self {
+        Self {
+            limit_per_minute,
+            window: Mutex::new(HttpRateWindow {
+                started_at: Instant::now(),
+                count: 0,
+            }),
+        }
+    }
+
+    fn try_acquire(&self) -> bool {
+        let mut window = self
+            .window
+            .lock()
+            .expect("HTTP adapter rate limiter mutex poisoned");
+        if window.started_at.elapsed() >= Duration::from_secs(60) {
+            window.started_at = Instant::now();
+            window.count = 0;
+        }
+        if window.count >= self.limit_per_minute {
+            return false;
+        }
+        window.count += 1;
+        true
+    }
+}
+
+#[derive(Debug)]
+struct HttpRateWindow {
+    started_at: Instant,
+    count: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -411,11 +763,14 @@ pub async fn run_gateway_daemon(
     let gateway_lock = ProcessLock::try_acquire(&config.state_paths, ProcessLockKind::Gateway)?;
     initialize_store(&config.state_paths).await?;
 
+    let (bus_tx, bus_rx) = mpsc::unbounded_channel();
     let state = Arc::new(GatewayAppState::new(
         config.profile.clone(),
         config.job_concurrency,
+        config.http_adapter.clone(),
+        config.state_paths.clone(),
+        bus_tx.clone(),
     ));
-    let (bus_tx, bus_rx) = mpsc::unbounded_channel();
     // Keep the adapter event bridge type-checked in the daemon; concrete
     // adapter workers in later tickets will retain sink clones while running.
     drop(GatewayAdapterEventSink::new(bus_tx.clone()));
@@ -440,6 +795,15 @@ pub async fn run_gateway_daemon(
         ),
     );
     state.set_component(health_status);
+    if let Some(http_adapter) = &config.http_adapter {
+        state.set_component(GatewayComponentStatus::running(
+            COMPONENT_ADAPTERS,
+            format!(
+                "HTTP inbound adapter mounted at {} with health {} and rate limit {}/minute",
+                http_adapter.path, http_adapter.health_path, http_adapter.rate_limit_per_minute
+            ),
+        ));
+    }
 
     persist_lifecycle_event(&config, local_addr, "missive.gateway.started", None).await?;
 
@@ -468,13 +832,23 @@ pub async fn run_gateway_daemon(
         shutdown_rx.clone(),
     ));
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route(&config.health_path, get(health))
         .route(&config.ready_path, get(ready))
-        .route(&config.status_path, get(status))
-        .with_state(state.clone());
+        .route(&config.status_path, get(status));
+    if let Some(http_adapter) = &config.http_adapter {
+        app = app
+            .route(&http_adapter.health_path, get(http_adapter_health))
+            .route(&http_adapter.path, post(http_adapter_control))
+            .layer(DefaultBodyLimit::max(http_adapter.max_body_bytes));
+    }
+    let app = app.with_state(state.clone());
 
-    let serve = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal(
+    let serve = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal(
         shutdown_rx,
         shutdown.clone(),
         config.shutdown_after,
@@ -484,6 +858,7 @@ pub async fn run_gateway_daemon(
         .await
         .map_err(|error| MissiveError::io("serving gateway daemon", error))?;
 
+    state.close_http_adapter_bus();
     shutdown.request(ShutdownReason::ServerStopped);
     drop(gateway_lock);
 
@@ -599,6 +974,287 @@ async fn status(State(state): State<Arc<GatewayAppState>>) -> Json<GatewayStatus
     Json(state.status_response("status"))
 }
 
+async fn http_adapter_health(
+    State(state): State<Arc<GatewayAppState>>,
+) -> Json<HttpAdapterHealthResponse> {
+    let Some(http_adapter) = state.http_adapter.as_ref() else {
+        return Json(HttpAdapterHealthResponse {
+            ok: false,
+            status: "disabled",
+            component: "http_adapter",
+            profile: state.profile.clone(),
+            path: String::new(),
+            accepted: 0,
+            rejected: 0,
+            max_body_bytes: 0,
+            rate_limit_per_minute: 0,
+            auth: HttpInboundAuth::Disabled.redacted_view(),
+        });
+    };
+    Json(HttpAdapterHealthResponse {
+        ok: true,
+        status: "ok",
+        component: "http_adapter",
+        profile: state.profile.clone(),
+        path: http_adapter.config.path.clone(),
+        accepted: http_adapter.accepted_count(),
+        rejected: http_adapter.rejected_count(),
+        max_body_bytes: http_adapter.config.max_body_bytes,
+        rate_limit_per_minute: http_adapter.config.rate_limit_per_minute,
+        auth: http_adapter.config.auth.redacted_view(),
+    })
+}
+
+async fn http_adapter_control(
+    State(state): State<Arc<GatewayAppState>>,
+    ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let remote = Some(remote_addr.to_string());
+    let Some(http_adapter) = state.http_adapter.as_ref() else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                ok: false,
+                error: "HTTP adapter is not enabled".to_owned(),
+                reason: "http_adapter_disabled".to_owned(),
+            }),
+        )
+            .into_response();
+    };
+
+    if !http_adapter.rate_limiter.try_acquire() {
+        return reject_http_adapter_request(
+            http_adapter,
+            HttpAdapterRejection {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                reason: "rate_limited",
+                message: "HTTP adapter rate limit exceeded".to_owned(),
+                remote_addr: remote,
+                content_type: None,
+                payload: None,
+                auth_validated: false,
+            },
+        )
+        .await;
+    }
+
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+
+    let auth_validated = match http_adapter.config.auth.validate_headers(&headers) {
+        Ok(value) => value,
+        Err(reason) => {
+            return reject_http_adapter_request(
+                http_adapter,
+                HttpAdapterRejection {
+                    status: StatusCode::UNAUTHORIZED,
+                    reason: "auth_failed",
+                    message: reason,
+                    remote_addr: remote,
+                    content_type,
+                    payload: None,
+                    auth_validated: false,
+                },
+            )
+            .await;
+        }
+    };
+
+    let raw_json = match serde_json::from_slice::<Value>(&body) {
+        Ok(value) => value,
+        Err(error) => {
+            return reject_http_adapter_request(
+                http_adapter,
+                HttpAdapterRejection {
+                    status: StatusCode::BAD_REQUEST,
+                    reason: "invalid_json",
+                    message: format!("request body is not valid JSON: {error}"),
+                    remote_addr: remote,
+                    content_type,
+                    payload: None,
+                    auth_validated,
+                },
+            )
+            .await;
+        }
+    };
+
+    let frame = match HttpInputFrame::from_value(raw_json.clone()) {
+        Ok(frame) => frame,
+        Err(error) => {
+            return reject_http_adapter_request(
+                http_adapter,
+                HttpAdapterRejection {
+                    status: StatusCode::BAD_REQUEST,
+                    reason: "invalid_http_adapter_frame",
+                    message: error.message().to_owned(),
+                    remote_addr: remote,
+                    content_type,
+                    payload: Some(redact_json(&raw_json)),
+                    auth_validated,
+                },
+            )
+            .await;
+        }
+    };
+
+    match accept_http_adapter_request(
+        http_adapter,
+        frame,
+        raw_json,
+        content_type.as_deref(),
+        remote.as_deref(),
+        auth_validated,
+    )
+    .await
+    {
+        Ok(response) => (StatusCode::ACCEPTED, Json(response)).into_response(),
+        Err(error) => internal_error_response(error),
+    }
+}
+
+async fn accept_http_adapter_request(
+    http_adapter: &HttpInboundAdapterState,
+    frame: HttpInputFrame,
+    raw_json: Value,
+    content_type: Option<&str>,
+    remote_addr: Option<&str>,
+    auth_validated: bool,
+) -> Result<HttpAdapterAcceptedResponse> {
+    let mut definition = AdapterDefinition::new("http", HTTP_ADAPTER_KIND)?;
+    definition.session_profile = frame.source.profile.clone();
+    let adapter = HttpAdapter::new(definition)?;
+    let message = adapter.inbound_message_from_frame(&frame)?;
+    let adapter_event = AdapterEvent::inbound_message(message.clone());
+    let record = persist_http_adapter_event(
+        http_adapter,
+        "missive.adapter.http.accepted",
+        redact_json(&raw_json),
+        http_adapter_metadata(HttpAdapterMetadataInput {
+            path: &http_adapter.config.path,
+            request_id: Some(&frame.id),
+            command: Some(frame.command.as_str()),
+            content_type,
+            remote_addr,
+            auth_validated,
+            valid_payload: true,
+            rate_limited: false,
+        })?,
+    )
+    .await?;
+    http_adapter.accepted.fetch_add(1, Ordering::SeqCst);
+    http_adapter.emit_adapter_event(adapter_event)?;
+    Ok(HttpAdapterAcceptedResponse {
+        ok: true,
+        id: frame.id,
+        message_id: message.message_id.as_str().to_owned(),
+        event_id: record.event_id.as_str().to_owned(),
+        sequence: record.sequence,
+        event_type: record.event_type,
+    })
+}
+
+async fn reject_http_adapter_request(
+    http_adapter: &HttpInboundAdapterState,
+    rejection: HttpAdapterRejection,
+) -> Response {
+    let payload = json!({
+        "status": rejection.status.as_u16(),
+        "reason": rejection.reason,
+        "error": rejection.message.clone(),
+        "payload": rejection.payload.clone(),
+    });
+    let metadata = match http_adapter_metadata(HttpAdapterMetadataInput {
+        path: &http_adapter.config.path,
+        request_id: None,
+        command: Some("rejected"),
+        content_type: rejection.content_type.as_deref(),
+        remote_addr: rejection.remote_addr.as_deref(),
+        auth_validated: rejection.auth_validated,
+        valid_payload: false,
+        rate_limited: rejection.reason == "rate_limited",
+    }) {
+        Ok(metadata) => metadata,
+        Err(error) => return internal_error_response(error),
+    };
+    match persist_http_adapter_event(
+        http_adapter,
+        "missive.adapter.http.rejected",
+        payload,
+        metadata,
+    )
+    .await
+    {
+        Ok(_) => {
+            http_adapter.rejected.fetch_add(1, Ordering::SeqCst);
+            (
+                rejection.status,
+                Json(ErrorResponse {
+                    ok: false,
+                    error: rejection.message,
+                    reason: rejection.reason.to_owned(),
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => internal_error_response(error),
+    }
+}
+
+async fn persist_http_adapter_event(
+    http_adapter: &HttpInboundAdapterState,
+    event_type: &'static str,
+    payload: Value,
+    metadata: Metadata,
+) -> Result<EventRecord> {
+    let mut event = EventInsert::new(
+        new_gateway_event_id(event_type)?,
+        HTTP_ADAPTER_SOURCE,
+        event_type,
+        payload,
+    );
+    event.metadata = metadata;
+    append_event_blocking(http_adapter.state_paths.clone(), event).await
+}
+
+fn http_adapter_metadata(input: HttpAdapterMetadataInput<'_>) -> Result<Metadata> {
+    let mut metadata = Metadata::new();
+    metadata.insert_str("adapter.kind", HTTP_ADAPTER_KIND.to_owned())?;
+    metadata.insert_str("http_adapter.path", input.path.to_owned())?;
+    metadata.insert("http_adapter.auth_validated", json!(input.auth_validated))?;
+    metadata.insert("http_adapter.valid_payload", json!(input.valid_payload))?;
+    metadata.insert("http_adapter.rate_limited", json!(input.rate_limited))?;
+    if let Some(request_id) = input.request_id {
+        metadata.insert_str("http_adapter.request_id", request_id.to_owned())?;
+    }
+    if let Some(command) = input.command {
+        metadata.insert_str("http_adapter.command", command.to_owned())?;
+    }
+    if let Some(content_type) = input.content_type {
+        metadata.insert_str("http_adapter.content_type", content_type.to_owned())?;
+    }
+    if let Some(remote_addr) = input.remote_addr {
+        metadata.insert_str("http_adapter.remote_addr", remote_addr.to_owned())?;
+    }
+    Ok(metadata)
+}
+
+fn internal_error_response(error: MissiveError) -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            ok: false,
+            error: error.message().to_owned(),
+            reason: "persistence_failed".to_owned(),
+        }),
+    )
+        .into_response()
+}
+
 fn started_event(
     config: &GatewayDaemonConfig,
     state: &GatewayAppState,
@@ -653,7 +1309,15 @@ fn emit_component_snapshot(
     }
 }
 
-fn initial_components(job_concurrency: u16) -> Vec<GatewayComponentStatus> {
+fn initial_components(
+    job_concurrency: u16,
+    http_adapter_enabled: bool,
+) -> Vec<GatewayComponentStatus> {
+    let adapter_detail = if http_adapter_enabled {
+        "HTTP inbound adapter will be mounted after the gateway socket binds"
+    } else {
+        "adapter tasks are reserved for later adapter tickets"
+    };
     vec![
         GatewayComponentStatus::running(COMPONENT_SUPERVISOR, "supervising gateway tasks"),
         GatewayComponentStatus::running(
@@ -687,10 +1351,7 @@ fn initial_components(job_concurrency: u16) -> Vec<GatewayComponentStatus> {
                 "background job workers will scan queued send/stream/wait/reduce jobs; configured concurrency is {job_concurrency}"
             ),
         ),
-        GatewayComponentStatus::idle(
-            COMPONENT_ADAPTERS,
-            "adapter tasks are reserved for later adapter tickets",
-        ),
+        GatewayComponentStatus::idle(COMPONENT_ADAPTERS, adapter_detail),
     ]
 }
 
@@ -805,6 +1466,98 @@ fn validate_distinct_paths(paths: &[(&str, &str)]) -> Result<()> {
     Ok(())
 }
 
+fn validate_header_name(component: &str, name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        return Err(MissiveError::validation(format!(
+            "{component} auth header name cannot be empty"
+        )));
+    }
+    HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
+        MissiveError::validation(format!(
+            "{} auth header name is not a valid HTTP header name",
+            component
+        ))
+        .with_source(error)
+        .with_help("Use an ASCII HTTP header name such as Authorization or X-Missive-Token.")
+    })?;
+    Ok(())
+}
+
+fn validate_auth_scheme(component: &str, scheme: &str) -> Result<()> {
+    if scheme.trim().is_empty() {
+        return Err(MissiveError::validation(format!(
+            "{component} auth scheme cannot be empty; use 'none' for a raw token comparison"
+        )));
+    }
+    if scheme.chars().any(char::is_whitespace) || scheme.chars().any(char::is_control) {
+        return Err(MissiveError::validation(format!(
+            "{component} auth scheme must not contain whitespace or control characters"
+        )));
+    }
+    Ok(())
+}
+
+fn expected_auth_header_value(scheme: Option<&str>, token: &str) -> String {
+    match scheme {
+        Some(scheme) => format!("{scheme} {token}"),
+        None => token.to_owned(),
+    }
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    let max_len = left.len().max(right.len());
+    let mut diff = left.len() ^ right.len();
+    for index in 0..max_len {
+        let left_byte = left.get(index).copied().unwrap_or(0);
+        let right_byte = right.get(index).copied().unwrap_or(0);
+        diff |= usize::from(left_byte ^ right_byte);
+    }
+    diff == 0
+}
+
+fn redact_json(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut redacted = Map::new();
+            for (key, value) in map {
+                if is_secret_key(key) {
+                    redacted.insert(key.clone(), Value::String(REDACTED.to_owned()));
+                } else {
+                    redacted.insert(key.clone(), redact_json(value));
+                }
+            }
+            Value::Object(redacted)
+        }
+        Value::Array(values) => Value::Array(values.iter().map(redact_json).collect()),
+        other => other.clone(),
+    }
+}
+
+fn is_secret_key(key: &str) -> bool {
+    let normalized: String = key
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    matches!(
+        normalized.as_str(),
+        "authorization"
+            | "proxyauthorization"
+            | "token"
+            | "accesstoken"
+            | "refreshtoken"
+            | "apikey"
+            | "password"
+            | "secret"
+            | "credentials"
+            | "cookie"
+            | "setcookie"
+    ) || normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("apikey")
+}
+
 fn local_url(addr: SocketAddr, path: &str) -> String {
     let host = if addr.ip().is_ipv6() {
         format!("[{}]", addr.ip())
@@ -858,6 +1611,7 @@ mod tests {
             status_path: DEFAULT_GATEWAY_STATUS_PATH.to_owned(),
             job_concurrency: 2,
             service_parameters: ServiceParameters::default(),
+            http_adapter: None,
         };
         (temp, config)
     }
@@ -873,8 +1627,40 @@ mod tests {
     }
 
     #[test]
+    fn http_adapter_config_validates_auth_paths_and_rate_limits() {
+        let mut config = HttpInboundAdapterConfig {
+            path: DEFAULT_HTTP_ADAPTER_PATH.to_owned(),
+            health_path: DEFAULT_HTTP_ADAPTER_HEALTH_PATH.to_owned(),
+            auth: HttpInboundAuth::Header {
+                name: "Authorization".to_owned(),
+                token: "secret-value".to_owned(),
+                scheme: Some("Bearer".to_owned()),
+            },
+            max_body_bytes: DEFAULT_HTTP_ADAPTER_MAX_BODY_BYTES,
+            rate_limit_per_minute: 2,
+        };
+        assert!(config.validate().is_ok());
+        assert_eq!(config.auth.redacted_view().token.as_deref(), Some(REDACTED));
+
+        config.rate_limit_per_minute = 0;
+        assert!(config.validate().is_err());
+        config.rate_limit_per_minute = 2;
+        config.health_path = config.path.clone();
+        let mut daemon = test_config(Some(Duration::from_millis(1))).1;
+        daemon.http_adapter = Some(config);
+        assert!(daemon.validate().is_err());
+    }
+
+    #[test]
+    fn http_rate_limiter_rejects_requests_after_budget() {
+        let limiter = HttpRateLimiter::new(1);
+        assert!(limiter.try_acquire());
+        assert!(!limiter.try_acquire());
+    }
+
+    #[test]
     fn initial_component_snapshot_includes_future_idle_workers() {
-        let components = initial_components(3);
+        let components = initial_components(3, false);
         let by_name: BTreeMap<_, _> = components
             .iter()
             .map(|component| (component.name.as_str(), component.state.as_str()))
@@ -891,8 +1677,15 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_event_sink_forwards_inbound_messages_to_gateway_bus() {
-        let state = Arc::new(GatewayAppState::new("default".to_owned(), 2));
+        let (_temp, config) = test_config(Some(Duration::from_millis(1)));
         let (bus_tx, bus_rx) = mpsc::unbounded_channel();
+        let state = Arc::new(GatewayAppState::new(
+            "default".to_owned(),
+            2,
+            None,
+            config.state_paths,
+            bus_tx.clone(),
+        ));
         let (runtime_tx, mut runtime_rx) = mpsc::unbounded_channel();
         let supervisor_handle = tokio::spawn(supervisor_loop(state.clone(), bus_rx, runtime_tx));
         let sink = GatewayAdapterEventSink::new(bus_tx.clone());

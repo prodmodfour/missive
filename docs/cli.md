@@ -10,8 +10,8 @@ commands, public A2A Agent Card inspection/refresh, the subprocess-oriented
 `missive context create/list/show/fork/close/export`, `missive group
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
 `missive gather`, `missive reduce`, `missive push create/get/list/delete`,
-`missive webhook run`, `missive gateway run`, `missive gateway install/start/stop/status/uninstall`,
-and `missive job start/list/show/cancel` for gateway-managed background work;
+`missive webhook run`, `missive gateway run` including the opt-in HTTP inbound adapter,
+`missive gateway install/start/stop/status/uninstall`, and `missive job start/list/show/cancel` for gateway-managed background work;
 other top-level commands still emit skeletal parsed status until their ordered
 tickets land.
 
@@ -179,6 +179,38 @@ inputs under `<inbox>/error`, and results are atomically published as
 `task_list`, `task_wait`, and `task_cancel` commands plus job-file commands
 `job_start_send`, `job_start_stream`, `job_start_wait`, `job_start_reduce`,
 `job_list`, `job_show`, and `job_cancel`.
+
+## Gateway HTTP adapter quick reference
+
+`missive gateway run --http-adapter` mounts a local HTTP endpoint for validated
+`missive.http.v1` control frames. The default endpoint is
+`POST /adapter/http/v1/messages`; `GET /adapter/http/healthz` returns counters,
+limits, and a redacted auth summary.
+
+```bash
+MISSIVE_HTTP_ADAPTER_TOKEN=change-me \
+MISSIVE_HOME=/tmp/missive-demo \
+  missive gateway run \
+  --port 7347 \
+  --http-adapter \
+  --http-adapter-auth-token-env MISSIVE_HTTP_ADAPTER_TOKEN \
+  --ndjson
+
+curl -sS \
+  -H 'Authorization: Bearer change-me' \
+  -H 'Content-Type: application/json' \
+  -d '{"schema_version":"missive.http.v1","id":"req-1","command":"task_list"}' \
+  http://127.0.0.1:7347/adapter/http/v1/messages
+```
+
+Relevant `gateway run` options are `--http-adapter-path`,
+`--http-adapter-health-path`, `--http-adapter-auth-token-env`,
+`--http-adapter-auth-header`, `--http-adapter-auth-scheme`,
+`--http-adapter-max-body-bytes`, and `--http-adapter-rate-limit`. Accepted
+frames are forwarded to the gateway adapter event bus and journaled as redacted
+`missive.adapter.http.accepted` events; invalid/auth/rate-limit failures are
+journaled as `missive.adapter.http.rejected` when they reach the handler. This
+is currently ingress/event-bus plumbing only, not automatic command execution.
 
 ## Agent registry commands
 

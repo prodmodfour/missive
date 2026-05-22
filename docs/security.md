@@ -162,14 +162,28 @@ protection, rate limits, or credential rotation.
 
 `missive gateway run` also serves local HTTP only. Its `/healthz`, `/readyz`,
 and `/status` endpoints are unauthenticated and intended for loopback process
-supervision. Keep the listener bound to `127.0.0.1` unless you intentionally
-place it behind trusted local infrastructure; do not expose it as a public
-control API. The subscription worker makes outbound `SubscribeToTask` calls only
-for cached streaming-capable agents and redacts subscription event payloads
-before journal insertion. The background job worker executes queued send,
-stream, wait, and local-reduce jobs from local SQLite state; job command output
-shows only summarized request fields rather than raw A2A message bodies, and
-job lifecycle events are redacted before insertion. The durable `gateway_jobs.request_json` row must still contain the full protocol request so the daemon can execute it later; if a job is started with `--file-bytes` or sensitive message text, that content is present in local SQLite runtime state even though normal CLI output summarizes it.
+supervision. The opt-in `--http-adapter` endpoint is a local control-message
+ingress and should be treated as a privileged API: use
+`--http-adapter-auth-token-env ENV` so requests must include the expected header
+(default `Authorization: Bearer <token>`), keep the listener bound to loopback,
+and put any wider exposure behind trusted local infrastructure. The configured
+HTTP adapter token is kept in process memory, redacted from status/NDJSON output,
+and not written to SQLite. Accepted and rejected HTTP adapter request payloads
+are redacted before event-journal insertion, and the endpoint enforces body-size
+and process-local requests-per-minute limits. The body limit and rate limit are
+defense-in-depth only; they are not a public internet hardening profile.
+
+Keep the gateway listener bound to `127.0.0.1` unless you intentionally place it
+behind trusted local infrastructure; do not expose it as a public control API.
+The subscription worker makes outbound `SubscribeToTask` calls only for cached
+streaming-capable agents and redacts subscription event payloads before journal
+insertion. The background job worker executes queued send, stream, wait, and
+local-reduce jobs from local SQLite state; job command output shows only
+summarized request fields rather than raw A2A message bodies, and job lifecycle
+events are redacted before insertion. The durable `gateway_jobs.request_json` row
+must still contain the full protocol request so the daemon can execute it later;
+if a job is started with `--file-bytes` or sensitive message text, that content
+is present in local SQLite runtime state even though normal CLI output summarizes it.
 
 `missive gateway install` writes local service-manager files. Dry-run mode is
 available and should be used before installation to inspect generated systemd
@@ -204,21 +218,25 @@ jobs remain known limitations. Future gateway worker and adapter tickets must
 reuse the same resolution and redaction path when they add broader outbound
 requests.
 
-Daemon-managed adapter workers are not live yet, but the trait, registry, and
-foreground local adapters treat every external source as untrusted input.
-`missive adapter stdio` validates JSON/NDJSON framing, schema version,
-correlation ids, command names, source identity, and command fields before it
-maps frames to send/stream/task commands. `missive adapter file-drop` validates
-ready `*.json` request files, ignores partial temporary names, atomically moves
-claimed inputs to processed/error directories, and writes result files through a
-temporary-file rename; producers must still avoid writing partial content
-directly to final `*.json` names. File-drop inbox/outbox paths are local runtime
+Daemon-managed stdio/file-drop/external adapter workers are not live yet, but
+the trait, registry, foreground local adapters, and HTTP ingress treat every
+external source as untrusted input. `missive adapter stdio` validates JSON/NDJSON
+framing, schema version, correlation ids, command names, source identity, and
+command fields before it maps frames to send/stream/task commands. `missive
+adapter file-drop` validates ready `*.json` request files, ignores partial
+temporary names, atomically moves claimed inputs to processed/error directories,
+and writes result files through a temporary-file rename; producers must still
+avoid writing partial content directly to final `*.json` names. `missive gateway
+run --http-adapter` validates `missive.http.v1` JSON, source identity, command
+fields, optional auth, body size, and rate limits before forwarding an adapter
+event. File-drop inbox/outbox paths and HTTP adapter event rows are local runtime
 state and can expose source ids, message text, job requests, and command results,
 so keep them outside the repository and protect them like profile SQLite data.
 Adapter `settings` metadata in config must remain non-secret; credentials should
-stay in auth refs, env vars, keyrings, or future explicit secret references.
+stay in auth refs, env vars, keyrings, HTTP adapter token env vars, or future
+explicit secret references.
 
-Webhook signature/JWT verification, daemon adapter trust-boundary enforcement,
-trace/log sinks, rate limits beyond busy-input `max_queue_depth`, gateway
+Webhook signature/JWT verification, broader daemon adapter trust-boundary
+enforcement, trace/log sinks, production-grade rate limiting, gateway
 subscription/job auth resolution, user-facing session management commands, and
 insecure local token storage policy are not implemented yet.
