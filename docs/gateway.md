@@ -1,6 +1,6 @@
 # Gateway daemon
 
-`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, and the first A2A task subscription/resume worker.
+`missive gateway run` starts the local gateway daemon. The daemon owns the long-running runtime contract, process lock, store initialization, event bus, supervisor, health/readiness/status HTTP endpoints, lifecycle events, graceful shutdown, and the first A2A task subscription/resume worker. `missive gateway install/start/stop/status/uninstall` manages optional OS service supervision on Linux systemd and macOS launchd.
 
 ## Run
 
@@ -21,6 +21,80 @@ MISSIVE_HOME=/tmp/missive-demo missive gateway run \
 ```
 
 `--timeout <DURATION>` is the non-interactive graceful shutdown budget for `gateway run`; without it, the process runs until Ctrl-C or process supervision stops it.
+
+## Service installation
+
+Gateway service commands are intentionally thin wrappers around the host's normal supervisor. They do not create a privileged control API; they generate service files and call `systemctl` or `launchctl`.
+
+Supported managers:
+
+* Linux: systemd user units by default, or system units with `--system`.
+* macOS: launchd LaunchAgents by default, or LaunchDaemons with `--system`.
+* Other platforms: service commands fail clearly and recommend running `missive gateway run` under an external supervisor.
+
+Always inspect the generated file first:
+
+```bash
+MISSIVE_HOME=/var/lib/missive \
+  missive gateway install --dry-run --json --bin "$(command -v missive)"
+```
+
+Then install and control the user service:
+
+```bash
+missive gateway install --bin "$(command -v missive)"
+missive gateway start
+missive gateway status
+missive gateway stop
+missive gateway uninstall
+```
+
+The generated service captures the absolute missive binary path, the selected config path when one was loaded, `--profile <selected-profile>`, a `PATH` value, and allowlisted non-secret environment such as `MISSIVE_HOME`, `HOME`, XDG state/config roots, and `RUST_LOG`. Use `--path <PATH>` to override the captured PATH and `--env NAME=VALUE` to add extra non-secret environment. The installer refuses secret-looking environment names such as token, cookie, password, credential, or API-key variables because credentials should continue to come from config auth refs backed by env/keyring at runtime.
+
+System service installation is opt-in:
+
+```bash
+sudo missive gateway install --system \
+  --bin /usr/local/bin/missive \
+  --env MISSIVE_HOME=/var/lib/missive
+sudo missive gateway start --system
+```
+
+For safety, `gateway install --system` requires an absolute `MISSIVE_HOME` in the generated environment so a root/system service does not accidentally write missive profile state into a login user's home directory or `/root`. Linux system units are written to `/etc/systemd/system/missive-gateway.service`; macOS system LaunchDaemons are written to `/Library/LaunchDaemons/works.earendil.missive.gateway.plist`. User units are written under `$XDG_CONFIG_HOME/systemd/user/` or `~/.config/systemd/user/` on Linux and `~/Library/LaunchAgents/` on macOS.
+
+### Logs and supervisor inspection
+
+Linux user service:
+
+```bash
+systemctl --user status missive-gateway.service --no-pager
+journalctl --user -u missive-gateway.service -f
+```
+
+Linux system service:
+
+```bash
+sudo systemctl status missive-gateway.service --no-pager
+sudo journalctl -u missive-gateway.service -f
+```
+
+macOS user LaunchAgent:
+
+```bash
+launchctl print gui/$(id -u)/works.earendil.missive.gateway
+log stream --predicate 'process == "missive"' --style compact
+```
+
+macOS system LaunchDaemon:
+
+```bash
+sudo launchctl print system/works.earendil.missive.gateway
+log stream --predicate 'process == "missive"' --style compact
+```
+
+The generated macOS plist also sends stdout/stderr to `~/Library/Logs/missive/` for user services or `/var/log/missive/` for system services.
+
+Machine-readable service command output uses `gateway_service_install`, `gateway_service_start`, `gateway_service_stop`, `gateway_service_status`, and `gateway_service_uninstall` envelopes. Dry-run output includes the generated service file in `data.service_file` and planned supervisor commands in `data.planned_commands`.
 
 ## Endpoints
 
@@ -60,4 +134,4 @@ Human mode prints lifecycle lines. `--ndjson` emits `gateway_started`, `gateway_
 
 The subscription worker uses cached Agent Cards already stored in SQLite; run `missive agent inspect <alias>` or use an implemented send/stream/task command first if an agent row has no card cache. It currently sends configured A2A service parameters but does not resolve outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values for subscription calls, so authenticated remote subscriptions remain a later hardening item. It updates task state and event journal rows but does not yet persist subscribed messages or artifacts as dedicated message/artifact rows.
 
-The daemon still does not embed `missive webhook run`, execute user-visible background jobs, run adapters, expose an authenticated control API, or install itself as a system service. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.
+The daemon still does not embed `missive webhook run`, execute user-visible background jobs, run adapters, or expose an authenticated control API. Service installation is limited to Linux systemd and macOS launchd and does not create package-manager integration, privilege escalation, log rotation, or a remote control socket. Keep the listener bound to loopback unless you intentionally put it behind trusted local infrastructure.

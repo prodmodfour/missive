@@ -143,6 +143,16 @@ control API. The subscription worker makes outbound `SubscribeToTask` calls only
 for cached streaming-capable agents and redacts subscription event payloads
 before journal insertion.
 
+`missive gateway install` writes local service-manager files. Dry-run mode is
+available and should be used before installation to inspect generated systemd
+units or launchd plists. The generated service captures only an allowlisted
+non-secret runtime environment (`PATH`, `HOME`, `MISSIVE_HOME`, XDG roots, and
+`RUST_LOG` by default) plus explicit `--env NAME=VALUE` entries. Secret-looking
+environment names such as token, cookie, password, credential, authorization, or
+API-key variables are refused so service files do not become credential stores.
+`--system` installation is opt-in, may require elevated privileges, and requires
+an absolute `MISSIVE_HOME` to keep root/system runtime state explicit.
+
 ## Artifact exports
 
 `missive task artifact save` and `missive task artifact export` write only

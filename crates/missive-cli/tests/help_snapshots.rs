@@ -57,6 +57,26 @@ fn key_subcommand_help_snapshots_are_stable() {
             include_str!("snapshots/help-gateway-run.txt"),
         ),
         (
+            &["missive", "gateway", "install", "--help"],
+            include_str!("snapshots/help-gateway-install.txt"),
+        ),
+        (
+            &["missive", "gateway", "start", "--help"],
+            include_str!("snapshots/help-gateway-start.txt"),
+        ),
+        (
+            &["missive", "gateway", "stop", "--help"],
+            include_str!("snapshots/help-gateway-stop.txt"),
+        ),
+        (
+            &["missive", "gateway", "status", "--help"],
+            include_str!("snapshots/help-gateway-status.txt"),
+        ),
+        (
+            &["missive", "gateway", "uninstall", "--help"],
+            include_str!("snapshots/help-gateway-uninstall.txt"),
+        ),
+        (
             &["missive", "webhook", "--help"],
             include_str!("snapshots/help-webhook.txt"),
         ),

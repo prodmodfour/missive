@@ -6,8 +6,9 @@ rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive push
-create/get/list/delete`, `missive webhook run`, and `missive gateway run`;
-other top-level commands still emit skeletal parsed status until their ordered
+create/get/list/delete`, `missive webhook run`, `missive gateway run`, and
+`missive gateway install/start/stop/status/uninstall`; other top-level commands
+still emit skeletal parsed status until their ordered
 tickets land.
 
 Run help with:
@@ -22,6 +23,8 @@ missive context --help
 missive push --help
 missive gateway --help
 missive gateway run --help
+missive gateway install --help
+missive gateway status --help
 missive webhook --help
 missive webhook run --help
 ```
@@ -525,6 +528,37 @@ Machine-readable stream output uses `gateway_started`, `gateway_component`, and
 runtime event. The daemon appends redacted `missive.gateway.started`,
 `missive.gateway.stopped`, `missive.gateway.subscription.*`, and
 `a2a.subscription.*` rows to the local event journal as applicable.
+
+Gateway service management commands generate and call the local OS supervisor
+without adding a second daemon protocol. Linux uses systemd, macOS uses launchd,
+and other platforms fail with a clear unsupported-platform diagnostic. Use
+`--dry-run --json` before installing to inspect the exact unit/plist, captured
+non-secret environment, service path, and supervisor commands:
+
+```bash
+MISSIVE_HOME=/var/lib/missive \
+  missive gateway install --dry-run --json --bin "$(command -v missive)"
+missive gateway install --bin "$(command -v missive)"
+missive gateway start
+missive gateway status --json
+missive gateway stop
+missive gateway uninstall
+```
+
+The default install is a per-user service (`systemctl --user` on Linux or a
+LaunchAgent on macOS). `--system` targets `/etc/systemd/system` or
+`/Library/LaunchDaemons`; for safety, system installs require an explicit
+absolute `MISSIVE_HOME` in the generated environment, for example
+`--env MISSIVE_HOME=/var/lib/missive`, and may need sudo/root privileges. The
+service file embeds an absolute missive binary path, the selected config path
+when a config file was loaded, `--profile <selected-profile>`, a captured
+`PATH`, and allowlisted non-secret runtime variables such as `MISSIVE_HOME` and
+XDG state roots. `--env NAME=VALUE` can add additional non-secret variables;
+secret-looking names such as token/password/API-key variables are refused.
+
+Machine-readable output uses `gateway_service_install`,
+`gateway_service_start`, `gateway_service_stop`, `gateway_service_status`, and
+`gateway_service_uninstall` envelope kinds.
 
 See [`gateway.md`](gateway.md) for operational details and current limitations.
 

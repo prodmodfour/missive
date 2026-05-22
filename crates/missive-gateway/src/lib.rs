@@ -1,6 +1,7 @@
 #![doc = "Gateway daemon scaffolding for missive."]
 
 pub mod daemon;
+pub mod service;
 mod subscription;
 pub mod webhook;
 
@@ -8,6 +9,12 @@ pub use daemon::{
     DEFAULT_GATEWAY_HEALTH_PATH, DEFAULT_GATEWAY_READY_PATH, DEFAULT_GATEWAY_STATUS_PATH,
     GatewayComponentStatus, GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent,
     GatewayStarted, GatewayStatusResponse, run_gateway_daemon,
+};
+pub use service::{
+    DEFAULT_LAUNCHD_LABEL, DEFAULT_SERVICE_PATH, DEFAULT_SYSTEMD_UNIT, GatewayServiceAction,
+    GatewayServiceCommand, GatewayServiceCommandResult, GatewayServiceOptions,
+    GatewayServicePlatform, GatewayServiceResult, GatewayServiceScope, captured_environment_keys,
+    execute_gateway_service_action, validate_service_environment,
 };
 pub use webhook::{
     DEFAULT_MAX_BODY_BYTES, DEFAULT_WEBHOOK_PATH, WebhookAccepted, WebhookAuth, WebhookAuthView,

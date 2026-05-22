@@ -969,7 +969,7 @@ Validation:
 
 ## 032 — Implement gateway service installation
 
-Status: TODO
+Status: DONE
 
 Phase: Gateway
 

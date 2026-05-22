@@ -135,11 +135,15 @@ scripts/quality-gate.sh
 The gateway command integration test spawns the `missive` binary, waits for the
 local `/healthz` endpoint, checks `/status` component JSON over loopback HTTP,
 verifies graceful `--timeout` shutdown, checks NDJSON lifecycle output, and
-inspects persisted `missive.gateway.*` event journal rows. The `missive-gateway`
-crate tests also exercise subscription resume by seeding an in-flight task plus a
-persisted `task_subscription` job, serving local mock `SubscribeToTask` SSE
-updates, verifying terminal cleanup, and checking bounded retry/backoff metadata
-for malformed streams. The webhook command integration test similarly spawns the
+inspects persisted `missive.gateway.*` event journal rows. It also covers service
+management dry runs: generated Linux systemd unit content, planned `systemctl`
+commands, refusal to embed secret-looking environment variables, and the safety
+requirement that `--system` installs provide an explicit `MISSIVE_HOME`. The
+`missive-gateway` crate tests also exercise service file generation for systemd
+and launchd, subscription resume by seeding an in-flight task plus a persisted
+`task_subscription` job, serving local mock `SubscribeToTask` SSE updates,
+verifying terminal cleanup, and checking bounded retry/backoff metadata for
+malformed streams. The webhook command integration test similarly spawns the
 binary, waits for local `/healthz`, posts unauthorized, malformed, and valid A2A
 `StreamResponse` payloads over loopback HTTP, verifies graceful `--max-events`
 shutdown, checks NDJSON output, and inspects the persisted event journal. Neither

@@ -231,7 +231,7 @@ pub enum Commands {
 
     /// Run and manage the local missive gateway daemon.
     #[command(
-        long_about = "Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, and background jobs. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while reserving later workers for webhooks, jobs, and adapters."
+        long_about = "Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, background jobs, and optional OS service installation. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while service commands generate or call Linux systemd and macOS launchd supervision where supported."
     )]
     Gateway {
         /// Gateway operation to run. With no operation, missive emits a parsed command status.

@@ -1,9 +1,14 @@
-Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, and background jobs. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while reserving later workers for webhooks, jobs, and adapters.
+Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, background jobs, and optional OS service installation. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while service commands generate or call Linux systemd and macOS launchd supervision where supported.
 
 Usage: missive gateway [OPTIONS] [COMMAND]
 
 Commands:
-  run  Run the local gateway daemon
+  run        Run the local gateway daemon
+  install    Install a user or system service file for the gateway daemon
+  start      Start the installed gateway service
+  stop       Stop the installed gateway service
+  status     Inspect the installed gateway service status
+  uninstall  Stop/unload and remove the installed gateway service file
 
 Options:
   -h, --help

@@ -6,6 +6,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use missive_cli::run_from_with_environment;
 use missive_core::{ConfigDiscovery, MissiveExitCode};
 use missive_store::{StatePathResolver, Store};
 use serde_json::Value;
@@ -97,6 +98,38 @@ fn wait_for_child(mut child: Child, timeout: Duration) -> (ExitStatus, String, S
         .read_to_string(&mut stderr)
         .expect("read stderr");
     (status, stdout, stderr)
+}
+
+fn run_cli_json(
+    args: &[&str],
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+) -> (i32, Value, String) {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let code = run_from_with_environment(args, environment, current_dir, &mut stdout, &mut stderr);
+    let stdout = String::from_utf8(stdout).expect("stdout utf8");
+    let stderr = String::from_utf8(stderr).expect("stderr utf8");
+    let json = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("stdout was not JSON: {error}; stdout={stdout:?}; stderr={stderr:?}")
+    });
+    (code, json, stderr)
+}
+
+fn run_cli_expect_error_json(
+    args: &[&str],
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+) -> (i32, String, Value) {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let code = run_from_with_environment(args, environment, current_dir, &mut stdout, &mut stderr);
+    let stdout = String::from_utf8(stdout).expect("stdout utf8");
+    let stderr = String::from_utf8(stderr).expect("stderr utf8");
+    let json = serde_json::from_str(&stderr).unwrap_or_else(|error| {
+        panic!("stderr was not JSON: {error}; stdout={stdout:?}; stderr={stderr:?}")
+    });
+    (code, stdout, json)
 }
 
 fn open_store(environment: &BTreeMap<String, String>) -> Store {
@@ -200,5 +233,172 @@ fn gateway_run_serves_status_and_shuts_down_cleanly() {
         events
             .iter()
             .any(|event| event.event_type == "missive.gateway.stopped")
+    );
+}
+
+#[test]
+fn gateway_install_dry_run_renders_systemd_service_plan() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("home");
+    let missive_home = temp.path().join("missive-home");
+    let environment = BTreeMap::from([
+        ("HOME".to_owned(), home.to_string_lossy().into_owned()),
+        (
+            "MISSIVE_HOME".to_owned(),
+            missive_home.to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_owned(), "/usr/local/bin:/usr/bin:/bin".to_owned()),
+    ]);
+
+    let (code, output, stderr) = run_cli_json(
+        &[
+            "missive",
+            "--json",
+            "gateway",
+            "install",
+            "--dry-run",
+            "--bin",
+            "/usr/local/bin/missive",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    assert!(stderr.is_empty(), "stderr: {stderr}");
+    assert_eq!(output["kind"], "gateway_service_install");
+    let data = &output["data"];
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["manager"], "systemd");
+    assert_eq!(data["scope"], "user");
+    assert_eq!(data["service_name"], "missive-gateway.service");
+    assert!(
+        data["service_path"]
+            .as_str()
+            .expect("service path")
+            .ends_with("/.config/systemd/user/missive-gateway.service")
+    );
+    let service_file = data["service_file"].as_str().expect("service file");
+    assert!(service_file.contains("[Service]"));
+    assert!(service_file.contains("ExecStart=\"/usr/local/bin/missive\""));
+    assert!(service_file.contains("\"--profile\" \"default\" \"gateway\" \"run\""));
+    assert!(service_file.contains("Environment=\"PATH=/usr/local/bin:/usr/bin:/bin\""));
+    assert!(service_file.contains("Environment=\"MISSIVE_HOME="));
+    assert_eq!(
+        data["planned_commands"][0]["display"],
+        "systemctl --user daemon-reload"
+    );
+}
+
+#[test]
+fn gateway_start_dry_run_renders_supervisor_command() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let temp = tempdir().expect("tempdir");
+    let environment = BTreeMap::from([
+        (
+            "HOME".to_owned(),
+            temp.path().join("home").to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+    ]);
+
+    let (code, output, stderr) = run_cli_json(
+        &["missive", "--json", "gateway", "start", "--dry-run"],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    assert!(stderr.is_empty(), "stderr: {stderr}");
+    assert_eq!(output["kind"], "gateway_service_start");
+    assert_eq!(
+        output["data"]["planned_commands"][0]["display"],
+        "systemctl --user start missive-gateway.service"
+    );
+    assert_eq!(output["data"]["file_written"], false);
+}
+
+#[test]
+fn gateway_service_install_rejects_sensitive_environment_names() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let temp = tempdir().expect("tempdir");
+    let environment = BTreeMap::from([
+        (
+            "HOME".to_owned(),
+            temp.path().join("home").to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+    ]);
+
+    let (code, stdout, error) = run_cli_expect_error_json(
+        &[
+            "missive",
+            "--json",
+            "gateway",
+            "install",
+            "--dry-run",
+            "--bin",
+            "/usr/local/bin/missive",
+            "--env",
+            "API_TOKEN=example-value",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Usage.as_i32());
+    assert!(stdout.is_empty(), "stdout: {stdout}");
+    assert_eq!(error["kind"], "error");
+    assert!(
+        error["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("sensitive-looking environment variable")
+    );
+}
+
+#[test]
+fn gateway_system_install_requires_explicit_missive_home() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let temp = tempdir().expect("tempdir");
+    let environment = BTreeMap::from([
+        (
+            "HOME".to_owned(),
+            temp.path().join("home").to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+    ]);
+
+    let (code, stdout, error) = run_cli_expect_error_json(
+        &[
+            "missive",
+            "--json",
+            "gateway",
+            "install",
+            "--dry-run",
+            "--system",
+            "--bin",
+            "/usr/local/bin/missive",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Usage.as_i32());
+    assert!(stdout.is_empty(), "stdout: {stdout}");
+    assert!(
+        error["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("MISSIVE_HOME")
     );
 }

@@ -1,15 +1,20 @@
 //! Gateway daemon command.
 
 use std::collections::BTreeMap;
+use std::env;
 use std::io::Write;
 use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::{Args, Subcommand};
+use clap::{ArgAction, Args, Subcommand};
 use missive_core::{LoadedConfig, MissiveError, Result};
 use missive_gateway::{
     DEFAULT_GATEWAY_HEALTH_PATH, DEFAULT_GATEWAY_READY_PATH, DEFAULT_GATEWAY_STATUS_PATH,
-    GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent, run_gateway_daemon,
+    DEFAULT_SERVICE_PATH, GatewayDaemonConfig, GatewayDaemonSummary, GatewayRuntimeEvent,
+    GatewayServiceAction, GatewayServiceOptions, GatewayServiceResult, GatewayServiceScope,
+    captured_environment_keys, execute_gateway_service_action, run_gateway_daemon,
+    validate_service_environment,
 };
 use missive_store::StatePathResolver;
 use tokio::sync::mpsc;
@@ -22,6 +27,21 @@ use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 pub enum GatewayCommands {
     /// Run the local gateway daemon.
     Run(GatewayRunArgs),
+
+    /// Install a user or system service file for the gateway daemon.
+    Install(GatewayInstallArgs),
+
+    /// Start the installed gateway service.
+    Start(GatewayServiceControlArgs),
+
+    /// Stop the installed gateway service.
+    Stop(GatewayServiceControlArgs),
+
+    /// Inspect the installed gateway service status.
+    Status(GatewayServiceControlArgs),
+
+    /// Stop/unload and remove the installed gateway service file.
+    Uninstall(GatewayServiceControlArgs),
 }
 
 impl GatewayCommands {
@@ -30,6 +50,11 @@ impl GatewayCommands {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::Run(_) => "run",
+            Self::Install(_) => "install",
+            Self::Start(_) => "start",
+            Self::Stop(_) => "stop",
+            Self::Status(_) => "status",
+            Self::Uninstall(_) => "uninstall",
         }
     }
 }
@@ -70,6 +95,46 @@ pub struct GatewayRunArgs {
     pub status_path: String,
 }
 
+/// Arguments for `missive gateway install`.
+#[derive(Debug, Clone, Args)]
+pub struct GatewayInstallArgs {
+    /// Print the generated service file and supervisor commands without changing the host.
+    #[arg(long = "dry-run", action = ArgAction::SetTrue)]
+    pub dry_run: bool,
+
+    /// Install a system service instead of the default user service.
+    #[arg(long = "system", action = ArgAction::SetTrue)]
+    pub system: bool,
+
+    /// Replace an existing service file during a non-dry-run install.
+    #[arg(long = "force", action = ArgAction::SetTrue)]
+    pub force: bool,
+
+    /// Absolute path to the installed missive binary for the service ExecStart/ProgramArguments.
+    #[arg(long = "bin", value_name = "PATH")]
+    pub binary: Option<PathBuf>,
+
+    /// PATH value to embed in the generated service environment.
+    #[arg(long = "path", value_name = "PATH")]
+    pub path: Option<String>,
+
+    /// Add a non-secret environment variable to the generated service as NAME=VALUE; repeatable.
+    #[arg(long = "env", value_name = "NAME=VALUE", action = ArgAction::Append)]
+    pub environment: Vec<String>,
+}
+
+/// Arguments shared by `gateway start`, `stop`, `status`, and `uninstall`.
+#[derive(Debug, Clone, Args)]
+pub struct GatewayServiceControlArgs {
+    /// Print the supervisor command without changing the host.
+    #[arg(long = "dry-run", action = ArgAction::SetTrue)]
+    pub dry_run: bool,
+
+    /// Manage the system service instead of the default user service.
+    #[arg(long = "system", action = ArgAction::SetTrue)]
+    pub system: bool,
+}
+
 /// Executes one gateway subcommand.
 pub(crate) fn execute_gateway_command<W>(
     command: &GatewayCommands,
@@ -87,7 +152,178 @@ where
             let config = build_daemon_config(args, globals, loaded_config, environment)?;
             run_daemon_and_render(config, mode, writer)
         }
+        GatewayCommands::Install(args) => {
+            let options = build_install_service_options(args, loaded_config, environment)?;
+            run_service_action_and_render(options, mode, writer)
+        }
+        GatewayCommands::Start(args) => {
+            let options = build_control_service_options(
+                GatewayServiceAction::Start,
+                args,
+                loaded_config,
+                environment,
+            )?;
+            run_service_action_and_render(options, mode, writer)
+        }
+        GatewayCommands::Stop(args) => {
+            let options = build_control_service_options(
+                GatewayServiceAction::Stop,
+                args,
+                loaded_config,
+                environment,
+            )?;
+            run_service_action_and_render(options, mode, writer)
+        }
+        GatewayCommands::Status(args) => {
+            let options = build_control_service_options(
+                GatewayServiceAction::Status,
+                args,
+                loaded_config,
+                environment,
+            )?;
+            run_service_action_and_render(options, mode, writer)
+        }
+        GatewayCommands::Uninstall(args) => {
+            let options = build_control_service_options(
+                GatewayServiceAction::Uninstall,
+                args,
+                loaded_config,
+                environment,
+            )?;
+            run_service_action_and_render(options, mode, writer)
+        }
     }
+}
+
+fn build_install_service_options(
+    args: &GatewayInstallArgs,
+    loaded_config: &LoadedConfig,
+    environment: &BTreeMap<String, String>,
+) -> Result<GatewayServiceOptions> {
+    let executable = match &args.binary {
+        Some(path) => path.clone(),
+        None => env::current_exe()
+            .map_err(|error| MissiveError::io("resolving current executable path", error))?,
+    };
+    let service_environment = service_install_environment(args, environment)?;
+
+    Ok(GatewayServiceOptions {
+        action: GatewayServiceAction::Install,
+        scope: service_scope(args.system),
+        dry_run: args.dry_run,
+        force: args.force,
+        platform: None,
+        executable: Some(executable),
+        config_path: loaded_config.source.path.clone(),
+        profile: loaded_config.selected_profile.clone(),
+        environment: service_environment,
+    })
+}
+
+fn build_control_service_options(
+    action: GatewayServiceAction,
+    args: &GatewayServiceControlArgs,
+    loaded_config: &LoadedConfig,
+    environment: &BTreeMap<String, String>,
+) -> Result<GatewayServiceOptions> {
+    Ok(GatewayServiceOptions {
+        action,
+        scope: service_scope(args.system),
+        dry_run: args.dry_run,
+        force: false,
+        platform: None,
+        executable: None,
+        config_path: loaded_config.source.path.clone(),
+        profile: loaded_config.selected_profile.clone(),
+        environment: service_control_environment(environment)?,
+    })
+}
+
+fn service_scope(system: bool) -> GatewayServiceScope {
+    if system {
+        GatewayServiceScope::System
+    } else {
+        GatewayServiceScope::User
+    }
+}
+
+fn service_install_environment(
+    args: &GatewayInstallArgs,
+    environment: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    let mut service_environment = service_control_environment(environment)?;
+    let path = args
+        .path
+        .clone()
+        .or_else(|| environment.get("PATH").cloned())
+        .unwrap_or_else(|| DEFAULT_SERVICE_PATH.to_owned());
+    if path.trim().is_empty() {
+        return Err(
+            MissiveError::validation("gateway service PATH cannot be empty")
+                .with_help("Pass --path with the PATH that the installed service should use."),
+        );
+    }
+    validate_service_environment("PATH", &path)?;
+    service_environment.insert("PATH".to_owned(), path);
+
+    for raw in &args.environment {
+        let (name, value) = split_service_env(raw)?;
+        validate_service_environment(name, value)?;
+        service_environment.insert(name.to_owned(), value.to_owned());
+    }
+
+    Ok(service_environment)
+}
+
+fn service_control_environment(
+    environment: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    let mut service_environment = BTreeMap::new();
+    for key in captured_environment_keys() {
+        if let Some(value) = environment.get(*key).filter(|value| !value.is_empty()) {
+            validate_service_environment(key, value)?;
+            service_environment.insert((*key).to_owned(), value.clone());
+        }
+    }
+    Ok(service_environment)
+}
+
+fn split_service_env(raw: &str) -> Result<(&str, &str)> {
+    let Some((name, value)) = raw.split_once('=') else {
+        return Err(MissiveError::validation(format!(
+            "--env value {raw:?} must use NAME=VALUE syntax"
+        )));
+    };
+    if name.is_empty() || value.is_empty() {
+        return Err(MissiveError::validation(format!(
+            "--env value {raw:?} must include a non-empty name and value"
+        )));
+    }
+    Ok((name, value))
+}
+
+fn run_service_action_and_render<W>(
+    options: GatewayServiceOptions,
+    mode: OutputMode,
+    writer: &mut W,
+) -> Result<()>
+where
+    W: Write,
+{
+    let result = execute_gateway_service_action(options)?;
+    render_service_result(writer, mode, &result)
+}
+
+fn render_service_result<W>(
+    writer: &mut W,
+    mode: OutputMode,
+    result: &GatewayServiceResult,
+) -> Result<()>
+where
+    W: Write,
+{
+    let kind = format!("gateway_service_{}", result.action);
+    render_success(writer, mode, &kind, result, &result.message)
 }
 
 fn build_daemon_config(
