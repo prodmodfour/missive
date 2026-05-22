@@ -126,9 +126,9 @@ pub struct AgentRenameArgs {
 }
 
 #[derive(Debug)]
-struct AgentRegistry {
-    store: Store,
-    profile: String,
+pub(crate) struct AgentRegistry {
+    pub(crate) store: Store,
+    pub(crate) profile: String,
     _lock: ProcessLock,
 }
 
@@ -340,7 +340,7 @@ where
     }
 }
 
-fn open_agent_registry(
+pub(crate) fn open_agent_registry(
     loaded_config: &LoadedConfig,
     environment: &BTreeMap<String, String>,
 ) -> Result<AgentRegistry> {
@@ -646,7 +646,7 @@ where
     render_agent_action(writer, mode, "agent_rename", &output)
 }
 
-fn get_existing_agent(store: &Store, alias: &AgentAlias) -> Result<AgentRecord> {
+pub(crate) fn get_existing_agent(store: &Store, alias: &AgentAlias) -> Result<AgentRecord> {
     store.get_agent(alias)?.ok_or_else(|| {
         MissiveError::validation(format!("agent {:?} is not registered", alias.as_str()))
             .with_help("Run 'missive agent list' to see registered aliases.")
@@ -821,7 +821,7 @@ fn fetch_and_cache_agent_card(
     }
 }
 
-fn parse_cached_agent_card(record: &AgentRecord, raw_card: Value) -> Result<AgentCard> {
+pub(crate) fn parse_cached_agent_card(record: &AgentRecord, raw_card: Value) -> Result<AgentCard> {
     AgentCard::from_json(raw_card).map_err(|error| {
         MissiveError::protocol(format!(
             "cached A2A Agent Card for agent {:?} is malformed",
@@ -832,7 +832,7 @@ fn parse_cached_agent_card(record: &AgentRecord, raw_card: Value) -> Result<Agen
     })
 }
 
-fn cache_agent_card(
+pub(crate) fn cache_agent_card(
     store: &Store,
     record: &AgentRecord,
     raw_card: Value,
@@ -867,7 +867,7 @@ fn merge_validators(
     }
 }
 
-fn negotiate_record_interface(
+pub(crate) fn negotiate_record_interface(
     record: &AgentRecord,
     card: &AgentCard,
     binding_override: Option<&str>,

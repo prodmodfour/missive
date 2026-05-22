@@ -265,6 +265,52 @@ impl_string_enum!(TaskSource, "task source", {
     Gateway => "gateway",
 });
 
+/// Direction/origin of a durable message row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageDirection {
+    /// Outbound request sent by missive.
+    Request,
+    /// Immediate non-streaming response from a remote agent.
+    Response,
+    /// Streaming update message or event from a remote agent.
+    StreamEvent,
+    /// Push notification payload from a remote agent.
+    Push,
+    /// Locally generated note or synthetic message.
+    Local,
+}
+impl_string_enum!(MessageDirection, "message direction", {
+    Request => "request",
+    Response => "response",
+    StreamEvent => "stream_event",
+    Push => "push",
+    Local => "local",
+});
+
+/// Role attached to a durable message row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    /// User/client-authored message.
+    User,
+    /// Agent-authored message.
+    Agent,
+    /// System-authored message.
+    System,
+    /// Tool-authored message.
+    Tool,
+    /// Role is absent or could not be mapped.
+    Unknown,
+}
+impl_string_enum!(MessageRole, "message role", {
+    User => "user",
+    Agent => "agent",
+    System => "system",
+    Tool => "tool",
+    Unknown => "unknown",
+});
+
 /// Gateway background job state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -600,6 +646,77 @@ pub struct TaskRecord {
     pub updated_at: MissiveTimestamp,
     /// Completion timestamp.
     pub completed_at: Option<MissiveTimestamp>,
+}
+
+/// Input used to append a durable message row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageInsert {
+    /// Local message id for this row.
+    pub message_id: MessageId,
+    /// Optional linked agent.
+    pub agent_alias: Option<AgentAlias>,
+    /// Optional linked context.
+    pub context_id: Option<ContextId>,
+    /// Optional linked task.
+    pub task_id: Option<TaskId>,
+    /// Message direction.
+    pub direction: MessageDirection,
+    /// Optional sender role.
+    pub role: Option<MessageRole>,
+    /// Stable order within a request/response or stream sequence.
+    pub ordinal: u64,
+    /// Protocol-level message id, when distinct from the local row id.
+    pub protocol_message_id: Option<String>,
+    /// Redacted or protocol-shaped message content JSON.
+    pub content_json: Value,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+}
+
+impl MessageInsert {
+    /// Creates a message insert with no context/task linkage yet.
+    #[must_use]
+    pub fn new(message_id: MessageId, direction: MessageDirection, content_json: Value) -> Self {
+        Self {
+            message_id,
+            agent_alias: None,
+            context_id: None,
+            task_id: None,
+            direction,
+            role: None,
+            ordinal: 0,
+            protocol_message_id: None,
+            content_json,
+            metadata: Metadata::new(),
+        }
+    }
+}
+
+/// Stored message row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageRecord {
+    /// Local message id for this row.
+    pub message_id: MessageId,
+    /// Optional linked agent.
+    pub agent_alias: Option<AgentAlias>,
+    /// Optional linked context.
+    pub context_id: Option<ContextId>,
+    /// Optional linked task.
+    pub task_id: Option<TaskId>,
+    /// Message direction.
+    pub direction: MessageDirection,
+    /// Optional sender role.
+    pub role: Option<MessageRole>,
+    /// Stable order within a request/response or stream sequence.
+    pub ordinal: u64,
+    /// Protocol-level message id, when distinct from the local row id.
+    pub protocol_message_id: Option<String>,
+    /// Redacted or protocol-shaped message content JSON.
+    pub content_json: Value,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+    /// Creation time recorded by SQLite.
+    pub created_at: MissiveTimestamp,
 }
 
 /// Input used to append an event journal row.
@@ -1048,6 +1165,26 @@ impl Store {
         delete_task(&self.connection, task_id)
     }
 
+    /// Appends a message and returns the stored row.
+    pub fn insert_message(&self, input: &MessageInsert) -> Result<MessageRecord> {
+        insert_message(&self.connection, input)
+    }
+
+    /// Reads one message by id.
+    pub fn get_message(&self, message_id: &MessageId) -> Result<Option<MessageRecord>> {
+        get_message(&self.connection, message_id)
+    }
+
+    /// Lists messages in deterministic context/task/ordinal order.
+    pub fn list_messages(&self) -> Result<Vec<MessageRecord>> {
+        list_messages(&self.connection)
+    }
+
+    /// Deletes a message by id. Returns `true` when a row was removed.
+    pub fn delete_message(&self, message_id: &MessageId) -> Result<bool> {
+        delete_message(&self.connection, message_id)
+    }
+
     /// Appends an event and returns the stored event including sequence.
     pub fn append_event(&self, input: &EventInsert) -> Result<EventRecord> {
         append_event(&self.connection, input)
@@ -1215,6 +1352,26 @@ impl StoreTransaction<'_> {
     /// Deletes a task by id. Returns `true` when a row was removed.
     pub fn delete_task(&self, task_id: &TaskId) -> Result<bool> {
         delete_task(&self.transaction, task_id)
+    }
+
+    /// Appends a message and returns the stored row.
+    pub fn insert_message(&self, input: &MessageInsert) -> Result<MessageRecord> {
+        insert_message(&self.transaction, input)
+    }
+
+    /// Reads one message by id.
+    pub fn get_message(&self, message_id: &MessageId) -> Result<Option<MessageRecord>> {
+        get_message(&self.transaction, message_id)
+    }
+
+    /// Lists messages in deterministic context/task/ordinal order.
+    pub fn list_messages(&self) -> Result<Vec<MessageRecord>> {
+        list_messages(&self.transaction)
+    }
+
+    /// Deletes a message by id. Returns `true` when a row was removed.
+    pub fn delete_message(&self, message_id: &MessageId) -> Result<bool> {
+        delete_message(&self.transaction, message_id)
     }
 
     /// Appends an event and returns the stored event including sequence.
@@ -1627,6 +1784,83 @@ fn delete_task(connection: &Connection, task_id: &TaskId) -> Result<bool> {
     )
 }
 
+fn insert_message(connection: &Connection, input: &MessageInsert) -> Result<MessageRecord> {
+    if let Some(protocol_message_id) = &input.protocol_message_id {
+        validate_len(
+            "message protocol_message_id",
+            protocol_message_id,
+            STORE_IDENTIFIER_MAX_BYTES,
+        )?;
+    }
+    let ordinal = i64::try_from(input.ordinal).map_err(|error| {
+        MissiveError::validation("message ordinal is too large to store in SQLite")
+            .with_source(error)
+    })?;
+    let content_json = to_json_text("message content", &input.content_json)?;
+    let metadata_json = to_json_text("message metadata", &input.metadata)?;
+
+    connection
+        .execute(
+            "INSERT INTO messages (
+                message_id, agent_alias, context_id, task_id, direction, role, ordinal,
+                protocol_message_id, content_json, metadata_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                input.message_id.as_str(),
+                input.agent_alias.as_ref().map(AgentAlias::as_str),
+                input.context_id.as_ref().map(ContextId::as_str),
+                input.task_id.as_ref().map(TaskId::as_str),
+                input.direction.as_str(),
+                input.role.map(MessageRole::as_str),
+                ordinal,
+                input.protocol_message_id.as_deref(),
+                content_json,
+                metadata_json,
+            ],
+        )
+        .map_err(|error| storage_error("inserting message", error))?;
+
+    get_message(connection, &input.message_id)?
+        .ok_or_else(|| missing_after_write("message", input.message_id.as_str()))
+}
+
+fn get_message(connection: &Connection, message_id: &MessageId) -> Result<Option<MessageRecord>> {
+    connection
+        .query_row(
+            "SELECT message_id, agent_alias, context_id, task_id, direction, role, ordinal,
+                protocol_message_id, content_json, metadata_json, created_at
+             FROM messages WHERE message_id = ?1",
+            params![message_id.as_str()],
+            read_message_row,
+        )
+        .optional()
+        .map_err(|error| storage_error("reading message", error))
+}
+
+fn list_messages(connection: &Connection) -> Result<Vec<MessageRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT message_id, agent_alias, context_id, task_id, direction, role, ordinal,
+                protocol_message_id, content_json, metadata_json, created_at
+             FROM messages
+             ORDER BY COALESCE(context_id, ''), COALESCE(task_id, ''), ordinal, created_at, message_id",
+        )
+        .map_err(|error| storage_error("preparing message list", error))?;
+    collect_rows(
+        statement.query_map([], read_message_row),
+        "listing messages",
+    )
+}
+
+fn delete_message(connection: &Connection, message_id: &MessageId) -> Result<bool> {
+    delete_by_key(
+        connection,
+        "DELETE FROM messages WHERE message_id = ?1",
+        message_id.as_str(),
+        "deleting message",
+    )
+}
+
 fn append_event(connection: &Connection, input: &EventInsert) -> Result<EventRecord> {
     validate_len("event source", &input.source, 128)?;
     validate_len("event type", &input.event_type, 128)?;
@@ -2019,6 +2253,22 @@ fn read_task_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
     })
 }
 
+fn read_message_row(row: &Row<'_>) -> rusqlite::Result<MessageRecord> {
+    Ok(MessageRecord {
+        message_id: parse_sql(0, row.get(0)?)?,
+        agent_alias: optional_parse_sql(1, row.get(1)?)?,
+        context_id: optional_parse_sql(2, row.get(2)?)?,
+        task_id: optional_parse_sql(3, row.get(3)?)?,
+        direction: parse_sql(4, row.get(4)?)?,
+        role: optional_parse_sql(5, row.get(5)?)?,
+        ordinal: u64_from_sql(6, row.get(6)?)?,
+        protocol_message_id: row.get(7)?,
+        content_json: json_from_sql(8, row.get(8)?)?,
+        metadata: json_from_sql(9, row.get(9)?)?,
+        created_at: timestamp_from_sql(10, row.get(10)?)?,
+    })
+}
+
 fn read_event_row(row: &Row<'_>) -> rusqlite::Result<EventRecord> {
     Ok(EventRecord {
         sequence: row.get(0)?,
@@ -2168,6 +2418,10 @@ fn optional_timestamp_from_sql(
 
 fn u32_from_sql(column: usize, value: i64) -> rusqlite::Result<u32> {
     u32::try_from(value).map_err(|error| conversion_error(column, error))
+}
+
+fn u64_from_sql(column: usize, value: i64) -> rusqlite::Result<u64> {
+    u64::try_from(value).map_err(|error| conversion_error(column, error))
 }
 
 fn conversion_error(
@@ -2398,6 +2652,36 @@ mod tests {
         let updated_task = store.upsert_task(&completed_task).expect("task update");
         assert_eq!(updated_task.state, TaskState::Completed);
         assert_eq!(updated_task.completed_at, Some(timestamp(1_735_787_045)));
+
+        let message_id = message_id("msg-1");
+        let mut message = MessageInsert::new(
+            message_id.clone(),
+            MessageDirection::Request,
+            json!({"messageId": "protocol-msg-1", "parts": [{"text": "hello"}]}),
+        );
+        message.agent_alias = Some(agent.clone());
+        message.context_id = Some(context_id.clone());
+        message.task_id = Some(task_id.clone());
+        message.role = Some(MessageRole::User);
+        message.protocol_message_id = Some("protocol-msg-1".to_owned());
+        message.ordinal = 7;
+        message
+            .metadata
+            .insert_str("a2a.protocol_version", "1.0")
+            .expect("message metadata");
+        let stored_message = store.insert_message(&message).expect("message insert");
+
+        assert_eq!(stored_message.agent_alias.as_ref(), Some(&agent));
+        assert_eq!(stored_message.context_id.as_ref(), Some(&context_id));
+        assert_eq!(stored_message.task_id.as_ref(), Some(&task_id));
+        assert_eq!(stored_message.direction, MessageDirection::Request);
+        assert_eq!(stored_message.role, Some(MessageRole::User));
+        assert_eq!(stored_message.ordinal, 7);
+        assert_eq!(stored_message.content_json["messageId"], "protocol-msg-1");
+        assert_eq!(
+            store.list_messages().expect("messages"),
+            vec![stored_message]
+        );
 
         let event_id = event_id("evt-1");
         let mut event = EventInsert::new(
@@ -2633,6 +2917,10 @@ mod tests {
 
     fn task_id(value: &str) -> TaskId {
         TaskId::new(value).expect("task id")
+    }
+
+    fn message_id(value: &str) -> MessageId {
+        MessageId::new(value).expect("message id")
     }
 
     fn event_id(value: &str) -> EventId {

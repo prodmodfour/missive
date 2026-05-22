@@ -29,13 +29,14 @@ pub mod protocol {
         A2AError, AgentCapabilities, AgentCard, AgentCardSignature, AgentExtension, AgentInterface,
         AgentProvider, AgentSkill, Artifact, AuthenticationInfo, CancelTaskRequest,
         DeleteTaskPushNotificationConfigRequest, GetExtendedAgentCardRequest,
-        GetTaskPushNotificationConfigRequest, GetTaskRequest,
-        ListTaskPushNotificationConfigsRequest, ListTaskPushNotificationConfigsResponse,
-        ListTasksRequest, ListTasksResponse, Message, Part, PartContent, ProtocolVersion, Role,
-        SVC_PARAM_EXTENSIONS, SVC_PARAM_VERSION, SendMessageConfiguration, SendMessageRequest,
-        SendMessageResponse, SubscribeToTaskRequest, TRANSPORT_PROTOCOL_GRPC,
-        TRANSPORT_PROTOCOL_HTTP_JSON, TRANSPORT_PROTOCOL_JSONRPC, TRANSPORT_PROTOCOL_SLIMRPC, Task,
-        TaskPushNotificationConfig, TaskState, TaskStatus, TransportProtocol, VERSION, error_code,
+        GetTaskPushNotificationConfigRequest, GetTaskRequest, JsonRpcError, JsonRpcId,
+        JsonRpcRequest, JsonRpcResponse, ListTaskPushNotificationConfigsRequest,
+        ListTaskPushNotificationConfigsResponse, ListTasksRequest, ListTasksResponse, Message,
+        Part, PartContent, ProtocolVersion, Role, SVC_PARAM_EXTENSIONS, SVC_PARAM_VERSION,
+        SendMessageConfiguration, SendMessageRequest, SendMessageResponse, SubscribeToTaskRequest,
+        TRANSPORT_PROTOCOL_GRPC, TRANSPORT_PROTOCOL_HTTP_JSON, TRANSPORT_PROTOCOL_JSONRPC,
+        TRANSPORT_PROTOCOL_SLIMRPC, Task, TaskPushNotificationConfig, TaskState, TaskStatus,
+        TransportProtocol, VERSION, error_code, methods as jsonrpc_methods, new_message_id,
     };
 }
 
@@ -53,7 +54,10 @@ pub const CRATE_PURPOSE: &str = "A2A protocol/client integration and compatibili
 pub const PUBLIC_AGENT_CARD_PATH: &str = "/.well-known/agent-card.json";
 
 const DEFAULT_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
-const USER_AGENT: &str = concat!("missive/", env!("CARGO_PKG_VERSION"), " a2a-card-discovery");
+const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
+const USER_AGENT: &str = concat!("missive/", env!("CARGO_PKG_VERSION"), " a2a-client");
+const A2A_JSON_CONTENT_TYPE: &str = "application/a2a+json";
+const SEND_MESSAGE_REST_PATH: &str = "message:send";
 
 /// Canonical missive name for the A2A HTTP+JSON protocol binding.
 pub const HTTP_JSON_BINDING: &str = "http+json";
@@ -1246,6 +1250,294 @@ impl Default for AgentCardClient {
     fn default() -> Self {
         Self::new().expect("default Agent Card HTTP client should build")
     }
+}
+
+/// Result of a non-streaming A2A `SendMessage` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SendMessageOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed A2A response.
+    pub response: protocol::SendMessageResponse,
+    /// Raw response JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Blocking A2A client for non-streaming message sends.
+#[derive(Debug, Clone)]
+pub struct SendMessageClient {
+    client: Client,
+}
+
+impl SendMessageClient {
+    /// Creates a client with a bounded timeout and missive user agent.
+    pub fn new() -> Result<Self> {
+        Self::with_timeout(DEFAULT_SEND_TIMEOUT)
+    }
+
+    /// Creates a client with a caller-provided timeout.
+    pub fn with_timeout(timeout: Duration) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(timeout)
+            .user_agent(USER_AGENT)
+            .build()
+            .map_err(|error| {
+                MissiveError::transport("building A2A send HTTP client")
+                    .with_source(error)
+                    .with_help("Check local TLS certificate roots and HTTP client configuration.")
+            })?;
+        Ok(Self { client })
+    }
+
+    /// Sends one non-streaming A2A message using the negotiated interface.
+    pub fn send_message(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SendMessageRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<SendMessageOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => self.send_http_json(
+                interface,
+                request,
+                service_parameters,
+                auth_headers,
+            ),
+            JSON_RPC_BINDING => self.send_json_rpc(
+                interface,
+                request,
+                service_parameters,
+                auth_headers,
+            ),
+            binding => Err(MissiveError::transport(format!(
+                "A2A send cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    fn send_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SendMessageRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<SendMessageOutcome> {
+        let endpoint = rest_endpoint_url(&interface.url, SEND_MESSAGE_REST_PATH)?;
+        let request_body = request_with_interface_tenant(request, interface);
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE)
+            .header("Content-Type", A2A_JSON_CONTENT_TYPE)
+            .json(&request_body);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!("sending A2A message to {endpoint} failed"))
+                .with_source(error)
+                .with_help("Verify the selected Agent Card interface URL, local network access, and TLS configuration.")
+        })?;
+        let status = response.status();
+        let body = response.text().map_err(|error| {
+            MissiveError::transport(format!("reading A2A send response from {endpoint} failed"))
+                .with_source(error)
+        })?;
+        if !status.is_success() {
+            if response_reports_unsupported_version(&body) {
+                return Err(unsupported_protocol_version_error(
+                    &service_parameters.protocol_version,
+                    &endpoint,
+                    status,
+                ));
+            }
+            return Err(MissiveError::transport(format!(
+                "A2A send returned HTTP {status} for {endpoint}"
+            ))
+            .with_help("Inspect the remote agent logs or retry after refreshing its Agent Card."));
+        }
+
+        let raw_json = parse_response_json(&body, &endpoint, "A2A send response")?;
+        let response = serde_json::from_value::<protocol::SendMessageResponse>(raw_json.clone())
+            .map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A send response from {endpoint} is not a SendMessageResponse"
+                ))
+                .with_source(error)
+                .with_help("Expected a JSON object with exactly one of 'task' or 'message'.")
+            })?;
+
+        Ok(SendMessageOutcome {
+            url: endpoint.to_string(),
+            status: status.as_u16(),
+            interface: interface.clone(),
+            response,
+            raw_json,
+        })
+    }
+
+    fn send_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SendMessageRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<SendMessageOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = request_with_interface_tenant(request, interface);
+        let params = serde_json::to_value(&request_body).map_err(|error| {
+            MissiveError::protocol("encoding SendMessageRequest as JSON-RPC params")
+                .with_source(error)
+        })?;
+        let rpc_request = protocol::JsonRpcRequest::new(
+            protocol::JsonRpcId::String(request_body.message.message_id.clone()),
+            protocol::jsonrpc_methods::SEND_MESSAGE,
+            Some(params),
+        );
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&rpc_request);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!(
+                "sending A2A JSON-RPC message to {endpoint} failed"
+            ))
+            .with_source(error)
+            .with_help("Verify the selected Agent Card JSON-RPC interface URL, local network access, and TLS configuration.")
+        })?;
+        let status = response.status();
+        let body = response.text().map_err(|error| {
+            MissiveError::transport(format!(
+                "reading A2A JSON-RPC send response from {endpoint} failed"
+            ))
+            .with_source(error)
+        })?;
+        if !status.is_success() {
+            if response_reports_unsupported_version(&body) {
+                return Err(unsupported_protocol_version_error(
+                    &service_parameters.protocol_version,
+                    &endpoint,
+                    status,
+                ));
+            }
+            return Err(MissiveError::transport(format!(
+                "A2A JSON-RPC send returned HTTP {status} for {endpoint}"
+            ))
+            .with_help("Inspect the remote agent logs or retry after refreshing its Agent Card."));
+        }
+
+        let raw_rpc = parse_response_json(&body, &endpoint, "A2A JSON-RPC send response")?;
+        let rpc_response = serde_json::from_value::<protocol::JsonRpcResponse>(raw_rpc.clone())
+            .map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A JSON-RPC send response from {endpoint} is not a JSON-RPC response"
+                ))
+                .with_source(error)
+            })?;
+        if let Some(error) = rpc_response.error {
+            if error.code == protocol::error_code::VERSION_NOT_SUPPORTED {
+                return Err(unsupported_protocol_version_error(
+                    &service_parameters.protocol_version,
+                    &endpoint,
+                    status,
+                ));
+            }
+            return Err(MissiveError::protocol(format!(
+                "A2A JSON-RPC SendMessage failed with code {}: {}",
+                error.code, error.message
+            ))
+            .with_help("Inspect the remote agent error data and retry if appropriate."));
+        }
+        let raw_json = rpc_response.result.ok_or_else(|| {
+            MissiveError::protocol(format!(
+                "A2A JSON-RPC send response from {endpoint} did not include result or error"
+            ))
+        })?;
+        let response = serde_json::from_value::<protocol::SendMessageResponse>(raw_json.clone())
+            .map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A JSON-RPC SendMessage result from {endpoint} is not a SendMessageResponse"
+                ))
+                .with_source(error)
+                .with_help("Expected a JSON object with exactly one of 'task' or 'message'.")
+            })?;
+
+        Ok(SendMessageOutcome {
+            url: endpoint.to_string(),
+            status: status.as_u16(),
+            interface: interface.clone(),
+            response,
+            raw_json,
+        })
+    }
+}
+
+impl Default for SendMessageClient {
+    fn default() -> Self {
+        Self::new().expect("default A2A send HTTP client should build")
+    }
+}
+
+fn request_with_interface_tenant(
+    request: &protocol::SendMessageRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::SendMessageRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn rest_endpoint_url(base_url: &str, suffix: &str) -> Result<Url> {
+    let mut parsed = validate_absolute_url("HTTP+JSON interface URL", base_url)?;
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+    let mut endpoint = parsed.to_string().trim_end_matches('/').to_owned();
+    endpoint.push('/');
+    endpoint.push_str(suffix.trim_start_matches('/'));
+    Url::parse(&endpoint).map_err(|error| {
+        MissiveError::validation(format!(
+            "could not resolve A2A REST endpoint {suffix:?} against interface URL {base_url:?}"
+        ))
+        .with_source(error)
+    })
+}
+
+fn validate_absolute_url(label: &str, value: &str) -> Result<Url> {
+    let parsed = Url::parse(value).map_err(|error| {
+        MissiveError::validation(format!("{label} must be an absolute URL"))
+            .with_source(error)
+            .with_help("Use an absolute http(s) URL such as https://agent.example/a2a.")
+    })?;
+    if parsed.host_str().is_none() {
+        return Err(
+            MissiveError::validation(format!("{label} must include a host"))
+                .with_help("Use an absolute http(s) URL such as https://agent.example/a2a."),
+        );
+    }
+    Ok(parsed)
+}
+
+fn parse_response_json(body: &str, url: &Url, label: &str) -> Result<Value> {
+    serde_json::from_str::<Value>(body).map_err(|error| {
+        MissiveError::protocol(format!("{label} from {url} is not valid JSON"))
+            .with_source(error)
+            .with_help("Verify that the remote A2A endpoint returns a JSON response body.")
+    })
 }
 
 fn response_reports_unsupported_version(body: &str) -> bool {

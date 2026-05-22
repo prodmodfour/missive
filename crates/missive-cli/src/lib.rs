@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
@@ -12,6 +12,7 @@ use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode,
 pub mod agent;
 pub(crate) mod auth;
 pub mod output;
+pub mod send;
 
 pub use output::{
     CommandStatus, ConfigLoadStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header,
@@ -184,9 +185,9 @@ pub enum Commands {
 
     /// Send one message to an A2A agent.
     #[command(
-        long_about = "Send one message to an A2A agent and record the response or created task. Message execution is implemented by a later messaging ticket."
+        long_about = "Send one non-streaming A2A message to a registered agent, persist the request/response linkage, and print the direct Message or created Task summary."
     )]
-    Send,
+    Send(send::SendArgs),
 
     /// Stream message updates from an A2A agent.
     #[command(
@@ -267,7 +268,7 @@ impl Commands {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::Agent { .. } => "agent",
-            Self::Send => "send",
+            Self::Send(_) => "send",
             Self::Stream => "stream",
             Self::Task => "task",
             Self::Context => "context",
@@ -320,7 +321,8 @@ where
     let current_dir = std::env::current_dir()
         .map_err(|error| MissiveError::io("reading current directory", error))?;
 
-    execute_with_environment(cli, &environment, &current_dir, writer)
+    let mut input = io::stdin().lock();
+    execute_with_environment_and_input(cli, &environment, &current_dir, &mut input, writer)
 }
 
 /// Executes an already parsed CLI command with deterministic environment inputs.
@@ -333,27 +335,49 @@ pub fn execute_with_environment<W>(
 where
     W: Write,
 {
+    let mut input = io::empty();
+    execute_with_environment_and_input(cli, environment, current_dir, &mut input, writer)
+}
+
+/// Executes an already parsed CLI command with deterministic environment,
+/// current-directory, and standard-input inputs.
+pub fn execute_with_environment_and_input<R, W>(
+    cli: &Cli,
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+    input: &mut R,
+    writer: &mut W,
+) -> Result<()>
+where
+    R: Read,
+    W: Write,
+{
     let loaded_config = load_config(&cli.globals, environment, current_dir)?;
     let mode = OutputMode::from_globals_and_config(&cli.globals, loaded_config.output_format()?)?;
 
     match &cli.command {
+        Some(Commands::Agent {
+            command: Some(agent_command),
+        }) => agent::execute_agent_command(
+            agent_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
+        Some(Commands::Send(args)) => send::execute_send_command(
+            args,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            input,
+            writer,
+        ),
         Some(command) => {
-            if let Commands::Agent {
-                command: Some(agent_command),
-            } = command
-            {
-                agent::execute_agent_command(
-                    agent_command,
-                    &cli.globals,
-                    &loaded_config,
-                    environment,
-                    mode,
-                    writer,
-                )
-            } else {
-                let status = CommandStatus::parsed(command.name()).with_config(&loaded_config);
-                render_success(writer, mode, "command_status", &status, &status.message)
-            }
+            let status = CommandStatus::parsed(command.name()).with_config(&loaded_config);
+            render_success(writer, mode, "command_status", &status, &status.message)
         }
         None if matches!(mode, OutputMode::Human) => {
             let mut command = Cli::command();
@@ -429,9 +453,10 @@ fn process_environment() -> BTreeMap<String, String> {
 /// Runs the CLI using process arguments and standard streams.
 #[must_use]
 pub fn run() -> i32 {
+    let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
-    run_from(std::env::args_os(), &mut stdout, &mut stderr)
+    run_from_with_input(std::env::args_os(), &mut stdin, &mut stdout, &mut stderr)
 }
 
 /// Runs the CLI from an arbitrary argument iterator and writer pair.
@@ -445,13 +470,31 @@ where
     W: Write,
     E: Write,
 {
+    let mut input = io::empty();
+    run_from_with_input(args, &mut input, stdout, stderr)
+}
+
+fn run_from_with_input<I, T, R, W, E>(args: I, input: &mut R, stdout: &mut W, stderr: &mut E) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+    R: Read,
+    W: Write,
+    E: Write,
+{
     match Cli::try_parse_from(args) {
         Ok(cli) => {
             let environment = process_environment();
             match std::env::current_dir()
                 .map_err(|error| MissiveError::io("reading current directory", error))
                 .and_then(|current_dir| {
-                    execute_with_environment(&cli, &environment, &current_dir, stdout)
+                    execute_with_environment_and_input(
+                        &cli,
+                        &environment,
+                        &current_dir,
+                        input,
+                        stdout,
+                    )
                 }) {
                 Ok(()) => MissiveExitCode::Success.as_i32(),
                 Err(error) => render_execution_error(stderr, &cli.globals, &error),
@@ -476,11 +519,36 @@ where
     W: Write,
     E: Write,
 {
+    let mut input = io::empty();
+    run_from_with_environment_and_input(args, environment, current_dir, &mut input, stdout, stderr)
+}
+
+/// Runs the CLI from arguments with deterministic environment, current-directory,
+/// and standard-input inputs.
+#[must_use]
+pub fn run_from_with_environment_and_input<I, T, R, W, E>(
+    args: I,
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+    input: &mut R,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+    R: Read,
+    W: Write,
+    E: Write,
+{
     match Cli::try_parse_from(args) {
-        Ok(cli) => match execute_with_environment(&cli, environment, current_dir, stdout) {
-            Ok(()) => MissiveExitCode::Success.as_i32(),
-            Err(error) => render_execution_error(stderr, &cli.globals, &error),
-        },
+        Ok(cli) => {
+            match execute_with_environment_and_input(&cli, environment, current_dir, input, stdout)
+            {
+                Ok(()) => MissiveExitCode::Success.as_i32(),
+                Err(error) => render_execution_error(stderr, &cli.globals, &error),
+            }
+        }
         Err(error) => render_clap_error(error, stdout, stderr),
     }
 }

@@ -1,8 +1,36 @@
-Send one message to an A2A agent and record the response or created task. Message execution is implemented by a later messaging ticket.
+Send one non-streaming A2A message to a registered agent, persist the request/response linkage, and print the direct Message or created Task summary.
 
-Usage: missive send [OPTIONS]
+Usage: missive send [OPTIONS] <AGENT> [MESSAGE]
+
+Arguments:
+  <AGENT>
+          Registered agent alias to call
+
+  [MESSAGE]
+          Text message to send. Omit when using --stdin, --file, or --part
 
 Options:
+      --stdin
+          Read one text message part from standard input
+
+      --file <PATH>
+          Read one UTF-8 text message part from this file; repeatable
+
+      --part <text=VALUE>
+          Add a message part, currently text=VALUE; repeatable
+
+      --metadata <KEY=VALUE>
+          Add non-secret A2A request metadata as KEY=VALUE; VALUE may be JSON
+
+      --context <CONTEXT_ID>
+          Continue or create this A2A context id
+
+      --task <TASK_ID>
+          Continue this A2A task id when the remote protocol state allows it
+
+      --accepted-output-mode <MIME>
+          Accepted response MIME/output mode; repeatable
+
   -h, --help
           Print help (see a summary with '-h')
 

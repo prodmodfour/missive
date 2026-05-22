@@ -579,7 +579,7 @@ Validation:
 
 ## 019 — Implement send message command
 
-Status: TODO
+Status: DONE
 
 Phase: Messaging
 

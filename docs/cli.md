@@ -2,10 +2,10 @@
 
 `missive` currently exposes a clap-based command tree with shared flags,
 configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
-rendering. The first implemented operational commands are the SQLite-backed
-agent registry commands plus public A2A Agent Card inspection/refresh; other
-top-level commands still emit skeletal parsed status until their ordered tickets
-land.
+rendering. Implemented operational commands are the SQLite-backed agent registry
+commands, public A2A Agent Card inspection/refresh, and non-streaming
+`missive send`; other top-level commands still emit skeletal parsed status until
+their ordered tickets land.
 
 Run help with:
 
@@ -45,8 +45,9 @@ requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a name
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
 Agent Card HTTP requests and are shared with future A2A send/stream/task/push
-clients. Timeout enforcement, tracing, and most command-specific semantics are
-intentionally left to their ordered implementation tickets.
+clients. Timeout enforcement, tracing, streaming, task polling, and broader
+command-specific semantics are intentionally left to their ordered implementation
+tickets.
 
 ## Top-level commands
 
@@ -170,6 +171,57 @@ MISSIVE_HOME=/tmp/missive-demo missive agent refresh echo --bearer-token-env MIS
 MISSIVE_HOME=/tmp/missive-demo missive agent list --json
 ```
 
+## Send command
+
+`missive send` sends one non-streaming A2A `SendMessage` request to a registered
+agent. The command uses the cached Agent Card when present, otherwise fetches and
+caches the public card before selecting the first mutually supported interface
+from the agent's binding preference. HTTP+JSON sends `POST /message:send` under
+the selected interface URL; JSON-RPC sends method `SendMessage` to the selected
+JSON-RPC URL.
+
+Basic examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive agent add echo http://127.0.0.1:8080
+MISSIVE_HOME=/tmp/missive-demo missive send echo "Say hello" --json
+printf 'hello from stdin' | MISSIVE_HOME=/tmp/missive-demo missive send echo --stdin
+MISSIVE_HOME=/tmp/missive-demo missive send echo --file ./prompt.txt --accepted-output-mode text/plain
+MISSIVE_HOME=/tmp/missive-demo missive send echo --part text='first part' --part text='second part'
+```
+
+Supported inputs for this ticket are text-only:
+
+* positional `[MESSAGE]` creates one text part
+* `--stdin` reads one UTF-8 text part from standard input
+* repeatable `--file PATH` reads each file as one UTF-8 text part
+* repeatable `--part text=VALUE` adds explicit text parts
+* repeatable `--metadata KEY=VALUE` adds non-secret A2A request metadata, parsing
+  `VALUE` as JSON when possible and otherwise treating it as a string
+* `--context CONTEXT_ID` and `--task TASK_ID` set A2A continuity fields on the
+  outbound message and link persisted local rows
+* repeatable `--accepted-output-mode MIME` populates
+  `configuration.acceptedOutputModes`
+
+Binary file bytes, MIME-specific file parts, JSON structured-data parts,
+streaming, remote task polling, and artifact export are intentionally deferred to
+later ordered tickets.
+
+`send` resolves auth the same way as Agent Card commands: agent auth refs,
+`--bearer-token-env`, and repeatable `--header Name:Value` are applied to both
+the Agent Card fetch (when needed) and the send request, while raw secret values
+are never persisted or printed. A2A service parameters (`A2A-Version`,
+`A2A-Extensions`, and `--service-param`) are also sent on the outbound request
+and recorded in local message/task metadata.
+
+Machine-readable output uses `kind: "send_result"` and includes the selected
+interface, outbound request summary, response shape (`message` or `task`), raw
+redacted response JSON, and local persistence ids. Task responses include
+`task_id`, `context_id`, and mapped state when the remote server returns them.
+Human output is a concise one-line send summary. Request and response rows are
+stored in SQLite `messages`; returned task responses are stored or updated in
+`tasks` and linked to the messages.
+
 ## Output contract
 
 The current renderer supports four modes:
@@ -179,9 +231,9 @@ The current renderer supports four modes:
 * config `output.format = "json"` or `--json` — one JSON document using stable
   top-level fields
 * config `output.format = "ndjson"` or `--ndjson` — one JSON object per line,
-  currently one command-specific event for implemented agent registry commands
-  or one command-status event for skeletal commands, and reserved for future
-  event streams
+  currently one command-specific event for implemented agent registry/send
+  commands or one command-status event for skeletal commands, and reserved for
+  future event streams
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are

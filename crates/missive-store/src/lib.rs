@@ -18,8 +18,9 @@ pub use repository::{
     AdapterBindingId, AgentRecord, AgentSource, AgentUpsert, AuthRefKind, AuthRefRecord,
     AuthRefUpsert, AuthSecretStorage, ContextRecord, ContextState, ContextUpsert, EventInsert,
     EventRecord, GatewayJobId, GatewayJobRecord, GatewayJobState, GatewayJobUpsert,
-    GroupMemberRecord, GroupMemberUpsert, GroupRecord, GroupUpsert, Store, StoreTransaction,
-    TaskRecord, TaskSource, TaskState, TaskUpsert,
+    GroupMemberRecord, GroupMemberUpsert, GroupRecord, GroupUpsert, MessageDirection,
+    MessageInsert, MessageRecord, MessageRole, Store, StoreTransaction, TaskRecord, TaskSource,
+    TaskState, TaskUpsert,
 };
 
 /// Cargo package name for this crate.

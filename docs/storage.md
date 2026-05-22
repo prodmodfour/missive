@@ -73,6 +73,10 @@ strings:
 * tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state;
   `TaskUpsert::record_a2a_protocol_version` records the selected A2A version in
   both the typed protocol-version column and `a2a.protocol_version` metadata
+* messages: `MessageInsert`, `MessageRecord`, `MessageDirection`,
+  `MessageRole`, and append/get/list/delete methods for request/response rows
+  linked to agents, contexts, and tasks; `missive send` uses these rows for
+  non-streaming A2A request/response persistence
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
   monotonic SQLite sequences; `EventInsert::record_a2a_protocol_version` records
   the selected A2A version in event metadata
@@ -100,7 +104,9 @@ should use for multi-row state changes.
 ## Current limitations
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
-and the CLI now uses the auth-ref and agent repositories for `missive agent`
-registry commands plus public Agent Card cache updates. Message/artifact/push-config and adapter-binding repositories, retention
-enforcement, compaction, event replay, and durable A2A protocol persistence beyond public Agent Cards are
-implemented by later tickets.
+and the CLI now uses the auth-ref, agent, context, task, and message repositories
+for `missive agent` registry commands, public Agent Card cache updates, and
+non-streaming `missive send` persistence. Artifact/push-config and
+adapter-binding repositories, retention enforcement, compaction, event replay,
+streaming event persistence, and broader durable A2A protocol persistence beyond
+send/task rows are implemented by later tickets.

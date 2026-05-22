@@ -35,6 +35,7 @@ Validated examples live under [`examples/config/`](../examples/config/):
 
 ```bash
 MISSIVE_HOME=/tmp/missive-demo missive agent list --config examples/config/minimal.toml --json
+MISSIVE_HOME=/tmp/missive-demo missive send echo "Say hello" --config examples/config/minimal.toml --json
 missive doctor --config examples/config/full.toml --profile ci
 ```
 
@@ -102,18 +103,19 @@ Supported sections in this ticket:
 
 Unknown fields are rejected so configuration typos fail early.
 
-For implemented A2A HTTP requests, `--protocol-version <VERSION>` overrides the
-selected profile's `protocol_version` for that invocation. The
-`--a2a-extension <EXTENSION>` flag appends requested extensions, and
-`--service-param NAME=VALUE` adds or overrides an extra service parameter for the
-invocation. These flags are validated before an outbound request is sent.
+For implemented A2A HTTP requests (Agent Card fetch/refresh and non-streaming
+send), `--protocol-version <VERSION>` overrides the selected profile's
+`protocol_version` for that invocation. The `--a2a-extension <EXTENSION>` flag
+appends requested extensions, and `--service-param NAME=VALUE` adds or overrides
+an extra service parameter for the invocation. These flags are validated before
+an outbound request is sent.
 
 Authentication can be supplied by linking an agent to an `auth_ref`, by passing
 `--bearer-token-env ENV`, or by passing repeatable `--header Name:Value` values.
 Config auth refs currently support `kind = "env"` and `kind = "keyring"`; they
 store only the environment variable name or keyring service/account, never the
-raw token. CLI-supplied auth headers are used for the current invocation only and
-are not written to SQLite.
+raw token. CLI-supplied auth headers are used for the current invocation only,
+including `missive send`, and are not written to SQLite.
 
 ## Local state paths
 
