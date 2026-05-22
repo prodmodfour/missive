@@ -1355,7 +1355,7 @@ Validation:
 
 ## 045 — Implement file drop adapter
 
-Status: TODO
+Status: DONE
 
 Phase: Adapters
 

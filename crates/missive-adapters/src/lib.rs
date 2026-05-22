@@ -9,8 +9,17 @@ use missive_core::{AgentAlias, ContextId, EventId, MessageId, Metadata, MissiveE
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod file_drop;
 pub mod stdio;
 
+pub use file_drop::{
+    FILE_DROP_ADAPTER_KIND, FILE_DROP_FRAME_SCHEMA_VERSION, FILE_DROP_OUTPUT_KIND_ERROR,
+    FILE_DROP_OUTPUT_KIND_RESULT, FileDropAdapter, FileDropClaim, FileDropCommand,
+    FileDropInputFile, FileDropJobCancelCommand, FileDropJobListCommand, FileDropJobOptions,
+    FileDropJobShowCommand, FileDropJobStartReduceCommand, FileDropJobStartSendCommand,
+    FileDropJobStartStreamCommand, FileDropJobStartWaitCommand, FileDropOutputFile, FileDropPaths,
+    FileDropSource, is_ready_file_name, new_file_drop_event_id, register_file_drop_adapter,
+};
 pub use stdio::{
     STDIO_ADAPTER_KIND, STDIO_FRAME_SCHEMA_VERSION, STDIO_OUTPUT_KIND_COMMAND_OUTPUT,
     STDIO_OUTPUT_KIND_ERROR, STDIO_OUTPUT_KIND_LIFECYCLE, StdioAdapter, StdioCommand,

@@ -126,6 +126,7 @@ cargo test -p missive-cli --test barrier_command --all-features
 cargo test -p missive-cli --test gather_command --all-features
 cargo test -p missive-cli --test reduce_command --all-features
 cargo test -p missive-cli --test job_command --all-features
+cargo test -p missive-cli --test adapter_file_drop_command --all-features
 cargo test -p missive-cli --test gateway_command --all-features
 cargo test -p missive-cli --test webhook_command --all-features
 ```
@@ -186,11 +187,14 @@ start path without needing live daemon adapters. `crates/missive-adapters` unit
 tests cover deriving adapter definitions from config, duplicate/missing registry
 factories, disabled adapter handling, cross-adapter event rejection, the built-in
 stdio frame parser/writer, stdio invalid-frame diagnostics, stdio streaming
-output frame sequencing, and fake/stdio adapters that map identity, emit
-lifecycle/inbound-message events, accept outbound updates, and record
+output frame sequencing, file-drop schema validation, atomic ready-file handoff,
+file-drop registry creation, and fake/stdio/file-drop adapters that map identity,
+emit lifecycle/inbound-message events, accept outbound updates, and record
 acknowledgements. `crates/missive-cli` also has `adapter_stdio_command`
 integration coverage for valid long-running task frames, invalid frame recovery,
-and wrapped streaming NDJSON output through the reusable local A2A mock server.
+and wrapped streaming NDJSON output through the reusable local A2A mock server,
+plus `adapter_file_drop_command` coverage for temp-directory handoff, ignored
+partial files, malformed-file error archival, and background job request files.
 `crates/missive-gateway` also has a fake adapter event-sink test proving adapter inbound messages can enter
 the daemon event bus and update runtime output. The webhook
 command integration test similarly spawns the binary, waits for local

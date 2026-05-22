@@ -1,12 +1,37 @@
-Run concrete local adapters that translate external or local frames into missive communication commands. The stdio adapter reads JSON/NDJSON request frames from stdin, while the file-drop adapter polls an inbox directory for complete request files and writes result files to an outbox for filesystem-based automation.
+Run the local file-drop directory adapter
 
-Usage: missive adapter [OPTIONS] [COMMAND]
-
-Commands:
-  stdio      Run the stdin/stdout JSON/NDJSON adapter
-  file-drop  Run the local file-drop directory adapter
+Usage: missive adapter file-drop [OPTIONS] --inbox <DIR> --outbox <DIR>
 
 Options:
+      --inbox <DIR>
+          Directory watched for ready request files ending in .json
+
+      --outbox <DIR>
+          Directory that receives result JSON files
+
+      --processed <DIR>
+          Directory that receives successfully processed input files. Defaults to `<inbox>/processed`
+
+      --error-dir <DIR>
+          Directory that receives invalid or failed input files. Defaults to `<inbox>/error`
+
+      --mode <MODE>
+          Scan once or keep polling the inbox
+
+          Possible values:
+          - once:  Process currently ready files and exit
+          - watch: Poll for ready files until --max-files, --timeout, or process termination
+          
+          [default: once]
+
+      --poll-interval <DURATION>
+          Poll interval for watch mode, such as 250ms, 2s, or 1m
+          
+          [default: 500ms]
+
+      --max-files <N>
+          Stop after processing at most this many ready files
+
   -h, --help
           Print help (see a summary with '-h')
 

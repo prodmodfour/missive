@@ -4,7 +4,8 @@
 configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, the subprocess-oriented
-`missive adapter stdio` JSON/NDJSON frame loop, non-streaming
+`missive adapter stdio` JSON/NDJSON frame loop, the filesystem-oriented
+`missive adapter file-drop` inbox/outbox loop, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive group
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
@@ -20,6 +21,7 @@ Run help with:
 missive --help
 missive adapter --help
 missive adapter stdio --help
+missive adapter file-drop --help
 missive agent --help
 missive send --help
 missive stream --help
@@ -114,11 +116,10 @@ record so automation can distinguish parser support from a specific operation.
 
 ## Adapter commands
 
-`missive adapter stdio` is the first concrete adapter. It is intended for a
-human or another local agent invoking `missive` as a subprocess without scraping
-human terminal text. The adapter reads framed JSON from stdin, maps each frame to
-one existing `send`, `stream`, or `task` command, and writes framed responses to
-stdout.
+`missive adapter stdio` is intended for a human or another local agent invoking
+`missive` as a subprocess without scraping human terminal text. The adapter reads
+framed JSON from stdin, maps each frame to one existing `send`, `stream`, or
+`task` command, and writes framed responses to stdout.
 
 Modes:
 
@@ -153,6 +154,31 @@ machine-readable command envelope, so a streaming request produces one wrapped
 `stream_event` frame per event followed by a wrapped `stream_result` frame.
 Invalid request frames produce `ok:false`, `kind:"stdio_error"` frames and do
 not stop a long-running loop.
+
+`missive adapter file-drop` watches an inbox directory for complete `*.json`
+request files and writes one result JSON file to an outbox for each claimed
+request. It is useful when another local process can only exchange files:
+
+```bash
+mkdir -p /tmp/missive-drop/{inbox,outbox}
+printf '%s\n' '{"schema_version":"missive.file_drop.v1","id":"req-1","command":"task_list"}' \
+  >/tmp/missive-drop/inbox/req-1.tmp
+mv /tmp/missive-drop/inbox/req-1.tmp /tmp/missive-drop/inbox/req-1.json
+MISSIVE_HOME=/tmp/missive-demo missive adapter file-drop \
+  --inbox /tmp/missive-drop/inbox \
+  --outbox /tmp/missive-drop/outbox \
+  --mode once --json
+```
+
+Only non-hidden `*.json` files are ready. Producers must write temporary files
+and atomically rename them into place; partial names such as `*.tmp` are ignored.
+Successful inputs are archived under `<inbox>/processed` by default, invalid
+inputs under `<inbox>/error`, and results are atomically published as
+`<stem>.result.json` or `<stem>.error.json` in the outbox. Request schema
+`missive.file_drop.v1` supports foreground `send`, `stream`, `task_get`,
+`task_list`, `task_wait`, and `task_cancel` commands plus job-file commands
+`job_start_send`, `job_start_stream`, `job_start_wait`, `job_start_reduce`,
+`job_list`, `job_show`, and `job_cancel`.
 
 ## Agent registry commands
 

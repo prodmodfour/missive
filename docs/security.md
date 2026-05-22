@@ -205,12 +205,18 @@ reuse the same resolution and redaction path when they add broader outbound
 requests.
 
 Daemon-managed adapter workers are not live yet, but the trait, registry, and
-foreground stdio adapter treat every external source as untrusted input.
+foreground local adapters treat every external source as untrusted input.
 `missive adapter stdio` validates JSON/NDJSON framing, schema version,
 correlation ids, command names, source identity, and command fields before it
-maps frames to send/stream/task commands. Adapter `settings` metadata in config
-must remain non-secret; credentials should stay in auth refs, env vars,
-keyrings, or future explicit secret references.
+maps frames to send/stream/task commands. `missive adapter file-drop` validates
+ready `*.json` request files, ignores partial temporary names, atomically moves
+claimed inputs to processed/error directories, and writes result files through a
+temporary-file rename; producers must still avoid writing partial content
+directly to final `*.json` names. File-drop inbox/outbox paths are local runtime
+state and can expose source ids, message text, job requests, and command results,
+so keep them outside the repository and protect them like profile SQLite data.
+Adapter `settings` metadata in config must remain non-secret; credentials should
+stay in auth refs, env vars, keyrings, or future explicit secret references.
 
 Webhook signature/JWT verification, daemon adapter trust-boundary enforcement,
 trace/log sinks, rate limits beyond busy-input `max_queue_depth`, gateway

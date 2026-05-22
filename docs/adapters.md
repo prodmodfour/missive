@@ -2,7 +2,7 @@
 
 Adapters are the boundary between external/local message sources and missive's gateway control plane. They are not agent frameworks and they do not replace A2A; adapters translate source input into missive gateway events and receive redacted gateway updates that can be rendered back to the source.
 
-The shared trait and registry are in place, and ticket 044 adds the first concrete adapter: `stdio`. File-drop, HTTP, and external chat adapters remain later tickets.
+The shared trait and registry are in place, and the current concrete adapters are `stdio` and `file-drop`. HTTP and external chat adapters remain later tickets.
 
 ## Crate contract
 
@@ -17,8 +17,9 @@ The shared trait and registry are in place, and ticket 044 adds the first concre
 * `AdapterOutboundUpdate` — redacted gateway output that future adapter workers can deliver to their source.
 * `AdapterRegistry` and `AdapterFactory` — deterministic factory lookup by adapter kind.
 * `StdioAdapter`, `StdioInputFrame`, `StdioOutputFrame`, and frame helpers — the built-in stdin/stdout JSON/NDJSON adapter boundary.
+* `FileDropAdapter`, `FileDropInputFile`, `FileDropOutputFile`, `FileDropPaths`, and handoff helpers — the built-in local directory adapter boundary.
 
-The registry is intentionally generic. The built-in `stdio` factory can be registered with `register_stdio_adapter`; later tickets should add factories such as `file` or `http`. External chat/platform adapters should stay feature-gated or stubbed until their own ticket.
+The registry is intentionally generic. The built-in `stdio` and `file-drop` factories can be registered with `register_stdio_adapter` and `register_file_drop_adapter`; later tickets should add factories such as `http`. External chat/platform adapters should stay feature-gated or stubbed until their own ticket.
 
 ## Configuration schema
 
@@ -38,6 +39,17 @@ max_queue_depth = 16
 
 [adapters.stdio.settings]
 framing = "ndjson"
+
+[adapters.local-drop]
+kind = "file-drop"
+enabled = true
+session_profile = "default"
+
+[adapters.local-drop.settings]
+inbox = "/var/tmp/missive-drop/inbox"
+outbox = "/var/tmp/missive-drop/outbox"
+processed = "/var/tmp/missive-drop/processed"
+error = "/var/tmp/missive-drop/error"
 ```
 
 Core config validation checks adapter names and kinds, optional `session_profile` references, busy-input overrides, and metadata key shape. `missive-adapters` converts validated config entries into `AdapterDefinition` values and can filter disabled adapters before startup.
@@ -58,7 +70,7 @@ The intended gateway lifecycle is:
 8. Gateway workers call `deliver_update` for source-visible progress/results and `acknowledge` for accepted/rejected/delivered/failed delivery state.
 9. On shutdown or configuration changes, the gateway calls `stop` and records lifecycle state.
 
-The current daemon exposes the adapter event-bus bridge and reports adapter bus events as `gateway_adapter_event` in runtime output when an adapter worker emits them. It does not start configured adapters yet; use `missive adapter stdio` as a foreground subprocess adapter today.
+The current daemon exposes the adapter event-bus bridge and reports adapter bus events as `gateway_adapter_event` in runtime output when an adapter worker emits them. It does not start configured adapters yet; use `missive adapter stdio` or `missive adapter file-drop` as foreground local adapters today.
 
 ## stdin/stdout adapter
 
@@ -125,6 +137,92 @@ Response frames contain:
 Error frames use `ok: false`, `kind: "stdio_error"`, and the same stable
 `missive::...` error report shape used by `--json`/`--ndjson` CLI errors.
 
+## File-drop adapter
+
+`missive adapter file-drop` is designed for local filesystem automation when a
+source agent cannot or should not keep a subprocess pipe open and no network
+inbound service is desired. It polls an inbox directory for complete request
+files and writes one JSON result file per request to an outbox.
+
+Example one-shot run:
+
+```bash
+mkdir -p /tmp/missive-drop/{inbox,outbox}
+cat >/tmp/missive-drop/inbox/req-1.tmp <<'JSON'
+{
+  "schema_version": "missive.file_drop.v1",
+  "id": "req-1",
+  "command": "task_list"
+}
+JSON
+mv /tmp/missive-drop/inbox/req-1.tmp /tmp/missive-drop/inbox/req-1.json
+MISSIVE_HOME=/tmp/missive-demo \
+  missive adapter file-drop \
+  --inbox /tmp/missive-drop/inbox \
+  --outbox /tmp/missive-drop/outbox \
+  --mode once --json
+cat /tmp/missive-drop/outbox/req-1.result.json
+```
+
+Producer contract and atomic handoff:
+
+* write request content to a temporary name such as `req-1.tmp`, `req-1.part`, or
+  a dotfile;
+* atomically rename the complete file to a non-hidden `*.json` name;
+* the adapter only claims ready `*.json` files and ignores temporary/partial
+  names;
+* on claim, the adapter atomically renames the input to a hidden processing name
+  under the processed directory;
+* successful inputs are archived as `<processed>/<original-name>`;
+* malformed or unhandled inputs are archived as `<error-dir>/<original-name>`;
+* results are written through a temporary outbox file and atomically renamed to
+  `<stem>.result.json` or `<stem>.error.json`.
+
+Default archive directories are `<inbox>/processed` and `<inbox>/error`; override
+with `--processed` and `--error-dir`. Use `--mode watch` to keep polling,
+`--poll-interval` to adjust the polling cadence, `--max-files` to bound a run,
+and global `--timeout` to stop a watch run after a duration.
+
+Request files use schema version `missive.file_drop.v1` and reuse the same
+foreground command field names as the stdio adapter for `send`, `stream`,
+`task_get`, `task_list`, `task_wait`, and `task_cancel`. They also accept
+background-job file commands for the already implemented `missive job` surface:
+`job_start_send`, `job_start_stream`, `job_start_wait`, `job_start_reduce`,
+`job_list`, `job_show`, and `job_cancel`.
+
+Send request example:
+
+```json
+{
+  "schema_version": "missive.file_drop.v1",
+  "id": "send-1",
+  "source": {"source_id": "local-agent", "resume_name": "default"},
+  "command": "send",
+  "agent": "echo",
+  "message": "hello from a file-drop request"
+}
+```
+
+Background wait job request example:
+
+```json
+{
+  "schema_version": "missive.file_drop.v1",
+  "id": "wait-job-1",
+  "command": "job_start_wait",
+  "task_id": "task-123",
+  "agent": "echo",
+  "local": true,
+  "options": {"max_attempts": 1, "cancel_remote_on_cancel": true}
+}
+```
+
+Result files contain the file-drop schema marker, request id, `ok`, output kind,
+input/archive filenames, and wrapped `missive.stdio.v1` output frames. The
+wrapped frame `data` is the normal `missive.output.v1` command envelope. Parse or
+validation failures use `ok:false`, `kind:"file_drop_error"`, and the same
+`missive::...` error report shape used elsewhere.
+
 ## Gateway event bus
 
 Adapters do not depend on `missive-gateway`. They depend only on the `AdapterEventSink` trait. The gateway wraps its internal event bus with a sink implementation, so adapter events can be forwarded without creating a crate cycle.
@@ -142,4 +240,4 @@ Gateway event output uses redacted serialized adapter events. Source ids and cha
 
 ## Current limitations
 
-`missive adapter stdio` is a foreground subprocess adapter, not a daemon-started worker. `missive gateway run` still does not start configured adapters from `[adapters]`, and the file-drop, HTTP, and external chat adapters remain later tickets. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio foreground loop.
+`missive adapter stdio` and `missive adapter file-drop` are foreground local adapters, not daemon-started workers. `missive gateway run` still does not start configured adapters from `[adapters]`, and HTTP plus external chat adapters remain later tickets. The file-drop adapter uses portable polling rather than OS-specific inotify/FSEvents, does not lock files that are written directly to a final `*.json` name, and relies on producers following the temporary-file-then-rename handoff contract. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio or file-drop foreground loops.

@@ -37,6 +37,10 @@ fn key_subcommand_help_snapshots_are_stable() {
             include_str!("snapshots/help-adapter-stdio.txt"),
         ),
         (
+            &["missive", "adapter", "file-drop", "--help"],
+            include_str!("snapshots/help-adapter-file-drop.txt"),
+        ),
+        (
             &["missive", "agent", "--help"],
             include_str!("snapshots/help-agent.txt"),
         ),

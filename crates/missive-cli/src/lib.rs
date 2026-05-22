@@ -199,7 +199,7 @@ pub struct GlobalArgs {
 pub enum Commands {
     /// Run local adapters for subprocess and gateway integration.
     #[command(
-        long_about = "Run concrete local adapters that translate external or local frames into missive communication commands. The current stdio adapter reads JSON/NDJSON request frames from stdin, maps them to send, stream, and task commands, and writes JSON/NDJSON response frames to stdout for subprocess automation."
+        long_about = "Run concrete local adapters that translate external or local frames into missive communication commands. The stdio adapter reads JSON/NDJSON request frames from stdin, while the file-drop adapter polls an inbox directory for complete request files and writes result files to an outbox for filesystem-based automation."
     )]
     Adapter {
         /// Adapter operation to run. With no operation, missive emits a parsed command status.
