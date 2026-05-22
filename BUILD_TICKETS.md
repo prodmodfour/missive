@@ -669,7 +669,7 @@ Validation:
 
 ## 022 — Implement context/session commands
 
-Status: TODO
+Status: DONE
 
 Phase: Contexts
 

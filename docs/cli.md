@@ -4,9 +4,9 @@
 configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
-`missive send`, streaming `missive stream`, and `missive task get/list/wait/cancel`;
-other top-level commands still emit skeletal parsed status until their ordered
-tickets land.
+`missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
+and `missive context create/list/show/fork/close/export`; other top-level
+commands still emit skeletal parsed status until their ordered tickets land.
 
 Run help with:
 
@@ -16,6 +16,7 @@ missive agent --help
 missive send --help
 missive stream --help
 missive task --help
+missive context --help
 ```
 
 ## Global flags
@@ -75,7 +76,10 @@ manpage     Generate manual pages
 
 Each top-level command has a help page. Running an unimplemented command other
 than help currently loads and validates configuration, then emits a
-command-status record through the selected renderer.
+command-status record through the selected renderer. Implemented command groups
+with no selected subcommand, such as `missive context --json`, still emit that
+parsed command-status record so automation can distinguish parser support from a
+specific operation.
 
 ## Agent registry commands
 
@@ -331,6 +335,68 @@ returned task, and renders `task_cancel`. If no local task row exists yet, pass
 Task output includes the mapped local state, source, agent, context, protocol
 version, status text when present, artifact/history counts, timestamps, metadata,
 and redacted raw remote task JSON when available.
+
+## Context commands
+
+`missive context` manages local A2A `contextId` continuity records. Contexts live
+in the selected profile's SQLite store, can have human-friendly names, and are
+linked automatically by existing send, stream, and task persistence whenever A2A
+payloads include a context id.
+
+Implemented commands:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive context create --name "Planning round" --agent echo --json
+MISSIVE_HOME=/tmp/missive-demo missive context create --id ctx-1 --name "Planning round" --summary "Initial plan"
+MISSIVE_HOME=/tmp/missive-demo missive context list --agent echo --state open
+MISSIVE_HOME=/tmp/missive-demo missive context show "Planning round" --json
+MISSIVE_HOME=/tmp/missive-demo missive context fork "Planning round" --name "Planning follow-up" --json
+MISSIVE_HOME=/tmp/missive-demo missive context close "Planning follow-up" --summary "Closed after review"
+MISSIVE_HOME=/tmp/missive-demo missive context export "Planning round" --json
+```
+
+`context create` accepts an explicit `--id CONTEXT_ID` or generates a local
+UUIDv7-compatible A2A context id when omitted. Optional `--name`, `--agent`,
+`--summary`, and repeatable `--metadata KEY=VALUE` fields are stored without raw
+secret material. If `--agent` is supplied, it must reference a known agent alias.
+Context names may contain spaces when quoted and must be unique among named
+contexts so commands can resolve them safely.
+
+`context list` filters local context rows by `--agent`, exact `--name`,
+`--state open|closed|archived`, and `--parent CONTEXT_ID`. `context show`,
+`context close`, `context fork`, and `context export` accept either an exact A2A
+context id or a unique human-friendly name. If a selector is both an existing id
+and another context's name, the id wins; ambiguous duplicate names fail with an
+actionable error.
+
+`context fork` creates a new open child context, records the parent id in both
+the typed `parent_context_id` column and metadata (`missive.context.parent_id`,
+plus parent name and fork timestamp when available), and inherits the parent
+agent unless `--agent` is supplied. Forking does not copy messages, tasks,
+events, or artifacts; it records continuity metadata for later workflows.
+
+`context close` marks the context `closed`, records `closed_at` once, and retains
+existing messages, tasks, events, metadata, and summaries for export. There is no
+remote A2A close call in the current protocol mapping; closing is local state
+only.
+
+`context export` renders a redacted local export containing the context record and
+all currently linked `tasks`, `messages`, and `events`. Use `--json` or
+`--ndjson` for the full export payload; human mode prints a concise redacted
+summary. Export payloads recursively redact secret-like keys and HTTP auth
+headers before they reach stdout. Dedicated event replay and artifact export
+commands are later tickets, so context export includes only the rows currently
+stored in these tables.
+
+`missive send --context CONTEXT_ID` and `missive stream --context CONTEXT_ID`
+continue to take explicit A2A context ids. Use `missive context show <name>
+--json` to resolve a human-friendly name to the durable id for shell automation.
+
+Machine-readable context output uses `context_create`, `context_list`,
+`context_show`, `context_fork`, `context_close`, and `context_export` envelope
+kinds. Context views include the context id, optional name/agent/parent, state,
+summary, metadata, timestamps, closed timestamp, and linked message/task/event
+counts.
 
 ## Output contract
 

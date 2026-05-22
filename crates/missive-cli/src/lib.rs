@@ -11,6 +11,7 @@ use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode,
 
 pub mod agent;
 pub(crate) mod auth;
+pub mod context;
 pub mod output;
 pub mod send;
 pub mod stream;
@@ -209,9 +210,13 @@ pub enum Commands {
 
     /// Manage conversation contexts and session continuity.
     #[command(
-        long_about = "Create, list, fork, close, and export A2A contexts used for conversation and task continuity. Context operations are implemented by a later context ticket."
+        long_about = "Create, list, show, fork, close, and export A2A contexts used for conversation and task continuity. Context ids are persisted in the local store and can be given human-friendly names."
     )]
-    Context,
+    Context {
+        /// Context operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<context::ContextCommands>,
+    },
 
     /// Manage groups of agents for collective operations.
     #[command(
@@ -277,7 +282,7 @@ impl Commands {
             Self::Send(_) => "send",
             Self::Stream(_) => "stream",
             Self::Task { .. } => "task",
-            Self::Context => "context",
+            Self::Context { .. } => "context",
             Self::Group => "group",
             Self::Gateway => "gateway",
             Self::Webhook => "webhook",
@@ -395,6 +400,15 @@ where
         }) => task::execute_task_command(
             task_command,
             &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
+        Some(Commands::Context {
+            command: Some(context_command),
+        }) => context::execute_context_command(
+            context_command,
             &loaded_config,
             environment,
             mode,

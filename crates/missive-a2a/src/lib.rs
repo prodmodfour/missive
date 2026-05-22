@@ -38,7 +38,8 @@ pub mod protocol {
         SubscribeToTaskRequest, TRANSPORT_PROTOCOL_GRPC, TRANSPORT_PROTOCOL_HTTP_JSON,
         TRANSPORT_PROTOCOL_JSONRPC, TRANSPORT_PROTOCOL_SLIMRPC, Task, TaskArtifactUpdateEvent,
         TaskPushNotificationConfig, TaskState, TaskStatus, TaskStatusUpdateEvent,
-        TransportProtocol, VERSION, error_code, methods as jsonrpc_methods, new_message_id,
+        TransportProtocol, VERSION, error_code, methods as jsonrpc_methods, new_context_id,
+        new_message_id,
     };
 }
 

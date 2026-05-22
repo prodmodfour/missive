@@ -69,7 +69,10 @@ strings:
 * agents: `AgentUpsert`, `AgentRecord`, and CRUD methods for registry rows used
   by `missive agent add/list/show/inspect/refresh/remove/rename`, including
   cached Agent Card JSON, ETag, Last-Modified, and fetch timestamp fields
-* contexts: `ContextUpsert`, `ContextRecord`, and CRUD methods for context state
+* contexts: `ContextUpsert`, `ContextRecord`, and CRUD methods for context state;
+  `missive context create/list/show/fork/close/export` uses these rows for
+  human-friendly context names, parent/fork links, local close state, relation
+  counts, and redacted context exports
 * tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state;
   `TaskUpsert::record_a2a_protocol_version` records the selected A2A version in
   both the typed protocol-version column and `a2a.protocol_version` metadata;
@@ -112,8 +115,8 @@ Typed repository APIs exist for the core store tables needed by upcoming tickets
 and the CLI now uses the auth-ref, agent, context, task, message, and event
 repositories for `missive agent` registry commands, public Agent Card cache
 updates, non-streaming `missive send` persistence, streaming `missive stream`
-request/event persistence, and task get/list/wait/cancel state updates.
-Artifact/push-config and adapter-binding repositories, retention enforcement,
-compaction, event replay commands, dedicated artifact export, and broader durable
-A2A protocol persistence beyond current send/stream/task rows are implemented by
-later tickets.
+request/event persistence, task get/list/wait/cancel state updates, and context
+create/list/show/fork/close/export state management. Artifact/push-config and
+adapter-binding repositories, retention enforcement, compaction, event replay
+commands, dedicated artifact export, and broader durable A2A protocol persistence
+beyond current send/stream/task/context rows are implemented by later tickets.

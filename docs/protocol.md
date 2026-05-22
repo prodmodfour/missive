@@ -3,8 +3,10 @@
 `missive` treats A2A as the canonical protocol layer. The current implemented
 protocol behavior covers public Agent Card discovery for registered agents,
 official Rust protocol type integration through `missive-a2a`, local interface
-negotiation, non-streaming `SendMessage` calls for `missive send`, and SSE
-`SendStreamingMessage` calls for `missive stream`.
+negotiation, non-streaming `SendMessage` calls for `missive send`, SSE
+`SendStreamingMessage` calls for `missive stream`, remote task
+`GetTask`/`ListTasks`/`CancelTask`, and local A2A `contextId` continuity
+management through `missive context`.
 
 ## Public Agent Card discovery
 
@@ -55,8 +57,9 @@ The effective protocol defaults come from `[protocol]` or
 `--a2a-extension <EXTENSION>` appends an extension, and the
 `--service-param NAME=VALUE` flag adds or overrides an extra service parameter.
 Current implemented uses are Agent Card discovery/refresh, non-streaming
-`missive send`, and streaming `missive stream`; future task and push clients
-should reuse the same helper so request metadata remains consistent.
+`missive send`, streaming `missive stream`, and remote `missive task`
+get/list/wait/cancel calls; future push clients should reuse the same helper so
+request metadata remains consistent.
 
 When an HTTP response body reports the official A2A
 `VERSION_NOT_SUPPORTED` error code/reason, missive maps it to a protocol error
@@ -78,9 +81,9 @@ repeatable `--header Name:Value` inputs for Agent Card fetch/refresh requests.
 
 Auth resolution is deliberately outside protocol type parsing: config and CLI
 code locate secrets in environment variables or platform keyrings, while the A2A
-client only validates and applies already-resolved headers. `missive send` and
-`missive stream` use the same auth headers for the optional Agent Card fetch and
-the A2A message request.
+client only validates and applies already-resolved headers. `missive send`,
+`missive stream`, and remote `missive task` operations use the same auth headers
+for the optional Agent Card fetch and the A2A request.
 
 ## Interface negotiation
 
@@ -203,6 +206,27 @@ loop treats `completed`, `failed`, `cancelled`, and `input_required` as decisive
 states and returns deterministic process exit codes documented in `docs/cli.md`.
 Timeout is controlled by global `--timeout`; polling cadence is controlled by
 `--interval`.
+
+## Context continuity
+
+A2A contexts are represented by opaque `contextId` values. `missive send` and
+`missive stream` place `--context CONTEXT_ID` on the outbound official A2A
+`Message` and persist the same id on request/response/stream message rows. A2A
+`Task` payloads returned by send, stream, or task operations also persist their
+`contextId` on the local `tasks` table and ensure a matching local context row
+exists.
+
+`missive context` is a local control-plane layer around those ids. It can create
+a local context id before the first send, assign a human-friendly name, list/show
+context records, fork a child context by recording `parent_context_id` and parent
+metadata, mark a context closed locally, and export the context with linked
+messages, tasks, and events. These commands do not introduce a proprietary wire
+protocol and do not call a remote A2A "close context" endpoint; they preserve and
+organize the canonical A2A ids used by implemented message and task calls.
+
+Context export recursively redacts secret-like keys and HTTP authorization
+headers before printing. Dedicated A2A task resubscription, push/webhook updates,
+event replay, and artifact export remain for later tickets.
 
 ## Error mapping
 
