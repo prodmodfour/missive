@@ -2,14 +2,14 @@
 
 `missive` is still early-stage. The current security implementation focuses on
 safe authentication inputs for implemented outbound Agent Card, send, stream,
-broadcast, task, and push requests, redaction at output boundaries, and keeping
-runtime state out of the repository.
+broadcast, barrier polling, task, and push requests, redaction at output
+boundaries, and keeping runtime state out of the repository.
 
 ## Authentication inputs
 
 Implemented outbound A2A HTTP requests (`agent inspect` when it fetches,
-`agent refresh`, `send`, `stream`, `bcast`, remote `task`, and `push` operations)
-can receive auth material from three sources:
+`agent refresh`, `send`, `stream`, `bcast`, `barrier`, remote `task`, and `push`
+operations) can receive auth material from three sources:
 
 1. Config auth refs linked from an agent with `auth_ref = "name"`.
 2. `--bearer-token-env ENV`, which reads `ENV` and sends
@@ -50,9 +50,9 @@ parse keyring refs but fail clearly if a keyring-backed token is needed.
 Precedence for a single request is: config auth ref first,
 `--bearer-token-env` second, and repeated `--header` values last. Later values
 replace earlier values with the same HTTP header name. `missive send`,
-`missive stream`, `missive bcast`, remote `missive task`, and `missive push`
-operations apply the resolved headers to the optional Agent Card fetch and to the
-A2A protocol request.
+`missive stream`, `missive bcast`, remote `missive barrier` polling, remote
+`missive task`, and `missive push` operations apply the resolved headers to the
+optional Agent Card fetch and to the A2A protocol request.
 
 ## Storage tradeoffs
 
@@ -86,7 +86,7 @@ same output redaction and also redact raw message, task, and event payload JSON
 before including those records in stdout. Event producers created in current CLI
 paths store redacted event payloads for agent registry changes, send/stream/bcast
 requests, send responses, streaming updates, changed remote task records,
-broadcast lifecycle/member results, and push notification config
+broadcast and barrier lifecycle/member results, and push notification config
 create/get/list/delete operations. `missive push` also redacts
 `authentication.credentials` before persisting local `push_configs.remote_config_json` rows.
 

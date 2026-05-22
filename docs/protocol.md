@@ -5,7 +5,8 @@ protocol behavior covers public Agent Card discovery for registered agents,
 official Rust protocol type integration through `missive-a2a`, local interface
 negotiation, non-streaming `SendMessage` calls for `missive send` and
 `missive bcast`, SSE `SendStreamingMessage` calls for `missive stream`, remote
-task `GetTask`/`ListTasks`/`CancelTask`, and local A2A `contextId` continuity
+task `GetTask`/`ListTasks`/`CancelTask`, barrier `GetTask` polling for group
+member tasks, and local A2A `contextId` continuity
 management through `missive context`.
 
 ## Public Agent Card discovery
@@ -57,8 +58,8 @@ The effective protocol defaults come from `[protocol]` or
 `--a2a-extension <EXTENSION>` appends an extension, and the
 `--service-param NAME=VALUE` flag adds or overrides an extra service parameter.
 Current implemented uses are Agent Card discovery/refresh, non-streaming
-`missive send`, streaming `missive stream`, and remote `missive task`
-get/list/wait/cancel calls; future push clients should reuse the same helper so
+`missive send`, `missive bcast`, streaming `missive stream`, remote `missive task`
+get/list/wait/cancel calls, barrier remote polling, and push-config calls so
 request metadata remains consistent.
 
 When an HTTP response body reports the official A2A
@@ -82,8 +83,9 @@ repeatable `--header Name:Value` inputs for Agent Card fetch/refresh requests.
 Auth resolution is deliberately outside protocol type parsing: config and CLI
 code locate secrets in environment variables or platform keyrings, while the A2A
 client only validates and applies already-resolved headers. `missive send`,
-`missive stream`, and remote `missive task` operations use the same auth headers
-for the optional Agent Card fetch and the A2A request.
+`missive stream`, `missive bcast`, `missive barrier` remote polling, remote
+`missive task`, and push operations use the same auth headers for the optional
+Agent Card fetch and the A2A request.
 
 ## Interface negotiation
 
@@ -151,6 +153,33 @@ when one is present or a local synthetic response row when the task has no statu
 message. Broadcasts additionally append redacted `missive.bcast.started`,
 `missive.bcast.member.*`, and `missive.bcast.completed` events around the normal
 per-member `a2a.send.*` events.
+
+## Barrier GetTask polling
+
+`missive barrier <group> --context <id>` is a collective synchronization command
+that consumes locally persisted tasks for group members in one context. When
+`--local` is not supplied, known task ids are refreshed with the A2A `GetTask`
+operation before each barrier decision. Task ids can come from the latest local
+task row per member/context or from a previous `missive bcast --json` document
+passed with `--from-bcast PATH_OR_-`.
+
+Transport mapping is the same as `missive task get`:
+
+* `http+json` calls `GET <interface>/tasks/{id}`.
+* `json-rpc` posts method `GetTask` to the selected JSON-RPC interface URL.
+
+Barrier polling sends A2A service-parameter headers and resolved auth headers,
+uses cached Agent Cards/interfaces where available, and persists changed remote
+`Task` payloads back into the same `tasks` and `artifacts` tables used by task
+commands. Changed remote tasks append redacted `a2a.task.updated` events with
+`observed_by: "barrier"`. The collective itself appends redacted
+`missive.barrier.started`, `missive.barrier.member.*`, and
+`missive.barrier.completed` events.
+
+Default barrier semantics wait for terminal task states while only `completed`
+counts toward successful quorum. Explicit `--state` values become the satisfying
+states. Non-requested failed/cancelled states map to deterministic task exit
+codes unless quorum has already been reached under `--failure-policy continue`.
 
 ## Streaming SendStreamingMessage
 

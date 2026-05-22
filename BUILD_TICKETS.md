@@ -1059,7 +1059,7 @@ Validation:
 
 ## 035 — Implement barrier collective
 
-Status: TODO
+Status: DONE
 
 Phase: Collectives
 

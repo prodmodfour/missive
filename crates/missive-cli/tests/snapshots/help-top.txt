@@ -10,6 +10,7 @@ Commands:
   context     Manage conversation contexts and session continuity
   group       Manage groups of agents for collective operations
   bcast       Broadcast one message to every member of a local group
+  barrier     Wait for group member tasks to reach terminal or requested states
   gateway     Run and manage the local missive gateway daemon
   webhook     Receive A2A push notification callbacks locally
   push        Manage A2A push notification configurations

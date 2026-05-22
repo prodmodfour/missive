@@ -12,6 +12,7 @@ use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode,
 pub mod agent;
 pub(crate) mod artifact;
 pub(crate) mod auth;
+pub(crate) mod barrier;
 pub(crate) mod bcast;
 pub mod context;
 pub mod events;
@@ -38,7 +39,7 @@ pub const BINARY_NAME: &str = missive_core::PROJECT_NAME;
 /// Short description of this crate's target responsibility.
 pub const CRATE_PURPOSE: &str = "command parsing, output rendering, and exit codes";
 
-const REQUIRED_SUBCOMMANDS: [&str; 15] = [
+const REQUIRED_SUBCOMMANDS: [&str; 16] = [
     "agent",
     "send",
     "stream",
@@ -46,6 +47,7 @@ const REQUIRED_SUBCOMMANDS: [&str; 15] = [
     "context",
     "group",
     "bcast",
+    "barrier",
     "gateway",
     "webhook",
     "push",
@@ -242,6 +244,12 @@ pub enum Commands {
     )]
     Bcast(bcast::BcastArgs),
 
+    /// Wait for group member tasks to reach terminal or requested states.
+    #[command(
+        long_about = "Wait for tasks associated with every registered member of a local group and one shared A2A context to reach terminal states or explicitly requested states, optionally consuming a previous bcast JSON result for task ids."
+    )]
+    Barrier(barrier::BarrierArgs),
+
     /// Run and manage the local missive gateway daemon.
     #[command(
         long_about = "Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, background jobs, and optional OS service installation. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while service commands generate or call Linux systemd and macOS launchd supervision where supported."
@@ -319,6 +327,7 @@ impl Commands {
             Self::Context { .. } => "context",
             Self::Group { .. } => "group",
             Self::Bcast(_) => "bcast",
+            Self::Barrier(_) => "barrier",
             Self::Gateway { .. } => "gateway",
             Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
@@ -354,7 +363,7 @@ pub fn workspace_crates() -> [missive_core::CrateInfo; 8] {
 
 /// Returns the required top-level subcommands for tests and documentation checks.
 #[must_use]
-pub const fn required_subcommands() -> [&'static str; 15] {
+pub const fn required_subcommands() -> [&'static str; 16] {
     REQUIRED_SUBCOMMANDS
 }
 
@@ -465,6 +474,15 @@ where
             group::execute_group_command(group_command, &loaded_config, environment, mode, writer)
         }
         Some(Commands::Bcast(args)) => bcast::execute_bcast_command(
+            args,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            input,
+            writer,
+        ),
+        Some(Commands::Barrier(args)) => barrier::execute_barrier_command(
             args,
             &cli.globals,
             &loaded_config,

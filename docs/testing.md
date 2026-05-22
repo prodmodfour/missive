@@ -122,6 +122,7 @@ cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
 cargo test -p missive-cli --test push_command --all-features
 cargo test -p missive-cli --test group_command --all-features
 cargo test -p missive-cli --test bcast_command --all-features
+cargo test -p missive-cli --test barrier_command --all-features
 cargo test -p missive-cli --test gateway_command --all-features
 cargo test -p missive-cli --test webhook_command --all-features
 ```
@@ -141,7 +142,7 @@ rank handling, rename membership preservation, delete cascades, missing referenc
 validation, and human output. The broadcast collective integration test uses
 isolated state plus reusable mock A2A servers to cover concurrent success,
 partial failure, timeout through delayed SendMessage responses, per-member
-task/message persistence, request shape, and `missive.bcast.*` event rows. The gateway command integration test spawns the
+task/message persistence, request shape, and `missive.bcast.*` event rows. The barrier collective integration test covers consuming `bcast_result` JSON from stdin, remote GetTask polling to terminal completion, local terminal failure/cancellation exit codes, quorum with `--failure-policy continue`, requested non-terminal states, timeout handling, task persistence, and `missive.barrier.*` event rows. The gateway command integration test spawns the
 `missive` binary, waits for the local `/healthz` endpoint, checks `/status`
 component JSON over loopback HTTP, verifies graceful `--timeout` shutdown,
 checks NDJSON lifecycle output, and inspects persisted `missive.gateway.*` event

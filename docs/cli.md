@@ -6,9 +6,9 @@ rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive group
-create/list/show/add/remove/rename/delete`, `missive bcast`, `missive push
-create/get/list/delete`, `missive webhook run`, `missive gateway run`, and
-`missive gateway install/start/stop/status/uninstall`; other top-level commands
+create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
+`missive push create/get/list/delete`, `missive webhook run`, `missive gateway
+run`, and `missive gateway install/start/stop/status/uninstall`; other top-level commands
 still emit skeletal parsed status until their ordered tickets land.
 
 Run help with:
@@ -22,6 +22,7 @@ missive task --help
 missive context --help
 missive group --help
 missive bcast --help
+missive barrier --help
 missive push --help
 missive gateway --help
 missive gateway run --help
@@ -60,12 +61,12 @@ locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
 requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
-Agent Card HTTP requests plus implemented send, stream, bcast, remote task, and
-push config calls. `missive webhook run` records the effective protocol version
-on inbound callback events when the callback omits `A2A-Version`. Task wait,
-bcast, webhook run, and gateway run use global `--timeout` as bounded execution
-budgets; tracing and broader command-specific timeout semantics are
-intentionally left to their ordered implementation tickets.
+Agent Card HTTP requests plus implemented send, stream, bcast, barrier remote
+task polling, remote task, and push config calls. `missive webhook run` records
+the effective protocol version on inbound callback events when the callback omits
+`A2A-Version`. Task wait, bcast, barrier, webhook run, and gateway run use global
+`--timeout` as bounded execution budgets; tracing and broader command-specific
+timeout semantics are intentionally left to their ordered implementation tickets.
 
 ## Top-level commands
 
@@ -79,6 +80,7 @@ task        Inspect, list, wait for, or cancel A2A tasks
 context     Manage conversation contexts and session continuity
 group       Manage groups of agents for collective operations
 bcast       Broadcast one message to every member of a local group
+barrier     Wait for group member tasks to reach terminal or requested states
 gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
@@ -553,10 +555,53 @@ interface, response shape, response message id, task id, context id, mapped task
 state, or a structured error report.
 
 Current limitations: `bcast` is non-streaming and does not wait for returned
-tasks to finish. Use `missive task wait` on returned task ids, and later barrier,
-gather, and reduce tickets will add dedicated collective follow-up operations.
+tasks to finish. Use `missive barrier` for group task synchronization. Later
+gather and reduce tickets will add output collection and reduction operations.
 Concurrent mode does not cancel already-started worker threads after another
 member fails; it reports all completed member outcomes in the summary.
+
+## Barrier collective
+
+`missive barrier <group> --context <id>` waits for group member tasks in one
+shared A2A context to reach terminal states. By default it succeeds only when the
+required members are `completed`; `failed` and `cancelled` terminal states produce
+stable task exit codes after printing a `barrier_result` summary.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive barrier team --context ctx-planning-round --json
+MISSIVE_HOME=/tmp/missive-demo missive barrier team \
+  --context ctx-planning-round \
+  --required 2 \
+  --failure-policy continue \
+  --timeout 2m \
+  --interval 2s \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive bcast team "Draft a plan" --json > bcast.json
+MISSIVE_HOME=/tmp/missive-demo missive barrier team --from-bcast bcast.json --json
+```
+
+`--from-bcast PATH_OR_-` reads a previous `missive bcast --json` result and uses
+its shared context id plus per-member task ids. Use `-` to read that JSON from
+stdin. If `--context` is also supplied, it must match the broadcast result.
+
+`--state STATE` is repeatable and changes the states that satisfy the barrier;
+for example `--state working` can wait for in-progress tasks during tests or
+custom workflows. `--required N` sets the quorum and defaults to all group
+members. `--failure-policy stop` is the default and exits as soon as a
+non-requested failure/cancellation is observed. `--failure-policy continue`
+keeps polling until the quorum is reached, becomes impossible, or times out.
+`--local` reads only the local SQLite task rows; otherwise the command refreshes
+known task ids with A2A `GetTask` using the same auth, service-parameter, Agent
+Card cache, and interface negotiation path as remote task commands.
+
+Machine-readable output uses `kind: "barrier_result"` and includes the operation
+id, group, context id, target/success states, quorum, counts, attempts, timeout
+and interval, and one member row per group member. Member rows include agent,
+rank, status, task id, state, selected interface when remote polling occurred,
+and structured errors. Exit codes are `0` for success, `80` for failed member
+tasks or impossible quorum, `81` for cancellation, and `82` for timeout.
 
 ## Push notification config commands
 

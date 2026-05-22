@@ -95,8 +95,9 @@ strings:
   the selected A2A version in event metadata. Current CLI producers append
   redacted rows for agent registry mutations, group CRUD/membership mutations,
   broadcast collective `missive.bcast.*` lifecycle/member/completion events,
+  barrier collective `missive.barrier.*` lifecycle/member/completion events,
   A2A send/stream requests, A2A send responses, `a2a.stream.*` updates, changed
-  remote task payloads observed by send/task/bcast commands, push-config CRUD, gateway
+  remote task payloads observed by send/task/bcast/barrier commands, push-config CRUD, gateway
   daemon lifecycle start/stop events, gateway subscription lifecycle and
   `a2a.subscription.*` updates, and webhook callback acceptance/rejection events.
   `missive events list/tail/replay/export` reads these rows without hand-written
@@ -134,9 +135,9 @@ persistence, streaming `missive stream` request/event/artifact persistence, task
 get/list/wait/cancel state updates, `missive task artifact` local export
 commands, context create/list/show/fork/close/export state management, group
 create/list/show/add/remove/rename/delete state management, broadcast collective
-context/task/message/event persistence, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
+context/task/message/event persistence, barrier collective task/artifact/event persistence, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
 gateway task subscription/resume job state and event persistence, webhook
 callback event persistence, and event journal list/tail/replay/export.
 Adapter-binding repositories, retention enforcement, compaction, and durable
-event producers for future barrier/gather/reduce collective workers, background
+event producers for future gather/reduce collective workers, background
 jobs, and adapter callbacks are implemented by later tickets.

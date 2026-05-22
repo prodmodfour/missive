@@ -57,6 +57,10 @@ fn key_subcommand_help_snapshots_are_stable() {
             include_str!("snapshots/help-bcast.txt"),
         ),
         (
+            &["missive", "barrier", "--help"],
+            include_str!("snapshots/help-barrier.txt"),
+        ),
+        (
             &["missive", "gateway", "--help"],
             include_str!("snapshots/help-gateway.txt"),
         ),
