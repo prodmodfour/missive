@@ -96,6 +96,7 @@ strings:
   redacted rows for agent registry mutations, group CRUD/membership mutations,
   broadcast collective `missive.bcast.*` lifecycle/member/completion events,
   barrier collective `missive.barrier.*` lifecycle/member/completion events,
+  gather collective `missive.gather.*` lifecycle/member/completion events,
   A2A send/stream requests, A2A send responses, `a2a.stream.*` updates, changed
   remote task payloads observed by send/task/bcast/barrier commands, push-config CRUD, gateway
   daemon lifecycle start/stop events, gateway subscription lifecycle and
@@ -135,9 +136,10 @@ persistence, streaming `missive stream` request/event/artifact persistence, task
 get/list/wait/cancel state updates, `missive task artifact` local export
 commands, context create/list/show/fork/close/export state management, group
 create/list/show/add/remove/rename/delete state management, broadcast collective
-context/task/message/event persistence, barrier collective task/artifact/event persistence, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
+context/task/message/event persistence, barrier collective task/artifact/event persistence,
+gather collective local context/task/message/artifact/event reads plus safe artifact export, push notification config create/get/list/delete state, gateway daemon lifecycle event persistence,
 gateway task subscription/resume job state and event persistence, webhook
 callback event persistence, and event journal list/tail/replay/export.
 Adapter-binding repositories, retention enforcement, compaction, and durable
-event producers for future gather/reduce collective workers, background
-jobs, and adapter callbacks are implemented by later tickets.
+event producers for future reduce collective workers, background jobs, and
+adapter callbacks are implemented by later tickets.

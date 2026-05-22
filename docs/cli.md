@@ -7,9 +7,10 @@ commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive group
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
-`missive push create/get/list/delete`, `missive webhook run`, `missive gateway
-run`, and `missive gateway install/start/stop/status/uninstall`; other top-level commands
-still emit skeletal parsed status until their ordered tickets land.
+`missive gather`, `missive push create/get/list/delete`, `missive webhook run`,
+`missive gateway run`, and `missive gateway install/start/stop/status/uninstall`;
+other top-level commands still emit skeletal parsed status until their ordered
+tickets land.
 
 Run help with:
 
@@ -23,6 +24,7 @@ missive context --help
 missive group --help
 missive bcast --help
 missive barrier --help
+missive gather --help
 missive push --help
 missive gateway --help
 missive gateway run --help
@@ -81,6 +83,7 @@ context     Manage conversation contexts and session continuity
 group       Manage groups of agents for collective operations
 bcast       Broadcast one message to every member of a local group
 barrier     Wait for group member tasks to reach terminal or requested states
+gather      Gather latest local outputs and artifacts from group member tasks
 gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
@@ -555,10 +558,11 @@ interface, response shape, response message id, task id, context id, mapped task
 state, or a structured error report.
 
 Current limitations: `bcast` is non-streaming and does not wait for returned
-tasks to finish. Use `missive barrier` for group task synchronization. Later
-gather and reduce tickets will add output collection and reduction operations.
-Concurrent mode does not cancel already-started worker threads after another
-member fails; it reports all completed member outcomes in the summary.
+tasks to finish. Use `missive barrier` for group task synchronization and
+`missive gather` for local output/artifact collection. A later reduce ticket will
+add reduction operations. Concurrent mode does not cancel already-started worker
+threads after another member fails; it reports all completed member outcomes in
+the summary.
 
 ## Barrier collective
 
@@ -602,6 +606,39 @@ and interval, and one member row per group member. Member rows include agent,
 rank, status, task id, state, selected interface when remote polling occurred,
 and structured errors. Exit codes are `0` for success, `80` for failed member
 tasks or impossible quorum, `81` for cancellation, and `82` for timeout.
+
+## Gather collective
+
+`missive gather <group> --context <id>` reads the selected profile's local
+SQLite store and collects the latest known task output plus artifacts for each
+group member in rank order. It does not call remote A2A endpoints; run
+`missive barrier` or `missive task get --remote` first when the local store needs
+to be refreshed.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive gather team --context ctx-planning-round
+MISSIVE_HOME=/tmp/missive-demo missive gather team --context ctx-planning-round --json
+MISSIVE_HOME=/tmp/missive-demo missive gather team --context ctx-planning-round --ndjson
+MISSIVE_HOME=/tmp/missive-demo missive gather team \
+  --context ctx-planning-round \
+  --output-dir ./gathered-artifacts \
+  --json
+```
+
+Human output is markdown. Machine-readable output uses `kind: "gather_result"`
+and includes the operation id, group, context id, status, member/message/artifact
+counts, and one member row per group member. Member rows include agent, rank,
+`status` (`gathered`, `missing_task`, or `empty_output`), task summary, selected
+text, non-request output message summaries, artifact summaries, and exported
+artifact records when file export is requested. Missing tasks are represented in
+the summary instead of causing a command failure.
+
+`--output-dir DIR` exports gathered artifacts to local files using sanitized,
+rank-prefixed deterministic names. Existing files are not overwritten unless
+`--force` is supplied. URL/file-reference artifacts are exported as JSON
+manifests, matching `missive task artifact export` behavior.
 
 ## Push notification config commands
 

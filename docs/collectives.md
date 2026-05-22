@@ -1,8 +1,8 @@
 # Collectives
 
 `missive` collective commands coordinate groups of registered A2A agents. The
-currently implemented collectives are broadcast and barrier; gather and reduce
-remain future ordered tickets and are not available yet.
+currently implemented collectives are broadcast, barrier, and gather; reduce
+remains a future ordered ticket and is not available yet.
 
 ## Broadcast: `missive bcast`
 
@@ -100,10 +100,53 @@ structured errors.
 Barrier exits are deterministic: success `0`, failed or impossible quorum `80`,
 cancelled `81`, and timeout `82`.
 
+## Gather: `missive gather`
+
+`missive gather <group> --context <id>` collects the latest locally known task
+output and persisted artifacts for every group member in deterministic rank
+order. It is intended to follow `bcast` and `barrier`, or any workflow that has
+already populated local task/message/artifact rows.
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive gather team --context ctx-planning-round
+MISSIVE_HOME=/tmp/missive-demo missive gather team --context ctx-planning-round --json
+MISSIVE_HOME=/tmp/missive-demo missive gather team --context ctx-planning-round --ndjson
+MISSIVE_HOME=/tmp/missive-demo missive gather team \
+  --context ctx-planning-round \
+  --output-dir ./gathered-artifacts \
+  --json
+```
+
+Behavior:
+
+* member order follows deterministic group rank order
+* the latest local task row for each member/context is selected by updated time,
+  with task id as a deterministic tie-breaker
+* output text is chosen from the latest persisted non-request message for the
+  task, then the task status message, then the first text artifact preview
+* missing tasks are represented as member rows with `status: "missing_task"`
+  rather than causing the whole command to fail
+* known tasks with no text, messages, or artifacts are represented with
+  `status: "empty_output"`
+* human output is markdown; machine output uses `kind: "gather_result"` for both
+  `--json` and single-line `--ndjson`
+* `--output-dir DIR` writes gathered artifacts with sanitized, rank-prefixed,
+  deterministic filenames and refuses to overwrite existing files unless
+  `--force` is supplied
+* lifecycle and member events are appended as `missive.gather.*`
+
+Machine output includes the operation id, group, context id, status, member
+counts, message/artifact/export counts, and one member row per rank. Member rows
+include agent alias, rank, status, task summary, selected text, output message
+summaries, artifact summaries, and artifact export records when used.
+
 ## Current limitations
 
 `bcast` does not stream responses. `barrier` synchronizes task state but does not
-collect outputs or artifacts; use task/artifact commands directly until gather is
-implemented. Gather and reduce are not implemented yet. Concurrent broadcast mode
-does not cancel already-started worker threads when another member fails; it
-reports all completed outcomes in the summary.
+collect outputs or artifacts by itself; run `gather` afterward to collect the
+latest local outputs. `gather` is local-only and does not refresh remote task
+state, subscribe to tasks, or reduce/summarize member outputs. Run `barrier` or
+`task get --remote` first when fresh remote state is required. Reduce is not
+implemented yet. Concurrent broadcast mode does not cancel already-started worker
+threads when another member fails; it reports all completed outcomes in the
+summary.

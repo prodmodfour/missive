@@ -159,14 +159,14 @@ struct ArtifactShowOutput {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-struct ArtifactSavedView {
-    artifact_id: String,
-    task_id: String,
-    path: String,
-    bytes_written: u64,
-    kind: String,
+pub(crate) struct ArtifactSavedView {
+    pub(crate) artifact_id: String,
+    pub(crate) task_id: String,
+    pub(crate) path: String,
+    pub(crate) bytes_written: u64,
+    pub(crate) kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    mime_type: Option<String>,
+    pub(crate) mime_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -741,7 +741,7 @@ fn resolve_single_output_path(record: &ArtifactRecord, output: &Path) -> Result<
     Ok(output.to_path_buf())
 }
 
-fn write_artifact_to_path(
+pub(crate) fn write_artifact_to_path(
     record: &ArtifactRecord,
     path: &Path,
     force: bool,
@@ -781,7 +781,7 @@ fn write_artifact_to_path(
     })
 }
 
-fn safe_file_name(record: &ArtifactRecord) -> Result<String> {
+pub(crate) fn safe_file_name(record: &ArtifactRecord) -> Result<String> {
     let payload = artifact_payload(record)?;
     let preferred = record
         .name

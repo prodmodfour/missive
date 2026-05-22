@@ -6,8 +6,8 @@ official Rust protocol type integration through `missive-a2a`, local interface
 negotiation, non-streaming `SendMessage` calls for `missive send` and
 `missive bcast`, SSE `SendStreamingMessage` calls for `missive stream`, remote
 task `GetTask`/`ListTasks`/`CancelTask`, barrier `GetTask` polling for group
-member tasks, and local A2A `contextId` continuity
-management through `missive context`.
+member tasks, local gather output/artifact collection from persisted A2A task
+state, and local A2A `contextId` continuity management through `missive context`.
 
 ## Public Agent Card discovery
 
@@ -180,6 +180,22 @@ Default barrier semantics wait for terminal task states while only `completed`
 counts toward successful quorum. Explicit `--state` values become the satisfying
 states. Non-requested failed/cancelled states map to deterministic task exit
 codes unless quorum has already been reached under `--failure-policy continue`.
+
+## Gather local output collection
+
+`missive gather <group> --context <id>` does not make A2A network calls. It reads
+the selected profile's local `tasks`, `messages`, and `artifacts` rows and
+collects the latest local task for each group member in deterministic rank order.
+If the selected context row is absent, gather creates a local context row so the
+journal can link `missive.gather.*` events to that context.
+
+The text selected for each member comes from the latest persisted non-request
+message linked to the gathered task, then the task status message in stored A2A
+`Task` JSON, then the first text artifact. Persisted artifacts are rendered with
+the same summaries as `missive task artifact` commands. `--output-dir` exports
+those already persisted artifacts with safe rank-prefixed filenames; it never
+dereferences URL/file-reference artifacts and instead writes their JSON manifest
+shape.
 
 ## Streaming SendStreamingMessage
 

@@ -1,27 +1,21 @@
-missive is a local control-plane CLI for A2A-native agent communication. The command tree and global flags are stable, and operational behavior is being implemented ticket by ticket.
+Collect the latest locally known task output and persisted artifacts for every registered member of a local group in one shared A2A context. Human output is markdown; --json and --ndjson provide machine-readable summaries, and --output-dir safely exports artifacts.
 
-Usage: missive [OPTIONS] [COMMAND]
+Usage: missive gather [OPTIONS] --context <CONTEXT_ID> <GROUP>
 
-Commands:
-  agent       Manage configured A2A agents and cached Agent Cards
-  send        Send one message to an A2A agent
-  stream      Stream message updates from an A2A agent
-  task        Inspect, list, wait for, or cancel A2A tasks
-  context     Manage conversation contexts and session continuity
-  group       Manage groups of agents for collective operations
-  bcast       Broadcast one message to every member of a local group
-  barrier     Wait for group member tasks to reach terminal or requested states
-  gather      Gather latest local outputs and artifacts from group member tasks
-  gateway     Run and manage the local missive gateway daemon
-  webhook     Receive A2A push notification callbacks locally
-  push        Manage A2A push notification configurations
-  doctor      Diagnose local configuration, storage, gateway, and endpoint health
-  logs        Inspect local missive logs
-  events      Inspect, tail, replay, or export the local event journal
-  completion  Generate shell completion scripts
-  manpage     Generate manual pages
+Arguments:
+  <GROUP>
+          Local group name whose member outputs should be gathered
 
 Options:
+      --context <CONTEXT_ID>
+          A2A context id shared by the member tasks
+
+  -o, --output-dir <DIR>
+          Export gathered artifacts into this directory using safe deterministic filenames
+
+      --force
+          Overwrite existing artifact export files in --output-dir
+
   -h, --help
           Print help (see a summary with '-h')
 

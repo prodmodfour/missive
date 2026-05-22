@@ -86,8 +86,8 @@ same output redaction and also redact raw message, task, and event payload JSON
 before including those records in stdout. Event producers created in current CLI
 paths store redacted event payloads for agent registry changes, send/stream/bcast
 requests, send responses, streaming updates, changed remote task records,
-broadcast and barrier lifecycle/member results, and push notification config
-create/get/list/delete operations. `missive push` also redacts
+broadcast, barrier, and gather lifecycle/member results, and push notification
+config create/get/list/delete operations. `missive push` also redacts
 `authentication.credentials` before persisting local `push_configs.remote_config_json` rows.
 
 Redaction is a guardrail, not a substitute for secret hygiene. Do not place real
@@ -98,7 +98,7 @@ raw A2A artifact JSON before export-time redaction; event rows are intended to b
 redacted but should still be treated as operational history. Keep profile state
 directories outside the repository and protect them like local application data.
 
-## Local file inputs
+## Local file inputs and artifact exports
 
 `missive send`, `missive stream`, and `missive bcast` validate `--file` and
 `--file-bytes` paths by canonicalizing them and requiring regular local files
@@ -109,6 +109,11 @@ the remote A2A agent and in local SQLite request-message rows. Use
 attach files you are willing to send to that agent. Both forms are bounded by the
 selected profile's `qos.max_request_bytes`; streaming/chunked upload is not
 implemented yet.
+
+`missive gather --output-dir` exports already persisted artifacts using sanitized,
+rank-prefixed filenames and refuses to overwrite existing files unless `--force`
+is supplied. Remote URL/file-reference artifacts are exported as JSON manifests
+rather than fetched from untrusted locations.
 
 ## Push callback authentication
 

@@ -17,6 +17,7 @@ pub(crate) mod bcast;
 pub mod context;
 pub mod events;
 pub mod gateway;
+pub(crate) mod gather;
 pub mod group;
 pub mod output;
 pub mod push;
@@ -39,7 +40,7 @@ pub const BINARY_NAME: &str = missive_core::PROJECT_NAME;
 /// Short description of this crate's target responsibility.
 pub const CRATE_PURPOSE: &str = "command parsing, output rendering, and exit codes";
 
-const REQUIRED_SUBCOMMANDS: [&str; 16] = [
+const REQUIRED_SUBCOMMANDS: [&str; 17] = [
     "agent",
     "send",
     "stream",
@@ -48,6 +49,7 @@ const REQUIRED_SUBCOMMANDS: [&str; 16] = [
     "group",
     "bcast",
     "barrier",
+    "gather",
     "gateway",
     "webhook",
     "push",
@@ -250,6 +252,12 @@ pub enum Commands {
     )]
     Barrier(barrier::BarrierArgs),
 
+    /// Gather latest local outputs and artifacts from group member tasks.
+    #[command(
+        long_about = "Collect the latest locally known task output and persisted artifacts for every registered member of a local group in one shared A2A context. Human output is markdown; --json and --ndjson provide machine-readable summaries, and --output-dir safely exports artifacts."
+    )]
+    Gather(gather::GatherArgs),
+
     /// Run and manage the local missive gateway daemon.
     #[command(
         long_about = "Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, background jobs, and optional OS service installation. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while service commands generate or call Linux systemd and macOS launchd supervision where supported."
@@ -328,6 +336,7 @@ impl Commands {
             Self::Group { .. } => "group",
             Self::Bcast(_) => "bcast",
             Self::Barrier(_) => "barrier",
+            Self::Gather(_) => "gather",
             Self::Gateway { .. } => "gateway",
             Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
@@ -363,7 +372,7 @@ pub fn workspace_crates() -> [missive_core::CrateInfo; 8] {
 
 /// Returns the required top-level subcommands for tests and documentation checks.
 #[must_use]
-pub const fn required_subcommands() -> [&'static str; 16] {
+pub const fn required_subcommands() -> [&'static str; 17] {
     REQUIRED_SUBCOMMANDS
 }
 
@@ -491,6 +500,9 @@ where
             input,
             writer,
         ),
+        Some(Commands::Gather(args)) => {
+            gather::execute_gather_command(args, &loaded_config, environment, mode, writer)
+        }
         Some(Commands::Gateway {
             command: Some(gateway_command),
         }) => gateway::execute_gateway_command(

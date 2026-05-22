@@ -1088,7 +1088,7 @@ Validation:
 
 ## 036 — Implement gather collective
 
-Status: TODO
+Status: DONE
 
 Phase: Collectives
 
