@@ -10,6 +10,21 @@ description = "Adapter scaffolding for missive ingress and egress."
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+external-chat-stubs = [
+    "adapter-discord",
+    "adapter-email",
+    "adapter-matrix",
+    "adapter-slack",
+    "adapter-telegram",
+]
+adapter-discord = []
+adapter-email = []
+adapter-matrix = []
+adapter-slack = []
+adapter-telegram = []
+
 [dependencies]
 missive-core.workspace = true
 serde.workspace = true

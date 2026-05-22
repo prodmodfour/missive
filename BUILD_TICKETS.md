@@ -1414,7 +1414,7 @@ Validation:
 
 ## 047 — Add external chat adapter stubs and roadmap
 
-Status: TODO
+Status: DONE
 
 Phase: Adapters
 

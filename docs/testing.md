@@ -196,7 +196,11 @@ output frame sequencing, file-drop schema validation, atomic ready-file handoff,
 file-drop registry creation, and fake/stdio/file-drop adapters that map identity,
 emit lifecycle/inbound-message events, accept outbound updates, and record
 acknowledgements. HTTP adapter unit tests cover `missive.http.v1` frame
-validation, adapter registry creation, and inbound-message mapping. `crates/missive-cli` also has `adapter_stdio_command`
+validation, adapter registry creation, and inbound-message mapping. External chat
+stub unit tests cover the static Discord/Slack/Telegram/Matrix/Email roadmap
+metadata, feature-gated factory registration in all-features builds, no-default
+feature compilation with no external factories enabled, deterministic identity
+mapping, and explicit configuration errors for live runtime operations. `crates/missive-cli` also has `adapter_stdio_command`
 integration coverage for valid long-running task frames, invalid frame recovery,
 and wrapped streaming NDJSON output through the reusable local A2A mock server,
 plus `adapter_file_drop_command` coverage for temp-directory handoff, ignored

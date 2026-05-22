@@ -2,7 +2,7 @@
 
 Adapters are the boundary between external/local message sources and missive's gateway control plane. They are not agent frameworks and they do not replace A2A; adapters translate source input into missive gateway events and receive redacted gateway updates that can be rendered back to the source.
 
-The shared trait and registry are in place. The current concrete adapters are foreground `stdio`, foreground `file-drop`, and an opt-in daemon-mounted `http` inbound control endpoint. External chat adapters remain later tickets.
+The shared trait and registry are in place. The current concrete adapters are foreground `stdio`, foreground `file-drop`, and an opt-in daemon-mounted `http` inbound control endpoint. Discord, Slack, Telegram, Matrix, and Email are represented by feature-gated compileable stubs only; see the [external adapter roadmap](adapter-roadmap.md) for required secrets, permissions, platform behaviours, and design boundaries.
 
 ## Crate contract
 
@@ -19,8 +19,9 @@ The shared trait and registry are in place. The current concrete adapters are fo
 * `StdioAdapter`, `StdioInputFrame`, `StdioOutputFrame`, and frame helpers — the built-in stdin/stdout JSON/NDJSON adapter boundary.
 * `FileDropAdapter`, `FileDropInputFile`, `FileDropOutputFile`, `FileDropPaths`, and handoff helpers — the built-in local directory adapter boundary.
 * `HttpAdapter`, `HttpInputFrame`, and `HttpFrameSource` — the built-in local HTTP control-message schema and adapter-event mapping used by `missive gateway run --http-adapter`.
+* `ExternalChatStubAdapter`, `ExternalChatPlatform`, and `register_external_chat_adapter_stubs` — feature-gated placeholders for the `discord`, `slack`, `telegram`, `matrix`, and `email` adapter kinds.
 
-The registry is intentionally generic. The built-in factories can be registered with `register_stdio_adapter`, `register_file_drop_adapter`, and `register_http_adapter`. External chat/platform adapters should stay feature-gated or stubbed until their own ticket.
+The registry is intentionally generic. The built-in factories can be registered with `register_stdio_adapter`, `register_file_drop_adapter`, and `register_http_adapter`. External chat/platform placeholder factories are registered with `register_external_chat_adapter_stubs` only when the relevant `missive-adapters` crate features are enabled; they do not connect to third-party services.
 
 ## Configuration schema
 
@@ -53,7 +54,7 @@ processed = "/var/tmp/missive-drop/processed"
 error = "/var/tmp/missive-drop/error"
 ```
 
-Core config validation checks adapter names and kinds, optional `session_profile` references, busy-input overrides, and metadata key shape. `missive-adapters` converts validated config entries into `AdapterDefinition` values and can filter disabled adapters before startup.
+Core config validation checks adapter names and kinds, optional `session_profile` references, busy-input overrides, and metadata key shape. `missive-adapters` converts validated config entries into `AdapterDefinition` values and can filter disabled adapters before startup. External stub kinds use the same shape, but their settings must contain only non-secret values or secret-reference names such as `auth_ref`; live platform credential resolution is deferred to platform-specific future tickets.
 
 `settings` is for non-secret adapter-specific values only. Credentials should use config auth refs, environment variables, keyrings, or future adapter-specific secret references rather than raw values in TOML.
 
@@ -264,6 +265,20 @@ HTTP adapter options on `gateway run` include:
 
 `GET /adapter/http/healthz` reports accepted/rejected counters, body/rate limits, and a redacted auth view. The current HTTP adapter is an ingress/event-bus boundary; command dispatch, gateway session rotation, and busy-input execution for inbound HTTP frames remain later adapter-worker work.
 
+## External chat adapter stubs
+
+`missive-adapters` defines placeholder adapter kinds for Discord, Slack, Telegram, Matrix, and Email. They are disabled by default at the Cargo feature level and can be compiled for registry/identity tests with:
+
+```bash
+cargo test -p missive-adapters --features external-chat-stubs
+```
+
+Individual feature flags are `adapter-discord`, `adapter-slack`, `adapter-telegram`, `adapter-matrix`, and `adapter-email`; `external-chat-stubs` enables all five. The stubs expose static roadmap metadata and deterministic identity mapping, but `start`, live outbound delivery, and on-platform acknowledgements return configuration errors. This prevents a configured placeholder from being mistaken for a working chat integration.
+
+Do not put raw platform tokens, signing secrets, mailbox passwords, OAuth refresh values, private keys, private workspace names, or private email addresses in repository files. Use auth-ref names in config and keep actual values in environment variables, keyrings, or future platform-specific secret stores.
+
+See [`docs/adapter-roadmap.md`](adapter-roadmap.md) for required secrets, permissions/scopes, platform behaviours, Hermes-inspired boundaries, and the checklist a future live adapter ticket must satisfy.
+
 ## Gateway event bus
 
 Adapters do not depend on `missive-gateway`. They depend only on the `AdapterEventSink` trait. The gateway wraps its internal event bus with a sink implementation, so adapter events can be forwarded without creating a crate cycle.
@@ -281,4 +296,4 @@ Gateway event output uses redacted serialized adapter events. Source ids and cha
 
 ## Current limitations
 
-`missive adapter stdio` and `missive adapter file-drop` are foreground local adapters, not daemon-started workers. `missive gateway run --http-adapter` accepts and journals HTTP control frames but does not yet execute them through session/job workers or apply busy-input queue/interrupt/steer actions. `missive gateway run` still does not start configured adapters from `[adapters]`, and external chat adapters remain later tickets. The file-drop adapter uses portable polling rather than OS-specific inotify/FSEvents, does not lock files that are written directly to a final `*.json` name, and relies on producers following the temporary-file-then-rename handoff contract. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio, file-drop, or HTTP adapter ingress paths.
+`missive adapter stdio` and `missive adapter file-drop` are foreground local adapters, not daemon-started workers. `missive gateway run --http-adapter` accepts and journals HTTP control frames but does not yet execute them through session/job workers or apply busy-input queue/interrupt/steer actions. `missive gateway run` still does not start configured adapters from `[adapters]`. External chat adapter kinds are compileable stubs only: even when feature flags register factories, they do not connect to Discord, Slack, Telegram, Matrix, or Email, and live implementations remain later tickets. The file-drop adapter uses portable polling rather than OS-specific inotify/FSEvents, does not lock files that are written directly to a final `*.json` name, and relies on producers following the temporary-file-then-rename handoff contract. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio, file-drop, HTTP, or external stub ingress paths.

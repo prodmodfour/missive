@@ -79,9 +79,21 @@ agent memory. The adapter trait normalizes external platform identities into the
 same source kind/source id model before gateway/session/busy-input handling.
 Busy-input state uses that source identity when deciding queue, interrupt, or
 steer behavior, and queued inputs may later be persisted by adapter/job workers
-as ordinary gateway state. Source identities such as adapter user/channel
-identifiers can be operationally sensitive, so keep profile SQLite files outside
-the repository and prune them according to future adapter retention policy.
+as ordinary gateway state. Source identities such as adapter user/channel/room/chat
+identifiers, mailbox addresses, message ids, and thread ids can be operationally
+sensitive, so keep profile SQLite files outside the repository and prune them
+according to future adapter retention policy.
+
+Feature-gated Discord, Slack, Telegram, Matrix, and Email adapter stubs exist
+only as compileable registry/identity placeholders. They do not connect to
+platform APIs and should not receive raw platform secrets in config. Future live
+platform adapters must use secret references such as auth-ref names, environment
+variables, keyring entries, or platform-specific secret stores. Adapter settings
+may include non-secret references like `auth_ref`, allowed channel names, or
+mailbox folder names, but not token values, signing secrets, mailbox passwords,
+OAuth refresh values, private keys, private workspace names, private email
+addresses, or private homeserver URLs. Required permissions and platform-specific
+trust boundaries are documented in [`adapter-roadmap.md`](adapter-roadmap.md).
 
 `--header Name:Value` is useful for one-off auth headers such as `X-Api-Key`,
 but the full value can be visible in shell history and process listings. Prefer
@@ -219,22 +231,26 @@ reuse the same resolution and redaction path when they add broader outbound
 requests.
 
 Daemon-managed stdio/file-drop/external adapter workers are not live yet, but
-the trait, registry, foreground local adapters, and HTTP ingress treat every
-external source as untrusted input. `missive adapter stdio` validates JSON/NDJSON
-framing, schema version, correlation ids, command names, source identity, and
-command fields before it maps frames to send/stream/task commands. `missive
-adapter file-drop` validates ready `*.json` request files, ignores partial
-temporary names, atomically moves claimed inputs to processed/error directories,
-and writes result files through a temporary-file rename; producers must still
-avoid writing partial content directly to final `*.json` names. `missive gateway
-run --http-adapter` validates `missive.http.v1` JSON, source identity, command
-fields, optional auth, body size, and rate limits before forwarding an adapter
-event. File-drop inbox/outbox paths and HTTP adapter event rows are local runtime
-state and can expose source ids, message text, job requests, and command results,
-so keep them outside the repository and protect them like profile SQLite data.
-Adapter `settings` metadata in config must remain non-secret; credentials should
-stay in auth refs, env vars, keyrings, HTTP adapter token env vars, or future
-explicit secret references.
+the trait, registry, foreground local adapters, HTTP ingress, and external stubs
+treat every external source as untrusted input. `missive adapter stdio` validates
+JSON/NDJSON framing, schema version, correlation ids, command names, source
+identity, and command fields before it maps frames to send/stream/task commands.
+`missive adapter file-drop` validates ready `*.json` request files, ignores
+partial temporary names, atomically moves claimed inputs to processed/error
+directories, and writes result files through a temporary-file rename; producers
+must still avoid writing partial content directly to final `*.json` names.
+`missive gateway run --http-adapter` validates `missive.http.v1` JSON, source
+identity, command fields, optional auth, body size, and rate limits before
+forwarding an adapter event. External chat adapter kinds are placeholders only;
+future live adapters must add signature or webhook verification, polling
+checkpoint protection, scoped permissions, idempotent acknowledgements, and
+redacted source metadata before processing third-party payloads. File-drop
+inbox/outbox paths and HTTP adapter event rows are local runtime state and can
+expose source ids, message text, job requests, and command results, so keep them
+outside the repository and protect them like profile SQLite data. Adapter
+`settings` metadata in config must remain non-secret; credentials should stay in
+auth refs, env vars, keyrings, HTTP adapter token env vars, or future explicit
+secret references.
 
 Webhook signature/JWT verification, broader daemon adapter trust-boundary
 enforcement, trace/log sinks, production-grade rate limiting, gateway

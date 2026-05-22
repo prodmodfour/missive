@@ -111,8 +111,10 @@ Supported sections in this ticket:
   registry can derive `AdapterDefinition` values from this schema today; the
   foreground `missive adapter stdio` frame loop, foreground `missive adapter file-drop`
   inbox/outbox loop, and opt-in `missive gateway run --http-adapter` control
-  endpoint are implemented, while daemon-started stdio/file-drop/external
-  platform workers arrive in later tickets.
+  endpoint are implemented. Discord, Slack, Telegram, Matrix, and Email have
+  feature-gated registry/identity stubs in `missive-adapters`, but daemon-started
+  stdio/file-drop/external platform workers and live platform clients arrive in
+  later tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
   bytes, and concurrency defaults. `qos.max_request_bytes` is currently enforced
   by `missive send` and `missive stream` while parsing local text, file-reference,
@@ -143,7 +145,9 @@ fallback is used; fallback cannot be `steer` to avoid recursive policy loops.
 
 Unknown fields are rejected so configuration typos fail early. See
 [`adapters.md`](adapters.md) for the adapter lifecycle and registry contract that
-consumes `[adapters.<name>]` entries.
+consumes `[adapters.<name>]` entries, and [`adapter-roadmap.md`](adapter-roadmap.md)
+for external platform placeholder boundaries, required secret references, and
+future permission requirements.
 
 For implemented A2A HTTP requests (Agent Card fetch/refresh, non-streaming
 send, streaming send, remote task get/list/wait/cancel, and push config calls),

@@ -9,10 +9,16 @@ use missive_core::{AgentAlias, ContextId, EventId, MessageId, Metadata, MissiveE
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod external_chat;
 pub mod file_drop;
 pub mod http;
 pub mod stdio;
 
+pub use external_chat::{
+    DISCORD_ADAPTER_KIND, EMAIL_ADAPTER_KIND, ExternalChatPlatform, ExternalChatPlatformInfo,
+    ExternalChatStubAdapter, MATRIX_ADAPTER_KIND, SLACK_ADAPTER_KIND, TELEGRAM_ADAPTER_KIND,
+    enabled_external_chat_stub_platforms, register_external_chat_adapter_stubs,
+};
 pub use file_drop::{
     FILE_DROP_ADAPTER_KIND, FILE_DROP_FRAME_SCHEMA_VERSION, FILE_DROP_OUTPUT_KIND_ERROR,
     FILE_DROP_OUTPUT_KIND_RESULT, FileDropAdapter, FileDropClaim, FileDropCommand,
@@ -921,7 +927,8 @@ const fn is_ascii_lower_alphanumeric(byte: u8) -> bool {
 pub const CRATE_NAME: &str = "missive-adapters";
 
 /// Short description of this crate's target responsibility.
-pub const CRATE_PURPOSE: &str = "stdin/stdout, file, HTTP, and future chat adapters";
+pub const CRATE_PURPOSE: &str =
+    "stdin/stdout, file, HTTP adapters, and feature-gated chat adapter stubs";
 
 /// Returns metadata for this crate.
 #[must_use]
