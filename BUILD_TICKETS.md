@@ -71,7 +71,7 @@ Validation:
 
 ## 002 — Install and document autonomous build tooling
 
-Status: TODO
+Status: DONE
 
 Phase: Foundation
 

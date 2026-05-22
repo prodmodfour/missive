@@ -10,13 +10,16 @@ The project brief is already customised:
 TEMPLATE_CUSTOMISED: true
 ```
 
-## 2. Optional: install tools
+## 2. Optional: inspect or install tools
 
 ```bash
+scripts/bootstrap-tools.sh --check
 scripts/bootstrap-tools.sh
 ```
 
-The script is intentionally best-effort. The agent may also install tools manually with sudo/package managers as needed.
+The script is executable, idempotent, and intentionally best-effort. It skips installed tools and warns when optional tools cannot be installed. Use `scripts/bootstrap-tools.sh --system-deps` when a ticket needs supported OS packages such as `jq`, `protoc`, `sqlite3`, or `pkg-config`.
+
+The agent may also install tools manually with `sudo`, package managers, `rustup`, or `cargo install` as needed for build/test dependencies. Record notable installation commands in `BUILD_NOTES.md`. See [`tooling.md`](tooling.md) for details.
 
 ## 3. Run one cycle
 

@@ -36,3 +36,5 @@ The agent should build a Rust CLI that is:
 ## Testing latitude
 
 The agent may install dependencies, use sudo, run local services, run Docker, run fuzzers, run benchmarks, and run long integration suites. Tests should stay local/controlled unless a ticket explicitly configures an external endpoint.
+
+Use `scripts/bootstrap-tools.sh --check` to inspect local tooling and `scripts/bootstrap-tools.sh` to install Rust components and optional cargo tools. Use `--system-deps` only when OS packages are needed. See [`tooling.md`](tooling.md) for the maintained tool inventory and quality-gate behavior.

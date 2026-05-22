@@ -40,6 +40,18 @@ Prerequisites:
 * Rust stable toolchain with `cargo`, `rustfmt`, and `clippy`
 * Bash for repository scripts
 
+Check or install local build tooling with:
+
+```bash
+scripts/bootstrap-tools.sh --check
+scripts/bootstrap-tools.sh
+```
+
+The bootstrap script is idempotent and best-effort. Optional tools are skipped by
+the quality gate when absent and used automatically when present. See
+[`docs/tooling.md`](docs/tooling.md) for the full tool inventory, `sudo`/package
+manager policy, and aggressive validation options.
+
 Validate the checkout with:
 
 ```bash
