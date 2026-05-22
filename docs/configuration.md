@@ -76,7 +76,7 @@ Supported sections in this ticket:
 * `auth_refs` — references to secrets in environment variables or platform
   keyrings. Raw token values are not accepted by the schema.
 * `storage` — storage backend defaults. Only `sqlite` is currently defined;
-  concrete state-path behavior is implemented by later storage tickets.
+  state paths are resolved outside the repository by default as described below.
 * `output` — default output format (`human`, `json`, `ndjson`, or `quiet`), color
   mode (`auto`, `always`, `never`), and mandatory secret redaction.
 * `gateway` — gateway enablement, bind address, optional public base URL, and job
@@ -87,6 +87,36 @@ Supported sections in this ticket:
   bytes, and concurrency defaults.
 
 Unknown fields are rejected so configuration typos fail early.
+
+## Local state paths
+
+The store layer now resolves data, state, cache, database, and lock paths for the
+selected profile without creating files during resolution.
+
+Precedence for runtime state roots is:
+
+1. `MISSIVE_HOME=<ABSOLUTE_DIR>` — all roots live under this directory:
+   * `data/profiles/<profile>`
+   * `state/profiles/<profile>`
+   * `cache/profiles/<profile>`
+2. XDG variables on Linux and other Unix-like platforms:
+   * `${XDG_DATA_HOME:-$HOME/.local/share}/missive/profiles/<profile>`
+   * `${XDG_STATE_HOME:-$HOME/.local/state}/missive/profiles/<profile>`
+   * `${XDG_CACHE_HOME:-$HOME/.cache}/missive/profiles/<profile>`
+3. macOS fallback when XDG variables are not set:
+   * `$HOME/Library/Application Support/missive/data/profiles/<profile>`
+   * `$HOME/Library/Application Support/missive/state/profiles/<profile>`
+   * `$HOME/Library/Caches/missive/profiles/<profile>`
+
+`storage.database_path` may be absolute, use `~/` for the current home
+directory, or be relative to the selected profile's state directory. Relative
+paths containing `..` are rejected so they cannot escape that profile directory.
+If omitted, the default database path is `<state-dir>/missive.sqlite3`.
+
+Process locks live in `<state-dir>/locks/`. `state.lock` coordinates future
+state mutations and migrations; `gateway.lock` coordinates one gateway process
+per profile. Lock files may remain after a process exits, but the OS-level lock
+is released when the owning process or file descriptor closes.
 
 ## Validation and redaction
 

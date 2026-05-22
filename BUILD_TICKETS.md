@@ -309,7 +309,7 @@ Validation:
 
 ## 010 — Implement local state paths and lock handling
 
-Status: TODO
+Status: DONE
 
 Phase: Store
 

@@ -9,6 +9,7 @@ This repository is at early workspace stage. It contains:
 * a Cargo workspace with the target crate layout under `crates/`
 * a `missive-cli` package that exposes the binary named `missive`
 * a clap-based CLI skeleton with stable top-level commands, global flags, configuration discovery, profiles, and human/JSON/NDJSON/quiet output renderers
+* store-layer state path resolution and process locks that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
 * starter documentation directories, including `docs/adr/`
@@ -19,7 +20,7 @@ Current crates:
 crates/missive-cli        command parsing, output rendering, exit codes
 crates/missive-core       domain types, errors, config, IDs, envelopes
 crates/missive-a2a        A2A protocol/client integration and compatibility fixtures
-crates/missive-store      SQLite migrations and repository APIs
+crates/missive-store      state paths, process locks, SQLite migrations and repository APIs
 crates/missive-router     agent selection, policies, groups, collectives
 crates/missive-gateway    daemon, subscriptions, webhooks, jobs, sessions
 crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
@@ -36,7 +37,7 @@ cargo run -p missive-cli --bin missive -- events --ndjson
 cargo run -p missive-cli --bin missive -- agent --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for the current skeleton and output envelope, and [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, examples, validation, and redaction. Future tickets add command behaviour, A2A integration, persistence, gateway runtime behaviour, adapters, collectives, tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for the current skeleton and output envelope, and [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, state paths, examples, validation, and redaction. Future tickets add command behaviour, A2A integration, persistence, gateway runtime behaviour, adapters, collectives, tests, and packaging.
 
 ## Build and validation
 

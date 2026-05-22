@@ -8,7 +8,7 @@
 crates/missive-cli        -> command parsing, output rendering, exit codes
 crates/missive-core       -> domain types, errors, config, IDs, envelopes
 crates/missive-a2a        -> A2A protocol/client integration and compatibility fixtures
-crates/missive-store      -> SQLite migrations and repository APIs
+crates/missive-store      -> state paths, process locks, SQLite migrations and repository APIs
 crates/missive-router     -> agent selection, policies, groups, collectives
 crates/missive-gateway    -> daemon, subscriptions, webhooks, jobs, sessions
 crates/missive-adapters   -> stdin/stdout, file, HTTP, future chat adapters
@@ -60,6 +60,14 @@ Help output for the top-level CLI and key commands is covered by snapshot tests 
 * `MissiveConfig`, `ConfigDiscovery`, and `LoadedConfig` define configuration discovery, validated schema objects, selected-profile handling, output defaults, and redacted config rendering.
 
 Identifier and metadata validation failures use `MissiveError::validation`; configuration discovery, parsing, and schema failures use `MissiveError::config` so CLI and JSON renderers can produce consistent diagnostics and exit codes.
+
+## Store path and lock contract
+
+`crates/missive-store` resolves local data, state, cache, SQLite database, and lock paths from the loaded config and selected profile. Runtime state defaults to XDG-compatible directories on Linux and other Unix-like platforms, macOS `~/Library` fallbacks when XDG variables are absent, or `MISSIVE_HOME` when explicitly set. Every default path includes `profiles/<profile>` so different profiles do not share mutable state accidentally.
+
+Path resolution is side-effect free: directories are created only when store or lock code explicitly calls `StatePaths::ensure_directories()` or acquires a process lock. Relative `storage.database_path` values are resolved beneath the selected profile state directory rather than the current working directory, which keeps default runtime state out of the source tree.
+
+The store layer exposes two process lock kinds for later tickets: `state.lock` for state mutations/migrations and `gateway.lock` for one gateway daemon per profile. Locks use OS-level whole-file locking and nonblocking acquisition maps lock contention to a storage error with deterministic diagnostics.
 
 ## Architecture decision records
 

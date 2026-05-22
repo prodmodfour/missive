@@ -1,10 +1,18 @@
 #![doc = "Local persistence scaffolding for missive."]
 
+pub mod paths;
+
+pub use paths::{
+    DEFAULT_DATABASE_FILE, ENV_HOME, ENV_MISSIVE_HOME, ENV_XDG_CACHE_HOME, ENV_XDG_DATA_HOME,
+    ENV_XDG_STATE_HOME, ProcessLock, ProcessLockKind, StatePathResolver, StatePathSource,
+    StatePaths, StatePlatform,
+};
+
 /// Cargo package name for this crate.
 pub const CRATE_NAME: &str = "missive-store";
 
 /// Short description of this crate's target responsibility.
-pub const CRATE_PURPOSE: &str = "SQLite migrations and repository APIs";
+pub const CRATE_PURPOSE: &str = "state paths, process locks, SQLite migrations and repository APIs";
 
 /// Returns metadata for this crate.
 #[must_use]

@@ -11,4 +11,8 @@ description = "Local persistence layer for missive."
 path = "src/lib.rs"
 
 [dependencies]
+fs2.workspace = true
 missive-core.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
