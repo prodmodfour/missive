@@ -36,6 +36,37 @@ older/pre-release cards that omit the field, preserving the negotiation fallback
 introduced earlier. The raw public card JSON remains cached and rendered for
 inspection.
 
+## A2A service parameters
+
+`missive-a2a` now centralizes A2A service-parameter handling in a
+`ServiceParameters` value. HTTP-based requests apply these parameters as headers:
+
+* `A2A-Version` is sent on every implemented outbound A2A request. The default
+  is the official SDK `VERSION` (`1.0`).
+* `A2A-Extensions` is sent when the selected config or CLI requests extensions;
+  repeated values are rendered as a comma-separated header value.
+* Additional non-auth service parameters are accepted as validated HTTP header
+  names and values.
+
+The effective protocol defaults come from `[protocol]` or
+`[profiles.<name>.protocol]` in `missive.config.v1`. For a single invocation,
+`--protocol-version <VERSION>` overrides the configured version,
+`--a2a-extension <EXTENSION>` appends an extension, and the
+`--service-param NAME=VALUE` flag adds or overrides an extra service parameter.
+Current implemented use is public Agent Card discovery/refresh; future send,
+stream, task, and push clients should reuse the same helper so request metadata
+remains consistent.
+
+When an HTTP response body reports the official A2A
+`VERSION_NOT_SUPPORTED` error code/reason, missive maps it to a protocol error
+with deterministic protocol exit code `76` instead of a generic transport
+failure.
+
+`ServiceParameters::to_metadata()` records the version under
+`a2a.protocol_version`, requested extensions under `a2a.extensions`, and extra
+parameters under `a2a.service_parameters`; task/event persistence code should
+copy that metadata when recording outbound request effects.
+
 ## Interface negotiation
 
 `missive agent inspect <alias>` now computes a selected A2A interface from the
@@ -74,6 +105,8 @@ fallback and reports `protocol_version = "unknown"` with
 * HTTP status failures such as `404 Not Found` map to `missive::transport`.
 * Network/TLS/HTTP client failures map to `missive::transport`.
 * Unsupported or non-mutual interface bindings map to `missive::transport`.
+* A2A `VERSION_NOT_SUPPORTED` responses map to `missive::protocol` with exit
+  code `76`.
 * Invalid JSON or schema-incompatible Agent Card payloads map to
   `missive::protocol`.
 

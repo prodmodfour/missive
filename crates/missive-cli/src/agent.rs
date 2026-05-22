@@ -10,7 +10,7 @@ use std::io::Write;
 use clap::{Args, Subcommand};
 use missive_a2a::{
     AgentCard, AgentCardCacheValidators, AgentCardClient, AgentCardExt, AgentCardFetchOutcome,
-    InterfaceNegotiationOptions, NegotiatedInterface, negotiate_agent_interface,
+    InterfaceNegotiationOptions, NegotiatedInterface, ServiceParameters, negotiate_agent_interface,
     public_agent_card_url,
 };
 use missive_core::{
@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use url::Url;
 
 use crate::output::{OutputMode, redact_json, redact_text, render_success};
+use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
 const NAMED_IDENTIFIER_MAX_BYTES: usize = 63;
 const NAMED_IDENTIFIER_HELP: &str =
@@ -292,6 +293,7 @@ struct AgentSkillView {
 /// Executes one agent registry subcommand.
 pub(crate) fn execute_agent_command<W>(
     command: &AgentCommands,
+    globals: &GlobalArgs,
     loaded_config: &LoadedConfig,
     environment: &BTreeMap<String, String>,
     mode: OutputMode,
@@ -307,8 +309,16 @@ where
         AgentCommands::Remove(args) => remove_agent(args, registry, mode, writer),
         AgentCommands::List => list_agents(registry, mode, writer),
         AgentCommands::Show(args) => show_agent(args, registry, mode, writer),
-        AgentCommands::Inspect(args) => inspect_agent(args, registry, mode, writer),
-        AgentCommands::Refresh(args) => refresh_agent(args, registry, mode, writer),
+        AgentCommands::Inspect(args) => {
+            let service_parameters =
+                service_parameters_from_config_and_globals(loaded_config, globals)?;
+            inspect_agent(args, registry, &service_parameters, mode, writer)
+        }
+        AgentCommands::Refresh(args) => {
+            let service_parameters =
+                service_parameters_from_config_and_globals(loaded_config, globals)?;
+            refresh_agent(args, registry, &service_parameters, mode, writer)
+        }
         AgentCommands::Rename(args) => rename_agent(args, registry, mode, writer),
     }
 }
@@ -510,6 +520,7 @@ where
 fn inspect_agent<W>(
     args: &AgentInspectArgs,
     registry: AgentRegistry,
+    service_parameters: &ServiceParameters,
     mode: OutputMode,
     writer: &mut W,
 ) -> Result<()>
@@ -525,6 +536,7 @@ where
             &record,
             args.refresh,
             args.binding.as_deref(),
+            service_parameters,
         )?
     } else {
         cached_agent_card_output(&registry, &record, args.binding.as_deref())?
@@ -536,6 +548,7 @@ where
 fn refresh_agent<W>(
     args: &AgentAliasArgs,
     registry: AgentRegistry,
+    service_parameters: &ServiceParameters,
     mode: OutputMode,
     writer: &mut W,
 ) -> Result<()>
@@ -544,8 +557,14 @@ where
 {
     let alias = parse_alias(&args.alias)?;
     let record = get_existing_agent(&registry.store, &alias)?;
-    let output =
-        fetch_and_cache_agent_card(&registry.store, &registry.profile, &record, true, None)?;
+    let output = fetch_and_cache_agent_card(
+        &registry.store,
+        &registry.profile,
+        &record,
+        true,
+        None,
+        service_parameters,
+    )?;
 
     render_agent_card_inspection(writer, mode, "agent_refresh", &output)
 }
@@ -700,10 +719,15 @@ fn fetch_and_cache_agent_card(
     record: &AgentRecord,
     refresh_requested: bool,
     binding_override: Option<&str>,
+    service_parameters: &ServiceParameters,
 ) -> Result<AgentCardInspectionOutput> {
     let validators = validators_from_record(record);
     let client = AgentCardClient::new()?;
-    let outcome = client.fetch_public_agent_card(&record.base_url, validators.as_ref())?;
+    let outcome = client.fetch_public_agent_card_with_service_parameters(
+        &record.base_url,
+        validators.as_ref(),
+        service_parameters,
+    )?;
 
     match outcome {
         AgentCardFetchOutcome::Fetched(fetch) => {

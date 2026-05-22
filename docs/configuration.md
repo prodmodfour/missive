@@ -52,6 +52,13 @@ default_profile = "default"
 [profiles.default]
 default_agent = "echo"
 
+[protocol]
+protocol_version = "1.0"
+extensions = []
+
+[protocol.service_parameters]
+A2A-Tenant = "local-demo"
+
 [agents.echo]
 base_url = "http://127.0.0.1:8080"
 auth_ref = "example-env"
@@ -81,6 +88,11 @@ Supported sections in this ticket:
   state paths are resolved outside the repository by default as described below.
 * `output` — default output format (`human`, `json`, `ndjson`, or `quiet`), color
   mode (`auto`, `always`, `never`), and mandatory secret redaction.
+* `protocol` — default A2A service parameters: `protocol_version` for the
+  `A2A-Version` header, optional `extensions` for `A2A-Extensions`, and
+  additional non-auth `service_parameters` sent as headers where HTTP-based A2A
+  requests are implemented. Profiles may override the full protocol block with
+  `[profiles.<name>.protocol]`.
 * `gateway` — gateway enablement, bind address, optional public base URL, and job
   concurrency defaults.
 * `adapters` — adapter kind, enablement, profile mapping, and non-secret settings
@@ -89,6 +101,12 @@ Supported sections in this ticket:
   bytes, and concurrency defaults.
 
 Unknown fields are rejected so configuration typos fail early.
+
+For implemented A2A HTTP requests, `--protocol-version <VERSION>` overrides the
+selected profile's `protocol_version` for that invocation. The
+`--a2a-extension <EXTENSION>` flag appends requested extensions, and
+`--service-param NAME=VALUE` adds or overrides an extra service parameter for the
+invocation. These flags are validated before an outbound request is sent.
 
 ## Local state paths
 
@@ -137,6 +155,12 @@ Config validation checks:
 * referenced profiles, agents, and auth refs exist
 * HTTP(S) URLs are absolute, include a host, and do not embed credentials
 * durations use `ms`, `s`, `m`, or `h` units
+* A2A protocol versions are short ASCII version tokens, extensions are compact
+  comma-free identifiers, and arbitrary service-parameter names are valid HTTP
+  header names
+* `A2A-Version` and `A2A-Extensions` cannot be redefined inside
+  `protocol.service_parameters`; use `protocol_version` and `extensions`
+  instead
 * gateway bind address is an IP socket address such as `127.0.0.1:7347`
 * raw secret storage is not part of the auth-ref schema
 

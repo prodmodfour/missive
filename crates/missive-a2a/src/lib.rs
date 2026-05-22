@@ -3,10 +3,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-use missive_core::{MissiveError, Result};
+pub use missive_core::{
+    METADATA_A2A_EXTENSIONS, METADATA_A2A_PROTOCOL_VERSION, METADATA_A2A_SERVICE_PARAMETERS,
+};
+use missive_core::{Metadata, MissiveError, Result};
 use reqwest::StatusCode;
-use reqwest::blocking::Client;
-use reqwest::header::{ETAG, HeaderMap, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
+use reqwest::blocking::{Client, RequestBuilder};
+use reqwest::header::{
+    ETAG, HeaderMap, HeaderName, HeaderValue, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use url::Url;
@@ -20,7 +25,7 @@ use url::Url;
 /// duplicate Message/Task/Artifact/Agent Card models in this workspace.
 pub mod protocol {
     pub use a2a::{
-        AgentCapabilities, AgentCard, AgentCardSignature, AgentExtension, AgentInterface,
+        A2AError, AgentCapabilities, AgentCard, AgentCardSignature, AgentExtension, AgentInterface,
         AgentProvider, AgentSkill, Artifact, AuthenticationInfo, CancelTaskRequest,
         DeleteTaskPushNotificationConfigRequest, GetExtendedAgentCardRequest,
         GetTaskPushNotificationConfigRequest, GetTaskRequest,
@@ -29,7 +34,7 @@ pub mod protocol {
         SVC_PARAM_EXTENSIONS, SVC_PARAM_VERSION, SendMessageConfiguration, SendMessageRequest,
         SendMessageResponse, SubscribeToTaskRequest, TRANSPORT_PROTOCOL_GRPC,
         TRANSPORT_PROTOCOL_HTTP_JSON, TRANSPORT_PROTOCOL_JSONRPC, TRANSPORT_PROTOCOL_SLIMRPC, Task,
-        TaskPushNotificationConfig, TaskState, TaskStatus, TransportProtocol, VERSION,
+        TaskPushNotificationConfig, TaskState, TaskStatus, TransportProtocol, VERSION, error_code,
     };
 }
 
@@ -68,6 +73,210 @@ pub const PLANNED_BINDINGS: &[&str] = &[GRPC_BINDING];
 #[must_use]
 pub const fn crate_info() -> missive_core::CrateInfo {
     missive_core::CrateInfo::new(CRATE_NAME, CRATE_PURPOSE)
+}
+
+/// A2A service parameters applied to outbound protocol requests.
+///
+/// For HTTP-based bindings these values are sent as headers: `A2A-Version` is
+/// always present, `A2A-Extensions` is present when extensions are requested,
+/// and `extra` entries become additional validated service-parameter headers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "snake_case")]
+pub struct ServiceParameters {
+    /// A2A protocol version sent as `A2A-Version`.
+    pub protocol_version: String,
+    /// Requested A2A extension identifiers sent through `A2A-Extensions`.
+    pub extensions: Vec<String>,
+    /// Additional service parameters sent as HTTP headers when applicable.
+    pub extra: BTreeMap<String, String>,
+}
+
+impl Default for ServiceParameters {
+    fn default() -> Self {
+        Self {
+            protocol_version: protocol::VERSION.to_owned(),
+            extensions: Vec::new(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+impl ServiceParameters {
+    /// Creates validated service parameters from explicit parts.
+    pub fn new(
+        protocol_version: impl Into<String>,
+        extensions: Vec<String>,
+        extra: BTreeMap<String, String>,
+    ) -> Result<Self> {
+        let parameters = Self {
+            protocol_version: protocol_version.into(),
+            extensions,
+            extra,
+        };
+        parameters.validate()?;
+        Ok(parameters)
+    }
+
+    /// Validates protocol version, extension identifiers, and HTTP header forms.
+    pub fn validate(&self) -> Result<()> {
+        validate_service_parameter_value("A2A-Version", &self.protocol_version)?;
+        validate_protocol_version_text(&self.protocol_version)?;
+
+        let mut extensions = BTreeSet::new();
+        for extension in &self.extensions {
+            validate_extension_value(extension)?;
+            if !extensions.insert(extension) {
+                return Err(MissiveError::validation(format!(
+                    "duplicate A2A extension {extension:?}"
+                ))
+                .with_help("List each A2A extension at most once."));
+            }
+        }
+
+        for (name, value) in &self.extra {
+            validate_extra_service_parameter(name, value)?;
+        }
+
+        Ok(())
+    }
+
+    /// Applies these parameters to a blocking reqwest request builder.
+    pub fn apply_to_blocking_request(&self, request: RequestBuilder) -> Result<RequestBuilder> {
+        self.validate()?;
+        let mut request = request.header(
+            protocol::SVC_PARAM_VERSION,
+            service_parameter_header_value(protocol::SVC_PARAM_VERSION, &self.protocol_version)?,
+        );
+
+        if !self.extensions.is_empty() {
+            request = request.header(
+                protocol::SVC_PARAM_EXTENSIONS,
+                service_parameter_header_value(
+                    protocol::SVC_PARAM_EXTENSIONS,
+                    &self.extensions.join(", "),
+                )?,
+            );
+        }
+
+        for (name, value) in &self.extra {
+            let header_name = service_parameter_header_name(name)?;
+            let header_value = service_parameter_header_value(name, value)?;
+            request = request.header(header_name, header_value);
+        }
+
+        Ok(request)
+    }
+
+    /// Records service-parameter metadata on future task/event rows.
+    pub fn record_metadata(&self, metadata: &mut Metadata) -> Result<()> {
+        metadata.insert_str(METADATA_A2A_PROTOCOL_VERSION, self.protocol_version.clone())?;
+        if !self.extensions.is_empty() {
+            metadata.insert(
+                METADATA_A2A_EXTENSIONS,
+                serde_json::json!(self.extensions.clone()),
+            )?;
+        }
+        if !self.extra.is_empty() {
+            metadata.insert(
+                METADATA_A2A_SERVICE_PARAMETERS,
+                serde_json::json!(self.extra.clone()),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Returns metadata containing the service parameters from this request.
+    pub fn to_metadata(&self) -> Result<Metadata> {
+        let mut metadata = Metadata::new();
+        self.record_metadata(&mut metadata)?;
+        Ok(metadata)
+    }
+}
+
+fn validate_protocol_version_text(value: &str) -> Result<()> {
+    if value.is_empty() || value.len() > 64 {
+        return Err(
+            MissiveError::validation("A2A protocol version must be 1 to 64 bytes")
+                .with_help("Use a short version such as 1.0."),
+        );
+    }
+    if value
+        .bytes()
+        .any(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')))
+    {
+        return Err(MissiveError::validation(
+            "A2A protocol version contains unsupported characters",
+        )
+        .with_help("Use ASCII letters, digits, '.', '-' or '_' only."));
+    }
+    Ok(())
+}
+
+fn validate_extension_value(value: &str) -> Result<()> {
+    validate_service_parameter_value("A2A-Extensions", value)?;
+    if value.chars().any(char::is_whitespace) || value.contains(',') {
+        return Err(MissiveError::validation(
+            "A2A extension identifiers must not contain whitespace or commas",
+        )
+        .with_help("Use compact URI-like extension identifiers."));
+    }
+    Ok(())
+}
+
+fn validate_extra_service_parameter(name: &str, value: &str) -> Result<()> {
+    service_parameter_header_name(name)?;
+    if is_reserved_service_parameter_name(name) {
+        return Err(MissiveError::validation(format!(
+            "extra A2A service parameters must not redefine reserved header {name:?}"
+        ))
+        .with_help("Use protocol_version for A2A-Version and extensions for A2A-Extensions."));
+    }
+    validate_service_parameter_value(name, value)
+}
+
+fn service_parameter_header_name(name: &str) -> Result<HeaderName> {
+    HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
+        MissiveError::validation(format!(
+            "A2A service parameter name {name:?} is not a valid HTTP header name"
+        ))
+        .with_source(error)
+        .with_help("Use ASCII HTTP header names such as A2A-Trace or A2A-Tenant.")
+    })
+}
+
+fn service_parameter_header_value(name: &str, value: &str) -> Result<HeaderValue> {
+    validate_service_parameter_value(name, value)?;
+    HeaderValue::from_str(value).map_err(|error| {
+        MissiveError::validation(format!(
+            "A2A service parameter {name:?} is not a valid HTTP header value"
+        ))
+        .with_source(error)
+        .with_help("Avoid control characters and newline characters in service parameters.")
+    })
+}
+
+fn validate_service_parameter_value(name: &str, value: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        return Err(MissiveError::validation(format!(
+            "A2A service parameter {name:?} cannot be empty"
+        )));
+    }
+    if value.len() > 8 * 1024 {
+        return Err(MissiveError::validation(format!(
+            "A2A service parameter {name:?} must be at most 8192 bytes"
+        )));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(MissiveError::validation(format!(
+            "A2A service parameter {name:?} cannot contain control characters"
+        )));
+    }
+    Ok(())
+}
+
+fn is_reserved_service_parameter_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case(protocol::SVC_PARAM_VERSION)
+        || name.eq_ignore_ascii_case(protocol::SVC_PARAM_EXTENSIONS)
 }
 
 /// Extension helpers around the official SDK Agent Card type.
@@ -796,11 +1005,26 @@ impl AgentCardClient {
         base_url: &str,
         validators: Option<&AgentCardCacheValidators>,
     ) -> Result<AgentCardFetchOutcome> {
+        self.fetch_public_agent_card_with_service_parameters(
+            base_url,
+            validators,
+            &ServiceParameters::default(),
+        )
+    }
+
+    /// Fetches `/.well-known/agent-card.json` with explicit A2A service parameters.
+    pub fn fetch_public_agent_card_with_service_parameters(
+        &self,
+        base_url: &str,
+        validators: Option<&AgentCardCacheValidators>,
+        service_parameters: &ServiceParameters,
+    ) -> Result<AgentCardFetchOutcome> {
         let discovery_url = public_agent_card_url(base_url)?;
         let mut request = self
             .client
             .get(discovery_url.clone())
             .header("Accept", "application/json");
+        request = service_parameters.apply_to_blocking_request(request)?;
 
         if let Some(validators) = validators {
             if let Some(etag) = &validators.etag {
@@ -829,6 +1053,19 @@ impl AgentCardClient {
             }));
         }
         if !status.is_success() {
+            let body = response.text().map_err(|error| {
+                MissiveError::transport(format!(
+                    "reading A2A Agent Card error response from {discovery_url} failed"
+                ))
+                .with_source(error)
+            })?;
+            if response_reports_unsupported_version(&body) {
+                return Err(unsupported_protocol_version_error(
+                    &service_parameters.protocol_version,
+                    &discovery_url,
+                    status,
+                ));
+            }
             return Err(MissiveError::transport(format!(
                 "A2A Agent Card discovery returned HTTP {status} for {discovery_url}"
             ))
@@ -872,6 +1109,40 @@ impl Default for AgentCardClient {
     fn default() -> Self {
         Self::new().expect("default Agent Card HTTP client should build")
     }
+}
+
+fn response_reports_unsupported_version(body: &str) -> bool {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .is_some_and(|value| json_contains_unsupported_version(&value))
+}
+
+fn json_contains_unsupported_version(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => {
+            object.get("code").and_then(Value::as_i64)
+                == Some(i64::from(protocol::error_code::VERSION_NOT_SUPPORTED))
+                || object
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .is_some_and(|reason| reason == "VERSION_NOT_SUPPORTED")
+                || object.values().any(json_contains_unsupported_version)
+        }
+        Value::Array(values) => values.iter().any(json_contains_unsupported_version),
+        Value::String(text) => text == "VERSION_NOT_SUPPORTED",
+        _ => false,
+    }
+}
+
+fn unsupported_protocol_version_error(
+    requested_version: &str,
+    url: &Url,
+    status: StatusCode,
+) -> MissiveError {
+    MissiveError::protocol(format!(
+        "A2A protocol version {requested_version:?} is not supported by {url} (HTTP {status})"
+    ))
+    .with_help("Choose a protocol_version supported by the remote Agent Card or retry without --protocol-version.")
 }
 
 /// Resolves the public Agent Card URL for an agent base URL.
@@ -964,6 +1235,116 @@ mod tests {
 
         assert_eq!(info.name(), CRATE_NAME);
         assert!(info.purpose().contains("A2A"));
+    }
+
+    #[test]
+    fn service_parameters_apply_default_version_header() {
+        let client = Client::builder().build().expect("client");
+        let request = ServiceParameters::default()
+            .apply_to_blocking_request(client.get("http://127.0.0.1:8080/a2a"))
+            .expect("service parameters should apply")
+            .build()
+            .expect("request should build");
+
+        assert_eq!(
+            request
+                .headers()
+                .get(protocol::SVC_PARAM_VERSION)
+                .and_then(|value| value.to_str().ok()),
+            Some(protocol::VERSION)
+        );
+        assert!(
+            !request
+                .headers()
+                .contains_key(protocol::SVC_PARAM_EXTENSIONS)
+        );
+    }
+
+    #[test]
+    fn service_parameters_apply_extensions_and_extra_headers() {
+        let client = Client::builder().build().expect("client");
+        let parameters = ServiceParameters::new(
+            "1.1",
+            vec!["urn:example:one".to_owned(), "urn:example:two".to_owned()],
+            BTreeMap::from([("A2A-Trace".to_owned(), "trace-1".to_owned())]),
+        )
+        .expect("valid service parameters");
+        let request = parameters
+            .apply_to_blocking_request(client.get("http://127.0.0.1:8080/a2a"))
+            .expect("service parameters should apply")
+            .build()
+            .expect("request should build");
+
+        assert_eq!(
+            request
+                .headers()
+                .get(protocol::SVC_PARAM_VERSION)
+                .and_then(|value| value.to_str().ok()),
+            Some("1.1")
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get(protocol::SVC_PARAM_EXTENSIONS)
+                .and_then(|value| value.to_str().ok()),
+            Some("urn:example:one, urn:example:two")
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get("A2A-Trace")
+                .and_then(|value| value.to_str().ok()),
+            Some("trace-1")
+        );
+    }
+
+    #[test]
+    fn service_parameters_record_task_and_event_metadata_shape() {
+        let parameters = ServiceParameters::new(
+            "1.1",
+            vec!["urn:example:one".to_owned()],
+            BTreeMap::from([("A2A-Trace".to_owned(), "trace-1".to_owned())]),
+        )
+        .expect("valid service parameters");
+        let metadata = parameters.to_metadata().expect("metadata");
+
+        assert_eq!(metadata.get_str(METADATA_A2A_PROTOCOL_VERSION), Some("1.1"));
+        assert_eq!(
+            metadata.get(METADATA_A2A_EXTENSIONS),
+            Some(&json!(["urn:example:one"]))
+        );
+        assert_eq!(
+            metadata.get(METADATA_A2A_SERVICE_PARAMETERS),
+            Some(&json!({"A2A-Trace": "trace-1"}))
+        );
+    }
+
+    #[test]
+    fn service_parameters_reject_reserved_extra_headers() {
+        let error = ServiceParameters::new(
+            "1.0",
+            Vec::new(),
+            BTreeMap::from([("A2A-Version".to_owned(), "2.0".to_owned())]),
+        )
+        .expect_err("reserved extra header should fail");
+
+        assert!(error.to_string().contains("reserved header"));
+    }
+
+    #[test]
+    fn unsupported_version_response_detection_is_specific_to_a2a_error() {
+        assert!(response_reports_unsupported_version(
+            r#"{"error":{"code":-32009,"message":"version not supported"}}"#
+        ));
+        assert!(response_reports_unsupported_version(
+            r#"{"error":{"data":[{"value":{"reason":"VERSION_NOT_SUPPORTED"}}]}}"#
+        ));
+        assert!(!response_reports_unsupported_version(
+            r#"{"error":{"code":-32004,"message":"unsupported operation"}}"#
+        ));
+        assert!(!response_reports_unsupported_version(
+            "VERSION_NOT_SUPPORTED"
+        ));
     }
 
     #[test]

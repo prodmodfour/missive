@@ -8,7 +8,7 @@ This repository is at early workspace stage. It contains:
 
 * a Cargo workspace with the target crate layout under `crates/`
 * a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, human/JSON/NDJSON/quiet output renderers, agent registry commands, public A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, and A2A interface negotiation for inspected cards
+* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, human/JSON/NDJSON/quiet output renderers, agent registry commands, public A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, and A2A interface negotiation for inspected cards
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
@@ -40,7 +40,7 @@ cargo run -p missive-cli --bin missive -- events --ndjson
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, and interface negotiation mapping, and [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract. Future tickets add service parameter/version headers, authentication material resolution, message sending, streaming, gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter handling, and interface negotiation mapping, and [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract. Future tickets add authentication material resolution, message sending, streaming, gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
 
 ## Build and validation
 

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -336,6 +337,10 @@ fn agent_inspect_fetches_public_card_and_caches_metadata() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].method, "GET");
     assert_eq!(requests[0].path, "/.well-known/agent-card.json");
+    assert_eq!(
+        requests[0].headers.get("a2a-version").map(String::as_str),
+        Some("1.0")
+    );
 
     let (code, stdout, stderr) = run(
         &["missive", "agent", "show", "echo", "--json"],
@@ -346,6 +351,140 @@ fn agent_inspect_fetches_public_card_and_caches_metadata() {
     let value = json_success(&stdout, "agent_show");
     assert_eq!(value["data"]["agent"]["agent_card_etag"], "W/\"card-v1\"");
     assert!(value["data"]["agent"]["agent_card_fetched_at"].is_string());
+}
+
+#[test]
+fn agent_inspect_applies_protocol_config_and_cli_service_parameters() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_json("http://127.0.0.1:1", "1.0.0"),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    let config_path = temp.path().join("missive.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+default_agent = "echo"
+
+[protocol]
+protocol_version = "1.0"
+extensions = ["urn:example:config"]
+
+[protocol.service_parameters]
+A2A-Tenant = "tenant-a"
+
+[agents.echo]
+base_url = "{}"
+tags = ["local"]
+"#,
+            server.base_url
+        ),
+    )
+    .expect("write config");
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "agent",
+            "inspect",
+            "echo",
+            "--config",
+            config_path.to_str().expect("config path"),
+            "--protocol-version",
+            "1.1",
+            "--a2a-extension",
+            "urn:example:cli",
+            "--service-param",
+            "A2A-Trace=trace-cli",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    assert_eq!(
+        json_success(&stdout, "agent_inspect")["data"]["agent"]["alias"],
+        "echo"
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].headers.get("a2a-version").map(String::as_str),
+        Some("1.1")
+    );
+    assert_eq!(
+        requests[0]
+            .headers
+            .get("a2a-extensions")
+            .map(String::as_str),
+        Some("urn:example:config, urn:example:cli")
+    );
+    assert_eq!(
+        requests[0].headers.get("a2a-tenant").map(String::as_str),
+        Some("tenant-a")
+    );
+    assert_eq!(
+        requests[0].headers.get("a2a-trace").map(String::as_str),
+        Some("trace-cli")
+    );
+}
+
+#[test]
+fn agent_inspect_maps_unsupported_protocol_version_to_protocol_exit() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    let body = serde_json::json!({
+        "error": {
+            "code": -32009,
+            "message": "version not supported: 9.9"
+        }
+    })
+    .to_string();
+    let server = MockServer::start(vec![MockResponse::raw(400, "Bad Request", body)]);
+    add_agent("echo", &server.base_url, &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "agent",
+            "inspect",
+            "echo",
+            "--protocol-version",
+            "9.9",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Protocol.as_i32());
+    assert!(stdout.is_empty());
+    let value = json_error(&stderr);
+    assert_eq!(value["data"]["code"], "missive::protocol");
+    assert_eq!(
+        value["data"]["exit_code"],
+        MissiveExitCode::Protocol.as_u8()
+    );
+    assert!(
+        value["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("protocol version \"9.9\" is not supported")
+    );
+    assert_eq!(
+        server.requests()[0]
+            .headers
+            .get("a2a-version")
+            .map(String::as_str),
+        Some("9.9")
+    );
 }
 
 #[test]

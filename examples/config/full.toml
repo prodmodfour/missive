@@ -28,6 +28,13 @@ retry_backoff = "250ms"
 max_request_bytes = 1048576
 concurrency = 4
 
+[protocol]
+protocol_version = "1.0"
+extensions = []
+
+[protocol.service_parameters]
+A2A-Tenant = "local-demo"
+
 [profiles.default]
 description = "Default local profile."
 default_agent = "echo"

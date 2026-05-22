@@ -70,9 +70,12 @@ strings:
   by `missive agent add/list/show/inspect/refresh/remove/rename`, including
   cached Agent Card JSON, ETag, Last-Modified, and fetch timestamp fields
 * contexts: `ContextUpsert`, `ContextRecord`, and CRUD methods for context state
-* tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state
+* tasks: `TaskUpsert`, `TaskRecord`, and CRUD methods for task state;
+  `TaskUpsert::record_a2a_protocol_version` records the selected A2A version in
+  both the typed protocol-version column and `a2a.protocol_version` metadata
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
-  monotonic SQLite sequences
+  monotonic SQLite sequences; `EventInsert::record_a2a_protocol_version` records
+  the selected A2A version in event metadata
 * groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, and membership
   methods with rank uniqueness enforced by SQLite
 * gateway jobs: `GatewayJobUpsert`, `GatewayJobRecord`, `GatewayJobId`, and CRUD

@@ -26,6 +26,12 @@ The following flags are accepted at the top level and after subcommands:
 * `--config <PATH>` — select an explicit configuration file path.
 * `--profile <PROFILE>` — select a named profile.
 * `--timeout <DURATION>` — set an overall timeout string such as `30s` or `2m`.
+* `--protocol-version <VERSION>` — override the A2A protocol version sent as
+  `A2A-Version` for implemented outbound A2A requests.
+* `--a2a-extension <EXTENSION>` — append an A2A extension requested through
+  `A2A-Extensions`; repeatable.
+* `--service-param NAME=VALUE` — add or override an arbitrary non-auth A2A
+  service parameter for implemented outbound A2A HTTP requests; repeatable.
 * `--trace` — request trace-oriented diagnostics.
 * `--verbose` / `-v` — increase human diagnostic verbosity; repeat as needed.
 
@@ -33,7 +39,9 @@ Configuration discovery now supports `--config`, `MISSIVE_CONFIG`, XDG config
 locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
 requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
-order. Timeout enforcement, tracing, and command-specific semantics are
+order. Protocol service-parameter flags are currently applied to Agent Card
+HTTP requests and are shared with future A2A send/stream/task/push clients.
+Timeout enforcement, tracing, and most command-specific semantics are
 intentionally left to their ordered implementation tickets.
 
 ## Top-level commands
@@ -127,7 +135,9 @@ cached public card. Use `missive agent inspect <alias> --binding json-rpc` to
 require a specific locally supported binding for the inspection result. When a
 cached ETag or Last-Modified value is available, missive sends conditional
 request headers during refresh and keeps the cached card if the remote endpoint
-replies `304 Not Modified`.
+replies `304 Not Modified`. Every Agent Card fetch also sends `A2A-Version`
+(default `1.0` unless config or `--protocol-version` overrides it), plus any
+configured/CLI `A2A-Extensions` and extra service parameters.
 
 Interface negotiation uses the agent row's binding preference, which defaults to
 `http+json`, then `json-rpc`. Agent Card values such as `HTTP+JSON` and
@@ -139,8 +149,10 @@ interface URLs and then to the registered `base_url` for `http+json` only.
 Discovery and negotiation failures have deterministic categories: HTTP status
 errors, TLS/network failures, and lack of a mutually supported interface are
 transport errors, while invalid or schema-incompatible Agent Card JSON is a
-protocol error. Authentication for Agent Card discovery is not implemented yet;
-public cards should be reachable without credentials.
+protocol error. If the remote error body reports A2A `VERSION_NOT_SUPPORTED`,
+missive returns a protocol error with exit code `76`. Authentication for Agent
+Card discovery is not implemented yet; public cards should be reachable without
+credentials.
 
 Human output is concise text. Machine output uses command-specific envelope
 kinds such as `agent_add`, `agent_list`, `agent_show`, `agent_inspect`,

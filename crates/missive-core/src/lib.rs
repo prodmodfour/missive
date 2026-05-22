@@ -9,16 +9,19 @@ pub mod timestamp;
 
 pub use config::{
     AuthRefConfig, AuthRefKind, CONFIG_REDACTED, CONFIG_SCHEMA_VERSION, ColorMode, ConfigDiscovery,
-    ConfigSource, ConfigSourceKind, ENV_CONFIG, ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig,
-    MissiveConfig, OutputConfig, OutputFormat, ProfileConfig, QosConfig, StorageBackend,
-    StorageConfig,
+    ConfigSource, ConfigSourceKind, DEFAULT_A2A_PROTOCOL_VERSION, ENV_CONFIG,
+    ENV_REPOSITORY_CONFIG, GatewayConfig, LoadedConfig, MissiveConfig, OutputConfig, OutputFormat,
+    ProfileConfig, ProtocolConfig, QosConfig, StorageBackend, StorageConfig,
 };
 pub use envelope::Envelope;
 pub use error::{ErrorCategory, ErrorReport, MissiveError, MissiveExitCode, Result};
 pub use ids::{
     AgentAlias, ContextId, EventId, GroupName, MessageId, RankName, TaskId, TransportName,
 };
-pub use metadata::Metadata;
+pub use metadata::{
+    METADATA_A2A_EXTENSIONS, METADATA_A2A_PROTOCOL_VERSION, METADATA_A2A_SERVICE_PARAMETERS,
+    Metadata,
+};
 pub use timestamp::MissiveTimestamp;
 
 /// Canonical project and binary name.

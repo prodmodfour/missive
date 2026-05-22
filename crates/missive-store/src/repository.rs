@@ -13,8 +13,8 @@ use std::path::Path;
 use std::str::FromStr;
 
 use missive_core::{
-    AgentAlias, ContextId, EventId, GroupName, MessageId, Metadata, MissiveError, MissiveTimestamp,
-    RankName, Result, TaskId, TransportName,
+    AgentAlias, ContextId, EventId, GroupName, METADATA_A2A_PROTOCOL_VERSION, MessageId, Metadata,
+    MissiveError, MissiveTimestamp, RankName, Result, TaskId, TransportName,
 };
 use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
@@ -557,6 +557,20 @@ impl TaskUpsert {
             completed_at: None,
         }
     }
+
+    /// Records the A2A protocol version used for the task in both the typed
+    /// column and metadata map.
+    pub fn record_a2a_protocol_version(
+        &mut self,
+        protocol_version: impl Into<String>,
+    ) -> Result<()> {
+        let protocol_version = protocol_version.into();
+        validate_store_identifier("A2A protocol version", &protocol_version)?;
+        self.protocol_version = Some(protocol_version.clone());
+        self.metadata
+            .insert_str(METADATA_A2A_PROTOCOL_VERSION, protocol_version)?;
+        Ok(())
+    }
 }
 
 /// Stored task row.
@@ -643,6 +657,18 @@ impl EventInsert {
             metadata: Metadata::new(),
             redacted: true,
         }
+    }
+
+    /// Records the A2A protocol version used for the event in metadata.
+    pub fn record_a2a_protocol_version(
+        &mut self,
+        protocol_version: impl Into<String>,
+    ) -> Result<()> {
+        let protocol_version = protocol_version.into();
+        validate_store_identifier("A2A protocol version", &protocol_version)?;
+        self.metadata
+            .insert_str(METADATA_A2A_PROTOCOL_VERSION, protocol_version)?;
+        Ok(())
     }
 }
 
@@ -2353,12 +2379,18 @@ mod tests {
         let task_id = task_id("task-1");
         let mut task = TaskUpsert::new(task_id.clone(), agent.clone(), TaskState::Submitted);
         task.context_id = Some(context_id.clone());
-        task.protocol_version = Some("0.3".to_owned());
+        task.record_a2a_protocol_version("1.0")
+            .expect("record task protocol version");
         task.remote_task_json = Some(json!({"id": "task-1", "state": "submitted"}));
         let created_task = store.upsert_task(&task).expect("task upsert");
 
         assert_eq!(created_task.context_id.as_ref(), Some(&context_id));
         assert_eq!(created_task.state, TaskState::Submitted);
+        assert_eq!(created_task.protocol_version.as_deref(), Some("1.0"));
+        assert_eq!(
+            created_task.metadata.get_str(METADATA_A2A_PROTOCOL_VERSION),
+            Some("1.0")
+        );
 
         let mut completed_task = task.clone();
         completed_task.state = TaskState::Completed;
@@ -2377,10 +2409,17 @@ mod tests {
         event.agent_alias = Some(agent);
         event.context_id = Some(context_id.clone());
         event.task_id = Some(task_id.clone());
+        event
+            .record_a2a_protocol_version("1.0")
+            .expect("record event protocol version");
         let stored_event = store.append_event(&event).expect("event append");
 
         assert_eq!(stored_event.sequence, 1);
         assert_eq!(stored_event.task_id.as_ref(), Some(&task_id));
+        assert_eq!(
+            stored_event.metadata.get_str(METADATA_A2A_PROTOCOL_VERSION),
+            Some("1.0")
+        );
         assert_eq!(
             store.list_events().expect("list events"),
             vec![stored_event.clone()]

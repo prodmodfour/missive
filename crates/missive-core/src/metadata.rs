@@ -7,6 +7,15 @@ use serde_json::Value;
 
 use crate::{MissiveError, Result};
 
+/// Metadata key used to record the A2A protocol version applied to a request.
+pub const METADATA_A2A_PROTOCOL_VERSION: &str = "a2a.protocol_version";
+
+/// Metadata key used to record requested A2A extensions.
+pub const METADATA_A2A_EXTENSIONS: &str = "a2a.extensions";
+
+/// Metadata key used to record extra non-auth A2A service parameters.
+pub const METADATA_A2A_SERVICE_PARAMETERS: &str = "a2a.service_parameters";
+
 const METADATA_KEY_MAX_BYTES: usize = 128;
 const METADATA_KEY_HELP: &str =
     "Use a short non-empty metadata key without whitespace or control characters.";

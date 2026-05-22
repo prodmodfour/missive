@@ -6,6 +6,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
+use missive_a2a::ServiceParameters;
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
 
 pub mod agent;
@@ -109,6 +110,35 @@ pub struct GlobalArgs {
         help_heading = "Global options"
     )]
     pub timeout: Option<String>,
+
+    /// Override the A2A protocol version sent as the A2A-Version service parameter.
+    #[arg(
+        long = "protocol-version",
+        value_name = "VERSION",
+        global = true,
+        help_heading = "Global options"
+    )]
+    pub protocol_version: Option<String>,
+
+    /// Request an A2A extension through the A2A-Extensions service parameter; repeatable.
+    #[arg(
+        long = "a2a-extension",
+        value_name = "EXTENSION",
+        global = true,
+        action = ArgAction::Append,
+        help_heading = "Global options"
+    )]
+    pub a2a_extensions: Vec<String>,
+
+    /// Add an arbitrary A2A service parameter as NAME=VALUE; repeatable.
+    #[arg(
+        long = "service-param",
+        value_name = "NAME=VALUE",
+        global = true,
+        action = ArgAction::Append,
+        help_heading = "Global options"
+    )]
+    pub service_params: Vec<String>,
 
     /// Enable trace-oriented diagnostics for this invocation.
     #[arg(long, global = true, action = ArgAction::SetTrue, help_heading = "Global options")]
@@ -294,6 +324,7 @@ where
             {
                 agent::execute_agent_command(
                     agent_command,
+                    &cli.globals,
                     &loaded_config,
                     environment,
                     mode,
@@ -333,6 +364,42 @@ fn load_config(
         .with_explicit_path(globals.config.clone())
         .with_selected_profile(globals.profile.clone())
         .load()
+}
+
+pub(crate) fn service_parameters_from_config_and_globals(
+    loaded_config: &LoadedConfig,
+    globals: &GlobalArgs,
+) -> Result<ServiceParameters> {
+    let protocol = loaded_config.protocol_config()?;
+    let mut protocol_version = protocol.protocol_version;
+    if let Some(override_version) = &globals.protocol_version {
+        protocol_version = override_version.clone();
+    }
+
+    let mut extensions = protocol.extensions;
+    extensions.extend(globals.a2a_extensions.iter().cloned());
+
+    let mut extra = protocol.service_parameters;
+    for value in &globals.service_params {
+        let (name, parameter_value) = split_global_key_value("--service-param", value)?;
+        extra.insert(name.to_owned(), parameter_value.to_owned());
+    }
+
+    ServiceParameters::new(protocol_version, extensions, extra)
+}
+
+fn split_global_key_value<'a>(flag: &str, value: &'a str) -> Result<(&'a str, &'a str)> {
+    let Some((key, raw_value)) = value.split_once('=') else {
+        return Err(MissiveError::validation(format!(
+            "{flag} value {value:?} must use NAME=VALUE syntax"
+        )));
+    };
+    if key.is_empty() || raw_value.is_empty() {
+        return Err(MissiveError::validation(format!(
+            "{flag} value {value:?} must include a non-empty name and value"
+        )));
+    }
+    Ok((key, raw_value))
 }
 
 fn process_environment() -> BTreeMap<String, String> {
@@ -487,6 +554,12 @@ mod tests {
             "dev",
             "--timeout",
             "30s",
+            "--protocol-version",
+            "1.0",
+            "--a2a-extension",
+            "urn:example:ext",
+            "--service-param",
+            "A2A-Trace=trace-1",
             "--trace",
             "--verbose",
             "--verbose",
@@ -507,8 +580,65 @@ mod tests {
         );
         assert_eq!(cli.globals.profile.as_deref(), Some("dev"));
         assert_eq!(cli.globals.timeout.as_deref(), Some("30s"));
+        assert_eq!(cli.globals.protocol_version.as_deref(), Some("1.0"));
+        assert_eq!(cli.globals.a2a_extensions, ["urn:example:ext"]);
+        assert_eq!(cli.globals.service_params, ["A2A-Trace=trace-1"]);
         assert!(cli.globals.trace);
         assert_eq!(cli.globals.verbose, 2);
+    }
+
+    #[test]
+    fn service_parameters_merge_config_with_cli_overrides() {
+        let config = missive_core::MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+
+[protocol]
+protocol_version = "1.0"
+extensions = ["urn:example:config"]
+
+[protocol.service_parameters]
+A2A-Tenant = "tenant-a"
+"#,
+        )
+        .expect("config");
+        let loaded = LoadedConfig {
+            config,
+            source: missive_core::ConfigSource {
+                kind: missive_core::ConfigSourceKind::BuiltInDefault,
+                path: None,
+            },
+            selected_profile: "default".to_owned(),
+        };
+        let globals = GlobalArgs {
+            protocol_version: Some("2.0".to_owned()),
+            a2a_extensions: vec!["urn:example:cli".to_owned()],
+            service_params: vec!["A2A-Trace=trace-1".to_owned()],
+            ..GlobalArgs::default()
+        };
+
+        let parameters = service_parameters_from_config_and_globals(&loaded, &globals)
+            .expect("service parameters");
+
+        assert_eq!(parameters.protocol_version, "2.0");
+        assert_eq!(
+            parameters.extensions,
+            vec![
+                "urn:example:config".to_owned(),
+                "urn:example:cli".to_owned()
+            ]
+        );
+        assert_eq!(
+            parameters.extra.get("A2A-Tenant").map(String::as_str),
+            Some("tenant-a")
+        );
+        assert_eq!(
+            parameters.extra.get("A2A-Trace").map(String::as_str),
+            Some("trace-1")
+        );
     }
 
     #[test]

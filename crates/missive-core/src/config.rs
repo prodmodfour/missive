@@ -5,7 +5,7 @@
 //! exposes redacted rendering helpers so diagnostics and future `doctor` output
 //! never need to print secret-like values.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::net::SocketAddr;
@@ -19,6 +19,9 @@ use crate::{Metadata, MissiveError, Result};
 
 /// Current configuration schema marker.
 pub const CONFIG_SCHEMA_VERSION: &str = "missive.config.v1";
+
+/// Default A2A protocol version used when config and CLI do not override it.
+pub const DEFAULT_A2A_PROTOCOL_VERSION: &str = "1.0";
 
 /// Environment variable that points at one explicit configuration file.
 pub const ENV_CONFIG: &str = "MISSIVE_CONFIG";
@@ -65,6 +68,8 @@ pub struct MissiveConfig {
     pub storage: StorageConfig,
     /// CLI output defaults used when no output flag overrides them.
     pub output: OutputConfig,
+    /// A2A protocol service-parameter defaults.
+    pub protocol: ProtocolConfig,
     /// Local gateway defaults.
     pub gateway: GatewayConfig,
     /// Adapter definitions for future gateway/adapters work.
@@ -86,6 +91,7 @@ impl Default for MissiveConfig {
             auth_refs: BTreeMap::new(),
             storage: StorageConfig::default(),
             output: OutputConfig::default(),
+            protocol: ProtocolConfig::default(),
             gateway: GatewayConfig::default(),
             adapters: BTreeMap::new(),
             qos: QosConfig::default(),
@@ -156,6 +162,7 @@ impl MissiveConfig {
 
         self.storage.validate()?;
         self.output.validate()?;
+        self.protocol.validate("protocol")?;
         self.gateway.validate()?;
         self.qos.validate("qos")?;
 
@@ -215,6 +222,9 @@ pub struct ProfileConfig {
     /// Optional profile-specific output override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<OutputConfig>,
+    /// Optional profile-specific A2A protocol/service-parameter override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<ProtocolConfig>,
     /// Optional profile-specific gateway override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gateway: Option<GatewayConfig>,
@@ -248,6 +258,9 @@ impl ProfileConfig {
         }
         if let Some(output) = &self.output {
             output.validate()?;
+        }
+        if let Some(protocol) = &self.protocol {
+            protocol.validate(&format!("profiles.{name}.protocol"))?;
         }
         if let Some(gateway) = &self.gateway {
             gateway.validate()?;
@@ -523,6 +536,66 @@ impl OutputConfig {
     }
 }
 
+/// A2A protocol service-parameter defaults.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProtocolConfig {
+    /// A2A protocol version sent as the `A2A-Version` service parameter.
+    pub protocol_version: String,
+    /// Extension identifiers sent through `A2A-Extensions` when non-empty.
+    pub extensions: Vec<String>,
+    /// Additional non-auth service parameters sent as HTTP headers when applicable.
+    pub service_parameters: BTreeMap<String, String>,
+}
+
+impl Default for ProtocolConfig {
+    fn default() -> Self {
+        Self {
+            protocol_version: DEFAULT_A2A_PROTOCOL_VERSION.to_owned(),
+            extensions: Vec::new(),
+            service_parameters: BTreeMap::new(),
+        }
+    }
+}
+
+impl ProtocolConfig {
+    fn validate(&self, prefix: &str) -> Result<()> {
+        validate_protocol_version(
+            &format!("{prefix}.protocol_version"),
+            &self.protocol_version,
+        )?;
+
+        let mut extensions = BTreeSet::new();
+        for extension in &self.extensions {
+            validate_a2a_extension(&format!("{prefix}.extensions"), extension)?;
+            if !extensions.insert(extension) {
+                return Err(MissiveError::config(format!(
+                    "{prefix}.extensions contains duplicate extension {extension:?}"
+                ))
+                .with_help("List each A2A extension at most once."));
+            }
+        }
+
+        for (name, value) in &self.service_parameters {
+            validate_header_name(&format!("{prefix}.service_parameters"), name)?;
+            if is_reserved_a2a_service_parameter(name) {
+                return Err(MissiveError::config(format!(
+                    "{prefix}.service_parameters must not redefine reserved A2A service parameter {name:?}"
+                ))
+                .with_help(
+                    "Use protocol_version for A2A-Version and extensions for A2A-Extensions.",
+                ));
+            }
+            validate_service_parameter_value(
+                &format!("{prefix}.service_parameters.{name}"),
+                value,
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Gateway defaults used by later daemon tickets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -746,6 +819,15 @@ impl LoadedConfig {
             .output
             .as_ref()
             .map_or(self.config.output.format, |output| output.format))
+    }
+
+    /// Returns the effective A2A protocol/service-parameter config for the selected profile.
+    pub fn protocol_config(&self) -> Result<ProtocolConfig> {
+        let profile = self.selected_profile_config()?;
+        Ok(profile
+            .protocol
+            .clone()
+            .unwrap_or_else(|| self.config.protocol.clone()))
     }
 
     /// Renders the loaded config, source, and profile with secret-like values redacted.
@@ -1101,6 +1183,56 @@ fn validate_transport_binding(field: &str, value: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn validate_protocol_version(field: &str, value: &str) -> Result<()> {
+    validate_required_text(field, Some(value))?;
+    if value.len() > 64 {
+        return Err(
+            MissiveError::config(format!("{field} must be at most 64 bytes"))
+                .with_help("Use a short A2A protocol version such as 1.0."),
+        );
+    }
+    if value
+        .bytes()
+        .any(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')))
+    {
+        return Err(
+            MissiveError::config(format!("{field} contains unsupported characters"))
+                .with_help("Use ASCII letters, digits, '.', '-' or '_' only."),
+        );
+    }
+    Ok(())
+}
+
+fn validate_a2a_extension(field: &str, value: &str) -> Result<()> {
+    validate_required_text(field, Some(value))?;
+    if value.len() > 512 {
+        return Err(MissiveError::config(format!(
+            "{field} extension identifier must be at most 512 bytes"
+        )));
+    }
+    if value.chars().any(char::is_whitespace) || value.contains(',') {
+        return Err(MissiveError::config(format!(
+            "{field} extension identifiers must not contain whitespace or commas"
+        ))
+        .with_help("Use compact URI-like extension identifiers."));
+    }
+    Ok(())
+}
+
+fn validate_service_parameter_value(field: &str, value: &str) -> Result<()> {
+    validate_required_text(field, Some(value))?;
+    if value.len() > 8 * 1024 {
+        return Err(MissiveError::config(format!(
+            "{field} service parameter value must be at most 8192 bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn is_reserved_a2a_service_parameter(value: &str) -> bool {
+    value.eq_ignore_ascii_case("A2A-Version") || value.eq_ignore_ascii_case("A2A-Extensions")
 }
 
 fn validate_http_url(field: &str, value: &str) -> Result<()> {
@@ -1460,9 +1592,76 @@ scheme = "Bearer"
 
         config.validate().expect("default config should validate");
         assert_eq!(
+            config.protocol.protocol_version,
+            DEFAULT_A2A_PROTOCOL_VERSION
+        );
+        assert_eq!(
             config.profile("default").expect("profile"),
             &ProfileConfig::default()
         );
+    }
+
+    #[test]
+    fn protocol_config_parses_and_profile_override_wins() {
+        let config = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[protocol]
+protocol_version = "1.0"
+extensions = ["urn:example:base"]
+
+[protocol.service_parameters]
+A2A-Trace = "base-trace"
+
+[profiles.default]
+
+[profiles.default.protocol]
+protocol_version = "1.1"
+extensions = ["urn:example:profile"]
+
+[profiles.default.protocol.service_parameters]
+A2A-Tenant = "tenant-a"
+"#,
+        )
+        .expect("protocol config should parse");
+        let loaded = LoadedConfig {
+            config,
+            source: ConfigSource::built_in_default(),
+            selected_profile: "default".to_owned(),
+        };
+
+        let protocol = loaded.protocol_config().expect("effective protocol");
+
+        assert_eq!(protocol.protocol_version, "1.1");
+        assert_eq!(protocol.extensions, vec!["urn:example:profile"]);
+        assert_eq!(
+            protocol
+                .service_parameters
+                .get("A2A-Tenant")
+                .map(String::as_str),
+            Some("tenant-a")
+        );
+    }
+
+    #[test]
+    fn protocol_config_rejects_reserved_service_parameter_names() {
+        let error = MissiveConfig::from_toml_str(
+            r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+
+[protocol.service_parameters]
+A2A-Version = "2.0"
+"#,
+        )
+        .expect_err("reserved service parameter should fail");
+
+        assert_eq!(error.category(), ErrorCategory::Config);
+        assert!(error.to_string().contains("reserved A2A service parameter"));
     }
 
     #[test]

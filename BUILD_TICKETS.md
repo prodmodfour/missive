@@ -519,7 +519,7 @@ Validation:
 
 ## 017 — Implement A2A service parameter handling
 
-Status: TODO
+Status: DONE
 
 Phase: A2A
 

@@ -31,6 +31,15 @@ Global options:
       --timeout <DURATION>
           Set an overall command timeout such as 30s, 2m, or 1h
 
+      --protocol-version <VERSION>
+          Override the A2A protocol version sent as the A2A-Version service parameter
+
+      --a2a-extension <EXTENSION>
+          Request an A2A extension through the A2A-Extensions service parameter; repeatable
+
+      --service-param <NAME=VALUE>
+          Add an arbitrary A2A service parameter as NAME=VALUE; repeatable
+
       --trace
           Enable trace-oriented diagnostics for this invocation
 
