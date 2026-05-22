@@ -3,9 +3,9 @@
 `missive` treats A2A as the canonical protocol layer. The current implemented
 protocol behavior covers public Agent Card discovery for registered agents,
 official Rust protocol type integration through `missive-a2a`, local interface
-negotiation, non-streaming `SendMessage` calls for `missive send`, SSE
-`SendStreamingMessage` calls for `missive stream`, remote task
-`GetTask`/`ListTasks`/`CancelTask`, and local A2A `contextId` continuity
+negotiation, non-streaming `SendMessage` calls for `missive send` and
+`missive bcast`, SSE `SendStreamingMessage` calls for `missive stream`, remote
+task `GetTask`/`ListTasks`/`CancelTask`, and local A2A `contextId` continuity
 management through `missive context`.
 
 ## Public Agent Card discovery
@@ -122,8 +122,11 @@ fallback and reports `protocol_version = "unknown"` with
 
 `missive send` builds an official `a2a-lf` `SendMessageRequest` containing a
 `ROLE_USER` `Message`, rich A2A parts, optional `contextId`/`taskId`, optional
-`configuration.acceptedOutputModes`, and non-secret request metadata. Supported
-outbound parts are official text parts, `url` file-reference parts for
+`configuration.acceptedOutputModes`, and non-secret request metadata. `missive
+bcast` reuses the same request preparation for each group member, assigns one
+shared `contextId`, and generates a fresh A2A message id per member so local
+message rows remain unique. Supported outbound parts are official text parts,
+`url` file-reference parts for
 canonicalized local `file://` URLs, `raw` byte parts for `--file-bytes`, and
 structured `data` parts for `--json-part`. MIME values are stored on official
 `mediaType` fields and JSON data parts default to `application/json`. The
@@ -145,7 +148,9 @@ or a `Task`. Direct messages are stored as response message rows. Task responses
 are stored in `tasks` with the raw remote task JSON, mapped task state, protocol
 version metadata, and a linked response message row using the task status message
 when one is present or a local synthetic response row when the task has no status
-message.
+message. Broadcasts additionally append redacted `missive.bcast.started`,
+`missive.bcast.member.*`, and `missive.bcast.completed` events around the normal
+per-member `a2a.send.*` events.
 
 ## Streaming SendStreamingMessage
 

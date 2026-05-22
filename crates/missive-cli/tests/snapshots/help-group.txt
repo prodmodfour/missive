@@ -1,4 +1,4 @@
-Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for later collective operations.
+Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for collective operations.
 
 Usage: missive group [OPTIONS] [COMMAND]
 

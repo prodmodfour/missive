@@ -1,0 +1,105 @@
+Send the same A2A SendMessage content to every registered member of a local group, create or reuse one shared context id, persist per-member message/task rows, and record broadcast collective events.
+
+Usage: missive bcast [OPTIONS] <GROUP> [MESSAGE]
+
+Arguments:
+  <GROUP>
+          Local group name whose members should receive the broadcast
+
+  [MESSAGE]
+          Text message to broadcast. Omit when using --stdin, --file, --file-bytes, --json-part, or --part
+
+Options:
+      --stdin
+          Read one UTF-8 text message part from standard input and reuse it for every member
+
+      --file <PATH>
+          Attach one safe local file reference part without embedding bytes; repeatable
+
+      --file-bytes <PATH>
+          Embed one safe local file as an A2A raw byte part; repeatable
+
+      --json-part <JSON>
+          Add one A2A structured data part from an inline JSON value; repeatable
+
+      --mime <MIME>
+          Apply MIME/media type metadata to file, byte, JSON, or text parts
+
+      --part <text=VALUE>
+          Add a message text part as text=VALUE; repeatable
+
+      --metadata <KEY=VALUE>
+          Add non-secret A2A request metadata as KEY=VALUE; VALUE may be JSON
+
+      --context <CONTEXT_ID>
+          Reuse this A2A context id instead of generating a broadcast context
+
+      --accepted-output-mode <MIME>
+          Accepted response MIME/output mode; repeatable
+
+      --execution <MODE>
+          Execution strategy for member sends
+
+          Possible values:
+          - sequential: Send to one member at a time in rank order
+          - concurrent: Resolve members first, then perform outbound A2A sends in parallel threads
+          
+          [default: sequential]
+
+      --failure-policy <POLICY>
+          Failure policy for member errors
+
+          Possible values:
+          - stop:     Stop after the first member failure in sequential mode and return a non-zero exit
+          - continue: Continue sending to later members and report partial failure in the summary
+          
+          [default: stop]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Global options:
+      --json
+          Emit a single JSON document for command output when the command supports it
+
+      --ndjson
+          Emit newline-delimited JSON events when the command supports streaming output
+
+  -q, --quiet
+          Suppress non-error output
+
+      --no-color
+          Disable colored terminal output and diagnostics
+
+      --config <PATH>
+          Read configuration from this file path
+
+      --profile <PROFILE>
+          Select a named configuration profile
+
+      --timeout <DURATION>
+          Set an overall command timeout such as 30s, 2m, or 1h
+
+      --protocol-version <VERSION>
+          Override the A2A protocol version sent as the A2A-Version service parameter
+
+      --a2a-extension <EXTENSION>
+          Request an A2A extension through the A2A-Extensions service parameter; repeatable
+
+      --service-param <NAME=VALUE>
+          Add an arbitrary A2A service parameter as NAME=VALUE; repeatable
+
+      --bearer-token-env <ENV>
+          Read a bearer token from this environment variable and send it as Authorization
+
+      --header <NAME:VALUE>
+          Add an outbound HTTP header as Name:Value; repeatable and never persisted
+
+      --trace
+          Enable trace-oriented diagnostics for this invocation
+
+  -v, --verbose...
+          Increase human diagnostic verbosity; repeat for more detail

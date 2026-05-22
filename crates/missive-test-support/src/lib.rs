@@ -79,6 +79,7 @@ struct MockA2aConfig {
     malformed_task_response: bool,
     malformed_stream_event: bool,
     malformed_json_rpc_envelope: bool,
+    send_response_delay: Option<Duration>,
 }
 
 impl Default for MockA2aConfig {
@@ -93,6 +94,7 @@ impl Default for MockA2aConfig {
             malformed_task_response: false,
             malformed_stream_event: false,
             malformed_json_rpc_envelope: false,
+            send_response_delay: None,
         }
     }
 }
@@ -185,6 +187,13 @@ impl MockA2aServerBuilder {
     #[must_use]
     pub fn malformed_json_rpc_envelope(mut self) -> Self {
         self.config.malformed_json_rpc_envelope = true;
+        self
+    }
+
+    /// Delays SendMessage responses by the requested duration.
+    #[must_use]
+    pub fn send_response_delay(mut self, delay: Duration) -> Self {
+        self.config.send_response_delay = Some(delay);
         self
     }
 
@@ -696,6 +705,7 @@ fn json_rpc_response(inner: &mut MockStateInner, request: &RecordedRequest) -> H
 
     let result = match method {
         protocol::jsonrpc_methods::SEND_MESSAGE => {
+            apply_send_delay(&inner.config);
             if inner.config.malformed_send_response {
                 json!({"unexpected": true})
             } else {
@@ -808,6 +818,7 @@ fn json_rpc_response(inner: &mut MockStateInner, request: &RecordedRequest) -> H
 }
 
 fn rest_send_response(inner: &MockStateInner) -> HttpResponse {
+    apply_send_delay(&inner.config);
     if inner.config.malformed_send_response {
         malformed_protocol_response("application/a2a+json")
     } else {
@@ -817,6 +828,12 @@ fn rest_send_response(inner: &MockStateInner) -> HttpResponse {
             "application/a2a+json",
             inner.send_response.clone(),
         )
+    }
+}
+
+fn apply_send_delay(config: &MockA2aConfig) {
+    if let Some(delay) = config.send_response_delay {
+        thread::sleep(delay);
     }
 }
 

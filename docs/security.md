@@ -2,14 +2,14 @@
 
 `missive` is still early-stage. The current security implementation focuses on
 safe authentication inputs for implemented outbound Agent Card, send, stream,
-and task requests, redaction at output boundaries, and keeping runtime state out of the
-repository.
+broadcast, task, and push requests, redaction at output boundaries, and keeping
+runtime state out of the repository.
 
 ## Authentication inputs
 
 Implemented outbound A2A HTTP requests (`agent inspect` when it fetches,
-`agent refresh`, `send`, `stream`, and remote `task` operations) can receive
-auth material from three sources:
+`agent refresh`, `send`, `stream`, `bcast`, remote `task`, and `push` operations)
+can receive auth material from three sources:
 
 1. Config auth refs linked from an agent with `auth_ref = "name"`.
 2. `--bearer-token-env ENV`, which reads `ENV` and sends
@@ -50,8 +50,9 @@ parse keyring refs but fail clearly if a keyring-backed token is needed.
 Precedence for a single request is: config auth ref first,
 `--bearer-token-env` second, and repeated `--header` values last. Later values
 replace earlier values with the same HTTP header name. `missive send`,
-`missive stream`, and remote `missive task` operations apply the resolved headers
-to the optional Agent Card fetch and to the A2A protocol request.
+`missive stream`, `missive bcast`, remote `missive task`, and `missive push`
+operations apply the resolved headers to the optional Agent Card fetch and to the
+A2A protocol request.
 
 ## Storage tradeoffs
 
@@ -83,11 +84,11 @@ builder are marked sensitive, and their debug representation is redacted.
 `missive context export` and `missive events list/tail/replay/export` apply the
 same output redaction and also redact raw message, task, and event payload JSON
 before including those records in stdout. Event producers created in current CLI
-paths store redacted event payloads for agent registry changes, send/stream
-requests, send responses, streaming updates, changed remote task records, and
-push notification config create/get/list/delete operations. `missive push` also
-redacts `authentication.credentials` before persisting local
-`push_configs.remote_config_json` rows.
+paths store redacted event payloads for agent registry changes, send/stream/bcast
+requests, send responses, streaming updates, changed remote task records,
+broadcast lifecycle/member results, and push notification config
+create/get/list/delete operations. `missive push` also redacts
+`authentication.credentials` before persisting local `push_configs.remote_config_json` rows.
 
 Redaction is a guardrail, not a substitute for secret hygiene. Do not place real
 tokens in config files, command examples, tests, fixtures, docs, event payloads,
@@ -99,8 +100,9 @@ directories outside the repository and protect them like local application data.
 
 ## Local file inputs
 
-`missive send` and `missive stream` validate `--file` and `--file-bytes` paths by
-canonicalizing them and requiring regular local files with safe UTF-8 filenames.
+`missive send`, `missive stream`, and `missive bcast` validate `--file` and
+`--file-bytes` paths by canonicalizing them and requiring regular local files
+with safe UTF-8 filenames.
 `--file` sends a canonical `file://` reference, so it can reveal the local path to
 the remote A2A agent and in local SQLite request-message rows. Use
 `--file-bytes` when the remote agent needs the content embedded instead, and only
@@ -166,7 +168,7 @@ fetching or dereferencing remote/local URLs.
 ## Current limitations
 
 Authentication is wired into implemented Agent Card fetch/refresh,
-non-streaming send, streaming send, task get/list/wait/cancel, push config
+non-streaming send, broadcast send, streaming send, task get/list/wait/cancel, push config
 requests, and the inbound webhook header-token hook. Gateway subscriptions
 currently send A2A service parameters but do not yet resolve outbound auth refs,
 keyring entries, `--bearer-token-env`, or `--header` values, so authenticated

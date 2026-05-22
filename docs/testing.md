@@ -22,6 +22,7 @@ The main fixture is `missive_test_support::MockA2aServer`. It starts a local `12
 * optional auth-header requirements
 * optional `VERSION_NOT_SUPPORTED` responses for unsupported `A2A-Version` values
 * optional malformed Agent Card, send, task, stream, and JSON-RPC responses
+* optional SendMessage response delay for timeout tests
 
 Example integration test setup:
 
@@ -120,6 +121,7 @@ cargo test -p missive-test-support --all-targets
 cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
 cargo test -p missive-cli --test push_command --all-features
 cargo test -p missive-cli --test group_command --all-features
+cargo test -p missive-cli --test bcast_command --all-features
 cargo test -p missive-cli --test gateway_command --all-features
 cargo test -p missive-cli --test webhook_command --all-features
 ```
@@ -136,7 +138,10 @@ scripts/quality-gate.sh
 The group command integration test uses an isolated `MISSIVE_HOME` and local
 agent registry rows to cover group create/list/show, member add/remove, duplicate
 rank handling, rename membership preservation, delete cascades, missing reference
-validation, and human output. The gateway command integration test spawns the
+validation, and human output. The broadcast collective integration test uses
+isolated state plus reusable mock A2A servers to cover concurrent success,
+partial failure, timeout through delayed SendMessage responses, per-member
+task/message persistence, request shape, and `missive.bcast.*` event rows. The gateway command integration test spawns the
 `missive` binary, waits for the local `/healthz` endpoint, checks `/status`
 component JSON over loopback HTTP, verifies graceful `--timeout` shutdown,
 checks NDJSON lifecycle output, and inspects persisted `missive.gateway.*` event
@@ -154,7 +159,7 @@ payloads over loopback HTTP, verifies graceful `--max-events` shutdown, checks
 NDJSON output, and inspects the persisted event journal. Neither test contacts
 external tunnel providers or third-party services.
 
-When later tickets add adapters, collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
+When later tickets add adapters, additional collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
 
 1. add a helper or route to `MockA2aServer`/`MockA2aHandle`
 2. cover it with a local test in `crates/missive-test-support`

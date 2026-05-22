@@ -1029,7 +1029,7 @@ Validation:
 
 ## 034 — Implement broadcast collective
 
-Status: TODO
+Status: DONE
 
 Phase: Collectives
 

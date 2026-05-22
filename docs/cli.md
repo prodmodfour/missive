@@ -5,11 +5,11 @@ configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
-`missive context create/list/show/fork/close/export`, `missive push
+`missive context create/list/show/fork/close/export`, `missive group
+create/list/show/add/remove/rename/delete`, `missive bcast`, `missive push
 create/get/list/delete`, `missive webhook run`, `missive gateway run`, and
 `missive gateway install/start/stop/status/uninstall`; other top-level commands
-still emit skeletal parsed status until their ordered
-tickets land.
+still emit skeletal parsed status until their ordered tickets land.
 
 Run help with:
 
@@ -20,6 +20,8 @@ missive send --help
 missive stream --help
 missive task --help
 missive context --help
+missive group --help
+missive bcast --help
 missive push --help
 missive gateway --help
 missive gateway run --help
@@ -58,10 +60,10 @@ locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
 requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
-Agent Card HTTP requests plus implemented send, stream, remote task, and push
-config calls. `missive webhook run` records the effective protocol version on
-inbound callback events when the callback omits `A2A-Version`. Task wait,
-webhook run, and gateway run use global `--timeout` as bounded execution
+Agent Card HTTP requests plus implemented send, stream, bcast, remote task, and
+push config calls. `missive webhook run` records the effective protocol version
+on inbound callback events when the callback omits `A2A-Version`. Task wait,
+bcast, webhook run, and gateway run use global `--timeout` as bounded execution
 budgets; tracing and broader command-specific timeout semantics are
 intentionally left to their ordered implementation tickets.
 
@@ -76,6 +78,7 @@ stream      Stream message updates from an A2A agent
 task        Inspect, list, wait for, or cancel A2A tasks
 context     Manage conversation contexts and session continuity
 group       Manage groups of agents for collective operations
+bcast       Broadcast one message to every member of a local group
 gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
@@ -453,9 +456,9 @@ counts.
 
 ## Group commands
 
-`missive group` manages local groups of registered agent aliases for later
-collective and routing commands. Groups live in the selected profile's SQLite
-store and contain only local control-plane metadata: a group name, routing policy
+`missive group` manages local groups of registered agent aliases for collective
+and later routing commands. Groups live in the selected profile's SQLite store
+and contain only local control-plane metadata: a group name, routing policy
 label, notes, metadata, and member rows. No A2A network calls are made by group
 commands.
 
@@ -477,9 +480,9 @@ MISSIVE_HOME=/tmp/missive-demo missive group delete demo-team
 ```
 
 `group create` refuses duplicate group names. `--routing-policy` defaults to
-`direct` and stores a policy label for future router/collective tickets; current
-group commands do not execute routing decisions. `--metadata KEY=VALUE` stores
-non-secret group metadata and parses `VALUE` as JSON when possible.
+`direct` and stores a policy label for router/collective commands; group CRUD
+commands do not execute routing decisions themselves. `--metadata KEY=VALUE`
+stores non-secret group metadata and parses `VALUE` as JSON when possible.
 
 `group add` requires an existing group and an existing registered agent alias.
 Each member stores the alias, required `--rank RANK`, repeatable `--tag TAG`, a
@@ -498,6 +501,62 @@ Machine-readable group output uses `group_create`, `group_list`, `group_show`,
 `group_add`, `group_remove`, `group_rename`, and `group_delete` envelope kinds.
 Group views include the routing policy, notes, metadata, member count, timestamps,
 and member rows with rank, tags, weight, and routing metadata.
+
+## Broadcast collective
+
+`missive bcast <group> <message>` sends the same non-streaming A2A
+`SendMessage` content to every member of a local group in deterministic rank
+order. It reuses the send command's message input parser, Agent Card discovery,
+interface negotiation, service-parameter/auth handling, and persistence path.
+Each successful member records request/response message rows, task rows when the
+remote response is a `Task`, artifacts embedded in task responses, `a2a.send.*`
+events, and broadcast-specific `missive.bcast.*` event rows.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive bcast team "Draft a plan" --json
+MISSIVE_HOME=/tmp/missive-demo missive bcast team --stdin --execution concurrent --json
+MISSIVE_HOME=/tmp/missive-demo missive bcast team "Draft a plan" \
+  --context ctx-planning-round \
+  --failure-policy continue \
+  --accepted-output-mode text/plain \
+  --timeout 30s \
+  --json
+```
+
+Supported message inputs match `send`: positional `[MESSAGE]`, `--stdin`,
+repeatable `--part text=VALUE`, `--file`, `--file-bytes`, `--json-part`,
+`--mime`, `--metadata KEY=VALUE`, and repeatable `--accepted-output-mode`. If
+`--context CONTEXT_ID` is omitted, missive generates and persists one local
+broadcast context id before sending; if it is provided and absent locally,
+missive creates the local context row. The context id is placed on every outbound
+member message.
+
+`--execution sequential` sends one member at a time and is the default.
+`--execution concurrent` resolves members first, then performs outbound A2A sends
+in parallel worker threads while persisting results back to SQLite in rank order.
+SQLite writes remain synchronous and protected by the normal profile state lock.
+
+`--failure-policy stop` stops after the first sequential member failure and
+returns a non-zero orchestration error after printing a `bcast_result` summary.
+`--failure-policy continue` keeps sending later members and returns success when
+at least one member succeeded, with `status: "partial_failure"` in the JSON
+summary. Global `--timeout` bounds Agent Card fetches and per-member sends for
+this command; a timeout prints the summary and exits with code `82`.
+
+Machine-readable output uses `kind: "bcast_result"` and includes the operation
+id, group, execution mode, failure policy, status, shared request/context
+summary, success/failure counts, and one member result per group member. Member
+results include agent alias, rank, status, request message id, selected
+interface, response shape, response message id, task id, context id, mapped task
+state, or a structured error report.
+
+Current limitations: `bcast` is non-streaming and does not wait for returned
+tasks to finish. Use `missive task wait` on returned task ids, and later barrier,
+gather, and reduce tickets will add dedicated collective follow-up operations.
+Concurrent mode does not cancel already-started worker threads after another
+member fails; it reports all completed member outcomes in the summary.
 
 ## Push notification config commands
 

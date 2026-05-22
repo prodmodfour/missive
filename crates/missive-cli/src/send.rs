@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use clap::{ArgAction, Args};
 use missive_a2a::{
@@ -182,11 +183,11 @@ struct SendOutput {
 }
 
 #[derive(Debug, Clone)]
-struct PersistedSend {
-    request_message: MessageRecord,
-    response_message: Option<MessageRecord>,
-    task_id: Option<TaskId>,
-    context_id: Option<ContextId>,
+pub(crate) struct PersistedSend {
+    pub(crate) request_message: MessageRecord,
+    pub(crate) response_message: Option<MessageRecord>,
+    pub(crate) task_id: Option<TaskId>,
+    pub(crate) context_id: Option<ContextId>,
 }
 
 /// Executes `missive send`.
@@ -307,6 +308,15 @@ pub(crate) fn message_part_limit_bytes(loaded_config: &LoadedConfig) -> Result<u
         .map_or(loaded_config.config.qos.max_request_bytes, |qos| {
             qos.max_request_bytes
         }))
+}
+
+pub(crate) fn clone_prepared_with_new_message_id(template: &PreparedSend) -> Result<PreparedSend> {
+    let mut prepared = template.clone();
+    let message_id = MessageId::new(missive_a2a::protocol::new_message_id())?;
+    prepared.request.message.message_id = message_id.as_str().to_owned();
+    prepared.request_message_id = message_id;
+    prepared.request_bytes = serialized_request_bytes(&prepared.request)?;
+    Ok(prepared)
 }
 
 #[derive(Debug)]
@@ -734,13 +744,35 @@ pub(crate) fn resolve_send_interface(
     service_parameters: &ServiceParameters,
     auth_headers: &AuthHeaders,
 ) -> Result<(AgentRecord, NegotiatedInterface)> {
+    resolve_send_interface_with_store(&registry.store, agent, service_parameters, auth_headers)
+}
+
+pub(crate) fn resolve_send_interface_with_store(
+    store: &Store,
+    agent: AgentRecord,
+    service_parameters: &ServiceParameters,
+    auth_headers: &AuthHeaders,
+) -> Result<(AgentRecord, NegotiatedInterface)> {
+    resolve_send_interface_with_store_timeout(store, agent, service_parameters, auth_headers, None)
+}
+
+pub(crate) fn resolve_send_interface_with_store_timeout(
+    store: &Store,
+    agent: AgentRecord,
+    service_parameters: &ServiceParameters,
+    auth_headers: &AuthHeaders,
+    timeout: Option<Duration>,
+) -> Result<(AgentRecord, NegotiatedInterface)> {
     if let Some(raw_card) = agent.agent_card_json.clone() {
         let card = parse_cached_agent_card(&agent, raw_card)?;
         let selected = negotiate_record_interface(&agent, &card, None)?;
         return Ok((agent, selected));
     }
 
-    let client = AgentCardClient::new()?;
+    let client = match timeout {
+        Some(timeout) => AgentCardClient::with_timeout(timeout)?,
+        None => AgentCardClient::new()?,
+    };
     let outcome = client.fetch_public_agent_card_with_service_parameters_and_auth(
         &agent.base_url,
         None,
@@ -751,7 +783,7 @@ pub(crate) fn resolve_send_interface(
         AgentCardFetchOutcome::Fetched(fetch) => {
             let selected = negotiate_record_interface(&agent, &fetch.card, None)?;
             let updated = cache_agent_card(
-                &registry.store,
+                store,
                 &agent,
                 fetch.raw_json,
                 fetch.validators,
@@ -767,7 +799,7 @@ pub(crate) fn resolve_send_interface(
     }
 }
 
-fn persist_send(
+pub(crate) fn persist_send(
     store: &mut Store,
     agent: &AgentRecord,
     prepared: &PreparedSend,

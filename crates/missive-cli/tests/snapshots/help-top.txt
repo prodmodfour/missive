@@ -9,6 +9,7 @@ Commands:
   task        Inspect, list, wait for, or cancel A2A tasks
   context     Manage conversation contexts and session continuity
   group       Manage groups of agents for collective operations
+  bcast       Broadcast one message to every member of a local group
   gateway     Run and manage the local missive gateway daemon
   webhook     Receive A2A push notification callbacks locally
   push        Manage A2A push notification configurations

@@ -12,6 +12,7 @@ use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode,
 pub mod agent;
 pub(crate) mod artifact;
 pub(crate) mod auth;
+pub(crate) mod bcast;
 pub mod context;
 pub mod events;
 pub mod gateway;
@@ -37,13 +38,14 @@ pub const BINARY_NAME: &str = missive_core::PROJECT_NAME;
 /// Short description of this crate's target responsibility.
 pub const CRATE_PURPOSE: &str = "command parsing, output rendering, and exit codes";
 
-const REQUIRED_SUBCOMMANDS: [&str; 14] = [
+const REQUIRED_SUBCOMMANDS: [&str; 15] = [
     "agent",
     "send",
     "stream",
     "task",
     "context",
     "group",
+    "bcast",
     "gateway",
     "webhook",
     "push",
@@ -226,13 +228,19 @@ pub enum Commands {
 
     /// Manage groups of agents for collective operations.
     #[command(
-        long_about = "Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for later collective operations."
+        long_about = "Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for collective operations."
     )]
     Group {
         /// Group operation to run. With no operation, missive emits a parsed command status.
         #[command(subcommand)]
         command: Option<group::GroupCommands>,
     },
+
+    /// Broadcast one message to every member of a local group.
+    #[command(
+        long_about = "Send the same A2A SendMessage content to every registered member of a local group, create or reuse one shared context id, persist per-member message/task rows, and record broadcast collective events."
+    )]
+    Bcast(bcast::BcastArgs),
 
     /// Run and manage the local missive gateway daemon.
     #[command(
@@ -310,6 +318,7 @@ impl Commands {
             Self::Task { .. } => "task",
             Self::Context { .. } => "context",
             Self::Group { .. } => "group",
+            Self::Bcast(_) => "bcast",
             Self::Gateway { .. } => "gateway",
             Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
@@ -345,7 +354,7 @@ pub fn workspace_crates() -> [missive_core::CrateInfo; 8] {
 
 /// Returns the required top-level subcommands for tests and documentation checks.
 #[must_use]
-pub const fn required_subcommands() -> [&'static str; 14] {
+pub const fn required_subcommands() -> [&'static str; 15] {
     REQUIRED_SUBCOMMANDS
 }
 
@@ -455,6 +464,15 @@ where
         }) => {
             group::execute_group_command(group_command, &loaded_config, environment, mode, writer)
         }
+        Some(Commands::Bcast(args)) => bcast::execute_bcast_command(
+            args,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            input,
+            writer,
+        ),
         Some(Commands::Gateway {
             command: Some(gateway_command),
         }) => gateway::execute_gateway_command(
