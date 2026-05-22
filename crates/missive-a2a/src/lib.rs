@@ -23,6 +23,21 @@ pub const PUBLIC_AGENT_CARD_PATH: &str = "/.well-known/agent-card.json";
 const DEFAULT_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT: &str = concat!("missive/", env!("CARGO_PKG_VERSION"), " a2a-card-discovery");
 
+/// Canonical missive name for the A2A HTTP+JSON protocol binding.
+pub const HTTP_JSON_BINDING: &str = "http+json";
+
+/// Canonical missive name for the A2A JSON-RPC protocol binding.
+pub const JSON_RPC_BINDING: &str = "json-rpc";
+
+/// Canonical missive name reserved for future A2A gRPC protocol support.
+pub const GRPC_BINDING: &str = "grpc";
+
+/// Protocol bindings implemented by missive today, in default preference order.
+pub const LOCALLY_SUPPORTED_BINDINGS: &[&str] = &[HTTP_JSON_BINDING, JSON_RPC_BINDING];
+
+/// Protocol bindings recognized by name but intentionally left for future tickets.
+pub const PLANNED_BINDINGS: &[&str] = &[GRPC_BINDING];
+
 /// Returns metadata for this crate.
 #[must_use]
 pub const fn crate_info() -> missive_core::CrateInfo {
@@ -43,7 +58,9 @@ pub struct AgentCard {
     /// Human-readable description.
     pub description: String,
     /// Ordered list of supported protocol interfaces. The first entry is the
-    /// remote agent's preferred interface.
+    /// remote agent's preferred interface. Older/pre-release Agent Cards may
+    /// omit this field; interface negotiation has a registry/base-URL fallback
+    /// for that compatibility case.
     #[serde(default, alias = "supported_interfaces")]
     pub supported_interfaces: Vec<AgentInterface>,
     /// Optional service provider metadata.
@@ -142,12 +159,6 @@ impl AgentCard {
         validate_non_empty("Agent Card name", &self.name)?;
         validate_non_empty("Agent Card description", &self.description)?;
         validate_non_empty("Agent Card version", &self.version)?;
-        if self.supported_interfaces.is_empty() {
-            return Err(MissiveError::protocol(
-                "A2A Agent Card does not declare supportedInterfaces",
-            )
-            .with_help("Public Agent Cards must include at least one supportedInterfaces entry."));
-        }
         if self.skills.is_empty() {
             return Err(
                 MissiveError::protocol("A2A Agent Card does not declare any skills")
@@ -296,6 +307,362 @@ impl AgentInterface {
         }
         Ok(())
     }
+}
+
+/// Source used when an A2A interface negotiation result was selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NegotiatedInterfaceSource {
+    /// Selected from the Agent Card's `supportedInterfaces` array.
+    AgentCard,
+    /// Selected from an explicit registry/config interface URL because the card
+    /// did not declare `supportedInterfaces`.
+    RegistryOverride,
+    /// Selected from the registered base URL as a compatibility fallback.
+    BaseUrlFallback,
+}
+
+impl NegotiatedInterfaceSource {
+    /// Stable string used by command output.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AgentCard => "agent_card",
+            Self::RegistryOverride => "registry_override",
+            Self::BaseUrlFallback => "base_url_fallback",
+        }
+    }
+}
+
+/// Result of A2A protocol/interface negotiation for one agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct NegotiatedInterface {
+    /// Canonical missive binding name, for example `http+json` or `json-rpc`.
+    pub binding: String,
+    /// Binding spelling from the Agent Card, or the canonical binding for
+    /// fallback interfaces.
+    pub protocol_binding: String,
+    /// Endpoint URL selected for future protocol calls.
+    pub url: String,
+    /// Optional tenant identifier advertised by the Agent Card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tenant: Option<String>,
+    /// A2A protocol version declared by the interface, or `unknown` when using
+    /// a compatibility fallback with no declared interface metadata.
+    pub protocol_version: String,
+    /// Where this selection came from.
+    pub source: NegotiatedInterfaceSource,
+}
+
+/// Caller-provided options for A2A interface negotiation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct InterfaceNegotiationOptions {
+    /// Ordered preferred bindings. Empty means missive's default local order.
+    pub preferred_bindings: Vec<String>,
+    /// Optional explicit binding override from `--binding`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding_override: Option<String>,
+    /// Explicit fallback interface URLs keyed by binding name. These are used
+    /// only when the Agent Card omits `supportedInterfaces`.
+    pub fallback_interface_urls: BTreeMap<String, String>,
+    /// Registered base URL used as a legacy HTTP+JSON fallback when no explicit
+    /// interface URL is available and the card omits `supportedInterfaces`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_base_url: Option<String>,
+}
+
+impl Default for InterfaceNegotiationOptions {
+    fn default() -> Self {
+        Self {
+            preferred_bindings: default_binding_preference(),
+            binding_override: None,
+            fallback_interface_urls: BTreeMap::new(),
+            fallback_base_url: None,
+        }
+    }
+}
+
+/// Returns missive's default local A2A binding preference order.
+#[must_use]
+pub fn default_binding_preference() -> Vec<String> {
+    LOCALLY_SUPPORTED_BINDINGS
+        .iter()
+        .map(|binding| (*binding).to_owned())
+        .collect()
+}
+
+/// Returns true when missive can currently use the canonical binding.
+#[must_use]
+pub fn is_locally_supported_binding(binding: &str) -> bool {
+    LOCALLY_SUPPORTED_BINDINGS.contains(&binding)
+}
+
+/// Returns the comma-separated local support list for diagnostics.
+#[must_use]
+pub fn locally_supported_bindings_text() -> String {
+    LOCALLY_SUPPORTED_BINDINGS.join(", ")
+}
+
+/// Canonicalizes A2A protocol binding names for comparison and command output.
+///
+/// A2A Agent Cards use values such as `HTTP+JSON`, `JSONRPC`, and `gRPC`, while
+/// missive's CLI/config identifiers are lowercase (`http+json`, `json-rpc`,
+/// `grpc`). Unknown names are lowercased and otherwise preserved so diagnostics
+/// can report what the remote card advertised.
+#[must_use]
+pub fn canonical_protocol_binding(value: &str) -> String {
+    let folded = value.trim().to_ascii_lowercase();
+    let compact = folded
+        .chars()
+        .filter(|character| !matches!(character, '+' | '-' | '_'))
+        .collect::<String>();
+    match compact.as_str() {
+        "httpjson" => HTTP_JSON_BINDING.to_owned(),
+        "jsonrpc" => JSON_RPC_BINDING.to_owned(),
+        "grpc" => GRPC_BINDING.to_owned(),
+        _ => folded,
+    }
+}
+
+/// Selects the first mutually supported A2A interface using the caller's
+/// preference order and optional explicit binding override.
+///
+/// `HTTP+JSON` and `JSONRPC` are implemented today. `gRPC` is recognized for
+/// diagnostics and future extension points but is not selected until a later
+/// implementation ticket adds local support.
+pub fn negotiate_agent_interface(
+    card: &AgentCard,
+    options: &InterfaceNegotiationOptions,
+) -> Result<NegotiatedInterface> {
+    let preferences = normalized_preferences(&options.preferred_bindings)?;
+    if let Some(override_binding) = options.binding_override.as_deref() {
+        let binding = normalize_requested_binding("binding override", override_binding)?;
+        ensure_locally_supported(&binding)?;
+        return negotiate_requested_binding(card, options, &binding);
+    }
+
+    let mut locally_supported_preference = Vec::new();
+    for binding in &preferences {
+        if is_locally_supported_binding(binding) {
+            locally_supported_preference.push(binding.clone());
+        }
+    }
+
+    if locally_supported_preference.is_empty() {
+        return Err(MissiveError::transport(format!(
+            "A2A interface negotiation cannot proceed because binding preference [{}] contains no locally supported bindings; missive supports locally: {}",
+            preferences.join(", "),
+            locally_supported_bindings_text()
+        ))
+        .with_help(local_support_help(None)));
+    }
+
+    for binding in &locally_supported_preference {
+        if let Some(interface) = first_card_interface(card, binding) {
+            return Ok(interface_from_agent_card(interface));
+        }
+    }
+
+    if card.supported_interfaces.is_empty() {
+        return negotiate_missing_interfaces_fallback(options, &locally_supported_preference, None);
+    }
+
+    Err(no_mutual_interface_error(card))
+}
+
+fn normalized_preferences(values: &[String]) -> Result<Vec<String>> {
+    let values = if values.is_empty() {
+        default_binding_preference()
+    } else {
+        values.to_vec()
+    };
+    let mut seen = BTreeSet::new();
+    let mut normalized = Vec::new();
+    for value in values {
+        let binding = normalize_requested_binding("binding preference", &value)?;
+        if seen.insert(binding.clone()) {
+            normalized.push(binding);
+        }
+    }
+    Ok(normalized)
+}
+
+fn normalize_requested_binding(label: &str, value: &str) -> Result<String> {
+    let binding = canonical_protocol_binding(value);
+    if binding.is_empty() {
+        return Err(MissiveError::validation(format!("{label} cannot be empty"))
+            .with_help(local_support_help(None)));
+    }
+    if binding.bytes().any(|byte| {
+        !(byte.is_ascii_lowercase()
+            || byte.is_ascii_digit()
+            || matches!(byte, b'+' | b'-' | b'_' | b'.'))
+    }) {
+        return Err(MissiveError::validation(format!(
+            "{label} {value:?} is not a valid protocol binding name"
+        ))
+        .with_help(local_support_help(None)));
+    }
+    Ok(binding)
+}
+
+fn ensure_locally_supported(binding: &str) -> Result<()> {
+    if is_locally_supported_binding(binding) {
+        return Ok(());
+    }
+
+    Err(MissiveError::transport(format!(
+        "A2A binding {binding:?} is not supported locally; missive supports locally: {}",
+        locally_supported_bindings_text()
+    ))
+    .with_help(local_support_help(Some(binding))))
+}
+
+fn negotiate_requested_binding(
+    card: &AgentCard,
+    options: &InterfaceNegotiationOptions,
+    binding: &str,
+) -> Result<NegotiatedInterface> {
+    if let Some(interface) = first_card_interface(card, binding) {
+        return Ok(interface_from_agent_card(interface));
+    }
+
+    if card.supported_interfaces.is_empty() {
+        return negotiate_missing_interfaces_fallback(
+            options,
+            &[binding.to_owned()],
+            Some(binding),
+        );
+    }
+
+    Err(MissiveError::transport(format!(
+        "A2A binding override {binding:?} is not advertised by the Agent Card; missive supports locally: {}; remote advertised: {}",
+        locally_supported_bindings_text(),
+        remote_bindings_text(card)
+    ))
+    .with_help("Choose a binding advertised in supportedInterfaces, or refresh/update the Agent Card."))
+}
+
+fn first_card_interface<'a>(card: &'a AgentCard, binding: &str) -> Option<&'a AgentInterface> {
+    card.supported_interfaces
+        .iter()
+        .find(|interface| canonical_protocol_binding(&interface.protocol_binding) == binding)
+}
+
+fn interface_from_agent_card(interface: &AgentInterface) -> NegotiatedInterface {
+    NegotiatedInterface {
+        binding: canonical_protocol_binding(&interface.protocol_binding),
+        protocol_binding: interface.protocol_binding.clone(),
+        url: interface.url.clone(),
+        tenant: interface.tenant.clone(),
+        protocol_version: interface.protocol_version.clone(),
+        source: NegotiatedInterfaceSource::AgentCard,
+    }
+}
+
+fn negotiate_missing_interfaces_fallback(
+    options: &InterfaceNegotiationOptions,
+    bindings: &[String],
+    requested_binding: Option<&str>,
+) -> Result<NegotiatedInterface> {
+    for binding in bindings {
+        if let Some(interface) = fallback_interface_for_binding(options, binding)? {
+            return Ok(interface);
+        }
+    }
+
+    let requested = requested_binding
+        .map(|binding| format!(" for requested binding {binding:?}"))
+        .unwrap_or_default();
+    Err(MissiveError::transport(format!(
+        "A2A Agent Card does not declare supportedInterfaces and no registry/base-URL fallback interface is available{requested}; missive supports locally: {}",
+        locally_supported_bindings_text()
+    ))
+    .with_help("Add an explicit agent interface URL, use the HTTP+JSON base-URL fallback, or update the remote Agent Card."))
+}
+
+fn fallback_interface_for_binding(
+    options: &InterfaceNegotiationOptions,
+    binding: &str,
+) -> Result<Option<NegotiatedInterface>> {
+    for (candidate, url) in &options.fallback_interface_urls {
+        if canonical_protocol_binding(candidate) == binding {
+            validate_interface_url("registry fallback interface URL", url)?;
+            return Ok(Some(NegotiatedInterface {
+                binding: binding.to_owned(),
+                protocol_binding: binding.to_owned(),
+                url: url.clone(),
+                tenant: None,
+                protocol_version: "unknown".to_owned(),
+                source: NegotiatedInterfaceSource::RegistryOverride,
+            }));
+        }
+    }
+
+    if binding == HTTP_JSON_BINDING
+        && let Some(url) = &options.fallback_base_url
+    {
+        validate_interface_url("base URL fallback interface", url)?;
+        return Ok(Some(NegotiatedInterface {
+            binding: binding.to_owned(),
+            protocol_binding: binding.to_owned(),
+            url: url.clone(),
+            tenant: None,
+            protocol_version: "unknown".to_owned(),
+            source: NegotiatedInterfaceSource::BaseUrlFallback,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn validate_interface_url(label: &str, value: &str) -> Result<()> {
+    let parsed = Url::parse(value).map_err(|error| {
+        MissiveError::validation(format!("{label} must be an absolute URL"))
+            .with_source(error)
+            .with_help("Use an absolute http(s) URL such as https://agent.example/a2a.")
+    })?;
+    if parsed.host_str().is_none() {
+        return Err(
+            MissiveError::validation(format!("{label} must include a host"))
+                .with_help("Use an absolute http(s) URL such as https://agent.example/a2a."),
+        );
+    }
+    Ok(())
+}
+
+fn no_mutual_interface_error(card: &AgentCard) -> MissiveError {
+    MissiveError::transport(format!(
+        "no mutually supported A2A interface could be negotiated; missive supports locally: {}; remote advertised: {}",
+        locally_supported_bindings_text(),
+        remote_bindings_text(card)
+    ))
+    .with_help("Use an agent that advertises HTTP+JSON or JSONRPC, or add local support for another binding in a future extension.")
+}
+
+fn remote_bindings_text(card: &AgentCard) -> String {
+    let mut bindings = BTreeSet::new();
+    for interface in &card.supported_interfaces {
+        bindings.insert(canonical_protocol_binding(&interface.protocol_binding));
+    }
+    if bindings.is_empty() {
+        "none".to_owned()
+    } else {
+        bindings.into_iter().collect::<Vec<_>>().join(", ")
+    }
+}
+
+fn local_support_help(binding: Option<&str>) -> String {
+    let mut help = format!(
+        "Choose one of the locally supported A2A bindings: {}.",
+        locally_supported_bindings_text()
+    );
+    if binding.is_some_and(|binding| PLANNED_BINDINGS.contains(&binding)) {
+        help.push_str(" gRPC is recognized by the negotiation layer but is not implemented yet.");
+    }
+    help
 }
 
 /// Skill metadata declared by an Agent Card.
@@ -632,18 +999,160 @@ mod tests {
     }
 
     #[test]
-    fn agent_card_without_interfaces_is_rejected() {
+    fn agent_card_without_interfaces_is_allowed_for_negotiation_fallback() {
         let mut card = valid_card();
         card.as_object_mut()
             .expect("object")
-            .insert("supportedInterfaces".to_owned(), json!([]));
+            .remove("supportedInterfaces");
 
-        let error = AgentCard::from_json(card).expect_err("missing interfaces should fail");
+        let card = AgentCard::from_json(card).expect("legacy card should parse");
+
+        assert!(card.supported_interfaces.is_empty());
+    }
+
+    #[test]
+    fn negotiation_respects_preference_order_over_card_order() {
+        let mut card = valid_card();
+        card.as_object_mut().expect("object").insert(
+            "supportedInterfaces".to_owned(),
+            json!([
+                {
+                    "url": "http://127.0.0.1:8080/rpc",
+                    "protocolBinding": "JSONRPC",
+                    "protocolVersion": "1.0"
+                },
+                {
+                    "url": "http://127.0.0.1:8080/a2a",
+                    "protocolBinding": "HTTP+JSON",
+                    "protocolVersion": "1.0"
+                }
+            ]),
+        );
+        let card = AgentCard::from_json(card).expect("valid card");
+        let options = InterfaceNegotiationOptions {
+            preferred_bindings: vec![HTTP_JSON_BINDING.to_owned(), JSON_RPC_BINDING.to_owned()],
+            ..InterfaceNegotiationOptions::default()
+        };
+
+        let selected = negotiate_agent_interface(&card, &options).expect("selected interface");
+
+        assert_eq!(selected.binding, HTTP_JSON_BINDING);
+        assert_eq!(selected.protocol_binding, "HTTP+JSON");
+        assert_eq!(selected.url, "http://127.0.0.1:8080/a2a");
+        assert_eq!(selected.source, NegotiatedInterfaceSource::AgentCard);
+    }
+
+    #[test]
+    fn negotiation_allows_explicit_binding_override() {
+        let card = AgentCard::from_json(valid_card()).expect("valid card");
+        let options = InterfaceNegotiationOptions {
+            binding_override: Some("JSONRPC".to_owned()),
+            ..InterfaceNegotiationOptions::default()
+        };
+
+        let selected = negotiate_agent_interface(&card, &options).expect("selected interface");
+
+        assert_eq!(selected.binding, JSON_RPC_BINDING);
+        assert_eq!(selected.protocol_binding, "JSONRPC");
+        assert_eq!(selected.url, "http://127.0.0.1:8080/rpc");
+    }
+
+    #[test]
+    fn negotiation_rejects_unsupported_remote_bindings_with_local_support_list() {
+        let mut card = valid_card();
+        card.as_object_mut().expect("object").insert(
+            "supportedInterfaces".to_owned(),
+            json!([
+                {
+                    "url": "http://127.0.0.1:8080/grpc",
+                    "protocolBinding": "gRPC",
+                    "protocolVersion": "1.0"
+                }
+            ]),
+        );
+        let card = AgentCard::from_json(card).expect("valid card");
+
+        let error = negotiate_agent_interface(&card, &InterfaceNegotiationOptions::default())
+            .expect_err("grpc-only card is not locally supported yet");
 
         assert!(
             error
                 .to_string()
-                .contains("does not declare supportedInterfaces")
+                .contains("supports locally: http+json, json-rpc")
         );
+        assert!(error.to_string().contains("remote advertised: grpc"));
+    }
+
+    #[test]
+    fn negotiation_rejects_unsupported_override_with_local_support_list() {
+        let card = AgentCard::from_json(valid_card()).expect("valid card");
+        let options = InterfaceNegotiationOptions {
+            binding_override: Some("grpc".to_owned()),
+            ..InterfaceNegotiationOptions::default()
+        };
+
+        let error = negotiate_agent_interface(&card, &options)
+            .expect_err("grpc override is not locally supported yet");
+
+        assert!(
+            error
+                .to_string()
+                .contains("binding \"grpc\" is not supported locally")
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("supports locally: http+json, json-rpc")
+        );
+        assert!(
+            error
+                .help()
+                .expect("help text")
+                .contains("gRPC is recognized")
+        );
+    }
+
+    #[test]
+    fn negotiation_falls_back_when_supported_interfaces_are_missing() {
+        let mut card = valid_card();
+        card.as_object_mut()
+            .expect("object")
+            .remove("supportedInterfaces");
+        let card = AgentCard::from_json(card).expect("legacy card should parse");
+        let options = InterfaceNegotiationOptions {
+            fallback_base_url: Some("http://127.0.0.1:8080".to_owned()),
+            ..InterfaceNegotiationOptions::default()
+        };
+
+        let selected = negotiate_agent_interface(&card, &options).expect("fallback interface");
+
+        assert_eq!(selected.binding, HTTP_JSON_BINDING);
+        assert_eq!(selected.url, "http://127.0.0.1:8080");
+        assert_eq!(selected.protocol_version, "unknown");
+        assert_eq!(selected.source, NegotiatedInterfaceSource::BaseUrlFallback);
+    }
+
+    #[test]
+    fn negotiation_fallback_uses_explicit_registry_interface_for_override() {
+        let mut card = valid_card();
+        card.as_object_mut()
+            .expect("object")
+            .insert("supportedInterfaces".to_owned(), json!([]));
+        let card = AgentCard::from_json(card).expect("legacy card should parse");
+        let options = InterfaceNegotiationOptions {
+            binding_override: Some(JSON_RPC_BINDING.to_owned()),
+            fallback_interface_urls: BTreeMap::from([(
+                JSON_RPC_BINDING.to_owned(),
+                "http://127.0.0.1:8080/rpc".to_owned(),
+            )]),
+            fallback_base_url: Some("http://127.0.0.1:8080".to_owned()),
+            ..InterfaceNegotiationOptions::default()
+        };
+
+        let selected = negotiate_agent_interface(&card, &options).expect("fallback interface");
+
+        assert_eq!(selected.binding, JSON_RPC_BINDING);
+        assert_eq!(selected.url, "http://127.0.0.1:8080/rpc");
+        assert_eq!(selected.source, NegotiatedInterfaceSource::RegistryOverride);
     }
 }

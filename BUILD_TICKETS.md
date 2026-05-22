@@ -459,7 +459,7 @@ Validation:
 
 ## 015 — Implement A2A interface negotiation
 
-Status: TODO
+Status: DONE
 
 Phase: A2A
 

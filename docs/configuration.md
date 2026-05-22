@@ -72,7 +72,9 @@ Supported sections in this ticket:
 * `profiles` — profile descriptions, default agent aliases, and optional
   profile-specific storage/output/gateway/qos overrides.
 * `agents` — config-seeded read-only agent aliases, base URLs, explicit interface
-  URLs, binding preference, auth ref, tags, notes, and metadata.
+  URLs, binding preference, auth ref, tags, notes, and metadata. Binding
+  preference is used by Agent Card interface negotiation; `http+json` and
+  `json-rpc` are locally supported today.
 * `auth_refs` — references to secrets in environment variables or platform
   keyrings. Raw token values are not accepted by the schema.
 * `storage` — storage backend defaults. Only `sqlite` is currently defined;

@@ -80,7 +80,7 @@ missive agent add <alias> <base-url> \
   --metadata role=echo
 missive agent list
 missive agent show <alias>
-missive agent inspect <alias> [--refresh]
+missive agent inspect <alias> [--refresh] [--binding http+json|json-rpc]
 missive agent refresh <alias>
 missive agent remove <alias>
 missive agent rename <old-alias> <new-alias>
@@ -117,19 +117,30 @@ same.
 `missive agent inspect <alias>` resolves the registered agent base URL, fetches
 `/.well-known/agent-card.json` when no cached card exists, parses the public A2A
 Agent Card, stores the raw card JSON plus cache metadata in SQLite, and renders a
-summary of provider, versions, capabilities, supported interfaces, default media
-modes, and skills. Re-running `inspect` uses the local cache by default.
+summary of provider, versions, capabilities, supported interfaces, the selected
+interface, default media modes, and skills. Re-running `inspect` uses the local
+cache by default.
 
 Use `missive agent inspect <alias> --refresh` to bypass/revalidate the cache for
 one inspection, or `missive agent refresh <alias>` to explicitly refresh the
-cached public card. When a cached ETag or Last-Modified value is available,
-missive sends conditional request headers during refresh and keeps the cached
-card if the remote endpoint replies `304 Not Modified`.
+cached public card. Use `missive agent inspect <alias> --binding json-rpc` to
+require a specific locally supported binding for the inspection result. When a
+cached ETag or Last-Modified value is available, missive sends conditional
+request headers during refresh and keeps the cached card if the remote endpoint
+replies `304 Not Modified`.
 
-Discovery failures have deterministic categories: HTTP status errors and
-TLS/network failures are transport errors, while invalid or schema-incompatible
-Agent Card JSON is a protocol error. Authentication for Agent Card discovery is
-not implemented yet; public cards should be reachable without credentials.
+Interface negotiation uses the agent row's binding preference, which defaults to
+`http+json`, then `json-rpc`. Agent Card values such as `HTTP+JSON` and
+`JSONRPC` are normalized to those lowercase missive names for comparison. `gRPC`
+is recognized for diagnostics but not implemented locally yet. If an Agent Card
+omits `supportedInterfaces`, missive falls back to explicit registry/config
+interface URLs and then to the registered `base_url` for `http+json` only.
+
+Discovery and negotiation failures have deterministic categories: HTTP status
+errors, TLS/network failures, and lack of a mutually supported interface are
+transport errors, while invalid or schema-incompatible Agent Card JSON is a
+protocol error. Authentication for Agent Card discovery is not implemented yet;
+public cards should be reachable without credentials.
 
 Human output is concise text. Machine output uses command-specific envelope
 kinds such as `agent_add`, `agent_list`, `agent_show`, `agent_inspect`,

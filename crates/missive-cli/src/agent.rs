@@ -10,6 +10,7 @@ use std::io::Write;
 use clap::{Args, Subcommand};
 use missive_a2a::{
     AgentCard, AgentCardCacheValidators, AgentCardClient, AgentCardFetchOutcome,
+    InterfaceNegotiationOptions, NegotiatedInterface, negotiate_agent_interface,
     public_agent_card_url,
 };
 use missive_core::{
@@ -108,6 +109,9 @@ pub struct AgentInspectArgs {
     /// Bypass the local Agent Card cache and revalidate/fetch from the remote endpoint.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     pub refresh: bool,
+    /// Explicitly select one protocol binding, for example http+json or json-rpc.
+    #[arg(long = "binding", value_name = "BINDING")]
+    pub binding: Option<String>,
 }
 
 /// Arguments for `missive agent rename`.
@@ -211,6 +215,7 @@ struct AgentCardInspectionOutput {
     profile: String,
     agent: AgentView,
     cache: AgentCardCacheView,
+    selected_interface: NegotiatedInterfaceView,
     card: ParsedAgentCardView,
     raw_card: Value,
     message: String,
@@ -226,6 +231,17 @@ struct AgentCardCacheView {
     etag: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_modified: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct NegotiatedInterfaceView {
+    binding: String,
+    protocol_binding: String,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tenant: Option<String>,
+    protocol_version: String,
+    source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -503,9 +519,15 @@ where
     let alias = parse_alias(&args.alias)?;
     let record = get_existing_agent(&registry.store, &alias)?;
     let output = if args.refresh || record.agent_card_json.is_none() {
-        fetch_and_cache_agent_card(&registry.store, &registry.profile, &record, args.refresh)?
+        fetch_and_cache_agent_card(
+            &registry.store,
+            &registry.profile,
+            &record,
+            args.refresh,
+            args.binding.as_deref(),
+        )?
     } else {
-        cached_agent_card_output(&registry, &record)?
+        cached_agent_card_output(&registry, &record, args.binding.as_deref())?
     };
 
     render_agent_card_inspection(writer, mode, "agent_inspect", &output)
@@ -522,7 +544,8 @@ where
 {
     let alias = parse_alias(&args.alias)?;
     let record = get_existing_agent(&registry.store, &alias)?;
-    let output = fetch_and_cache_agent_card(&registry.store, &registry.profile, &record, true)?;
+    let output =
+        fetch_and_cache_agent_card(&registry.store, &registry.profile, &record, true, None)?;
 
     render_agent_card_inspection(writer, mode, "agent_refresh", &output)
 }
@@ -639,6 +662,7 @@ fn agent_upsert_from_record(record: &AgentRecord, alias: AgentAlias) -> AgentUps
 fn cached_agent_card_output(
     registry: &AgentRegistry,
     record: &AgentRecord,
+    binding_override: Option<&str>,
 ) -> Result<AgentCardInspectionOutput> {
     let raw_card = record.agent_card_json.clone().ok_or_else(|| {
         MissiveError::protocol(format!(
@@ -659,10 +683,12 @@ fn cached_agent_card_output(
         last_modified: record.agent_card_last_modified.clone(),
     };
 
+    let selected_interface = negotiate_record_interface(record, &card, binding_override)?;
     Ok(agent_card_output(
         registry.profile.clone(),
         record,
         cache,
+        selected_interface,
         &card,
         raw_card,
     ))
@@ -673,6 +699,7 @@ fn fetch_and_cache_agent_card(
     profile: &str,
     record: &AgentRecord,
     refresh_requested: bool,
+    binding_override: Option<&str>,
 ) -> Result<AgentCardInspectionOutput> {
     let validators = validators_from_record(record);
     let client = AgentCardClient::new()?;
@@ -680,6 +707,8 @@ fn fetch_and_cache_agent_card(
 
     match outcome {
         AgentCardFetchOutcome::Fetched(fetch) => {
+            let selected_interface =
+                negotiate_record_interface(record, &fetch.card, binding_override)?;
             let fetched_at = MissiveTimestamp::now_utc();
             let updated_record = cache_agent_card(
                 store,
@@ -703,6 +732,7 @@ fn fetch_and_cache_agent_card(
                 profile.to_owned(),
                 &updated_record,
                 cache,
+                selected_interface,
                 &fetch.card,
                 fetch.raw_json,
             ))
@@ -716,6 +746,7 @@ fn fetch_and_cache_agent_card(
                 .with_help("Run 'missive agent refresh <alias>' after the remote endpoint returns a full card body.")
             })?;
             let card = parse_cached_agent_card(record, raw_card.clone())?;
+            let selected_interface = negotiate_record_interface(record, &card, binding_override)?;
             let validators = merge_validators(record, not_modified.validators);
             let fetched_at = MissiveTimestamp::now_utc();
             let updated_record =
@@ -731,6 +762,7 @@ fn fetch_and_cache_agent_card(
                 profile.to_owned(),
                 &updated_record,
                 cache,
+                selected_interface,
                 &card,
                 raw_card,
             ))
@@ -784,26 +816,64 @@ fn merge_validators(
     }
 }
 
+fn negotiate_record_interface(
+    record: &AgentRecord,
+    card: &AgentCard,
+    binding_override: Option<&str>,
+) -> Result<NegotiatedInterface> {
+    let options = InterfaceNegotiationOptions {
+        preferred_bindings: record
+            .binding_preference
+            .iter()
+            .map(|binding| binding.as_str().to_owned())
+            .collect(),
+        binding_override: binding_override.map(ToOwned::to_owned),
+        fallback_interface_urls: record
+            .interface_urls
+            .iter()
+            .map(|(binding, url)| (binding.as_str().to_owned(), url.clone()))
+            .collect(),
+        fallback_base_url: Some(record.base_url.clone()),
+    };
+    negotiate_agent_interface(card, &options)
+}
+
 fn agent_card_output(
     profile: String,
     record: &AgentRecord,
     cache: AgentCardCacheView,
+    selected_interface: NegotiatedInterface,
     card: &AgentCard,
     raw_card: Value,
 ) -> AgentCardInspectionOutput {
     let parsed = ParsedAgentCardView::from_card(card, &raw_card);
     let message = format!(
-        "Inspected A2A Agent Card for '{}' ({})",
+        "Inspected A2A Agent Card for '{}' ({}) using {}",
         record.alias.as_str(),
-        parsed.name
+        parsed.name,
+        selected_interface.binding
     );
     AgentCardInspectionOutput {
         profile,
         agent: AgentView::from_record(record),
         cache,
+        selected_interface: NegotiatedInterfaceView::from(selected_interface),
         card: parsed,
         raw_card,
         message,
+    }
+}
+
+impl From<NegotiatedInterface> for NegotiatedInterfaceView {
+    fn from(interface: NegotiatedInterface) -> Self {
+        Self {
+            binding: interface.binding,
+            protocol_binding: interface.protocol_binding,
+            url: interface.url,
+            tenant: interface.tenant,
+            protocol_version: interface.protocol_version,
+            source: interface.source.as_str().to_owned(),
+        }
     }
 }
 
@@ -1327,6 +1397,7 @@ where
         join_or_dash(&card.protocol_versions)
     )
     .map_err(|error| MissiveError::io("writing agent card output", error))?;
+    write_selected_interface(writer, &output.selected_interface)?;
     writeln!(
         writer,
         "  default_input_modes: {}",
@@ -1349,6 +1420,27 @@ where
     write_agent_card_skills(writer, &card.skills)?;
 
     Ok(())
+}
+
+fn write_selected_interface<W>(writer: &mut W, interface: &NegotiatedInterfaceView) -> Result<()>
+where
+    W: Write,
+{
+    let tenant = interface
+        .tenant
+        .as_deref()
+        .map(|tenant| format!(" tenant={}", redact_text(tenant)))
+        .unwrap_or_default();
+    writeln!(
+        writer,
+        "  selected_interface: {} {} {} source={}{}",
+        redact_text(&interface.binding),
+        redact_text(&interface.protocol_version),
+        redact_text(&interface.url),
+        redact_text(&interface.source),
+        tenant,
+    )
+    .map_err(|error| MissiveError::io("writing agent card output", error))
 }
 
 fn write_agent_card_interfaces<W>(writer: &mut W, interfaces: &[AgentInterfaceView]) -> Result<()>

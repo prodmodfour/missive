@@ -202,15 +202,28 @@ fn add_agent(
     environment: &BTreeMap<String, String>,
     current_dir: &Path,
 ) {
-    let (code, _stdout, stderr) = run(
-        &["missive", "agent", "add", alias, base_url, "--json"],
-        environment,
-        current_dir,
-    );
+    add_agent_with_args(alias, base_url, &[], environment, current_dir);
+}
+
+fn add_agent_with_args(
+    alias: &str,
+    base_url: &str,
+    extra_args: &[&str],
+    environment: &BTreeMap<String, String>,
+    current_dir: &Path,
+) {
+    let mut args = vec!["missive", "agent", "add", alias, base_url];
+    args.extend_from_slice(extra_args);
+    args.push("--json");
+    let (code, _stdout, stderr) = run(&args, environment, current_dir);
     assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
 }
 
 fn agent_card_json(base_url: &str, version: &str) -> String {
+    agent_card_value(base_url, version).to_string()
+}
+
+fn agent_card_value(base_url: &str, version: &str) -> Value {
     serde_json::json!({
         "name": "Echo Agent",
         "description": "Replies with whatever it receives.",
@@ -251,7 +264,22 @@ fn agent_card_json(base_url: &str, version: &str) -> String {
             }
         ]
     })
-    .to_string()
+}
+
+fn agent_card_with_interfaces(base_url: &str, version: &str, interfaces: Value) -> String {
+    let mut card = agent_card_value(base_url, version);
+    card.as_object_mut()
+        .expect("card object")
+        .insert("supportedInterfaces".to_owned(), interfaces);
+    card.to_string()
+}
+
+fn agent_card_without_interfaces(base_url: &str, version: &str) -> String {
+    let mut card = agent_card_value(base_url, version);
+    card.as_object_mut()
+        .expect("card object")
+        .remove("supportedInterfaces");
+    card.to_string()
 }
 
 #[test]
@@ -290,6 +318,12 @@ fn agent_inspect_fetches_public_card_and_caches_metadata() {
         "Example Agents"
     );
     assert_eq!(value["data"]["card"]["agent_version"], "1.0.0");
+    assert_eq!(value["data"]["selected_interface"]["binding"], "http+json");
+    assert_eq!(
+        value["data"]["selected_interface"]["protocol_binding"],
+        "HTTP+JSON"
+    );
+    assert_eq!(value["data"]["selected_interface"]["source"], "agent_card");
     assert_eq!(
         value["data"]["card"]["protocol_versions"],
         serde_json::json!(["1.0"])
@@ -336,11 +370,156 @@ fn agent_inspect_human_output_lists_card_details() {
     assert!(stdout.contains("provider: Example Agents"));
     assert!(stdout.contains("agent_version: 1.0.0"));
     assert!(stdout.contains("protocol_versions: 1.0"));
+    assert!(stdout.contains("selected_interface: http+json 1.0"));
+    assert!(stdout.contains("source=agent_card"));
     assert!(stdout.contains("capabilities:"));
     assert!(stdout.contains("supported_interfaces:"));
     assert!(stdout.contains("HTTP+JSON 1.0"));
     assert!(stdout.contains("skills:"));
     assert!(stdout.contains("echo (Echo)"));
+}
+
+#[test]
+fn agent_inspect_negotiates_interface_using_agent_preference() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_json("http://127.0.0.1:1", "1.0.0"),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    add_agent_with_args(
+        "echo",
+        &server.base_url,
+        &["--binding-preference", "json-rpc"],
+        &environment,
+        temp.path(),
+    );
+
+    let (code, stdout, stderr) = run(
+        &["missive", "agent", "inspect", "echo", "--json"],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    let value = json_success(&stdout, "agent_inspect");
+    assert_eq!(value["data"]["selected_interface"]["binding"], "json-rpc");
+    assert_eq!(
+        value["data"]["selected_interface"]["protocol_binding"],
+        "JSONRPC"
+    );
+    assert_eq!(
+        value["data"]["selected_interface"]["url"],
+        "http://127.0.0.1:1/rpc"
+    );
+}
+
+#[test]
+fn agent_inspect_allows_binding_override() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_json("http://127.0.0.1:1", "1.0.0"),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    add_agent("echo", &server.base_url, &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "agent",
+            "inspect",
+            "echo",
+            "--binding",
+            "json-rpc",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    let value = json_success(&stdout, "agent_inspect");
+    assert_eq!(value["data"]["selected_interface"]["binding"], "json-rpc");
+    assert_eq!(value["data"]["selected_interface"]["source"], "agent_card");
+}
+
+#[test]
+fn agent_inspect_reports_unsupported_remote_binding_with_local_support() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_with_interfaces(
+            "http://127.0.0.1:1",
+            "1.0.0",
+            serde_json::json!([
+                {
+                    "url": "http://127.0.0.1:1/grpc",
+                    "protocolBinding": "gRPC",
+                    "protocolVersion": "1.0"
+                }
+            ]),
+        ),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    add_agent("echo", &server.base_url, &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &["missive", "agent", "inspect", "echo", "--json"],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Unavailable.as_i32());
+    assert!(stdout.is_empty());
+    let value = json_error(&stderr);
+    assert_eq!(value["data"]["code"], "missive::transport");
+    assert!(
+        value["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("supports locally: http+json, json-rpc")
+    );
+    assert!(
+        value["data"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("remote advertised: grpc")
+    );
+}
+
+#[test]
+fn agent_inspect_falls_back_when_supported_interfaces_are_missing() {
+    let temp = tempdir().expect("tempdir");
+    let environment = isolated_env(&temp.path().join("missive-home"));
+    let server = MockServer::start(vec![MockResponse::ok_json(
+        agent_card_without_interfaces("http://127.0.0.1:1", "1.0.0"),
+        vec![("Content-Type", "application/json".to_owned())],
+    )]);
+    add_agent("echo", &server.base_url, &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &["missive", "agent", "inspect", "echo", "--json"],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    let value = json_success(&stdout, "agent_inspect");
+    assert_eq!(
+        value["data"]["card"]["supported_interfaces"],
+        serde_json::json!([])
+    );
+    assert_eq!(value["data"]["selected_interface"]["binding"], "http+json");
+    assert_eq!(
+        value["data"]["selected_interface"]["source"],
+        "base_url_fallback"
+    );
+    assert_eq!(
+        value["data"]["selected_interface"]["protocol_version"],
+        "unknown"
+    );
+    assert_eq!(value["data"]["selected_interface"]["url"], server.base_url);
 }
 
 #[test]
