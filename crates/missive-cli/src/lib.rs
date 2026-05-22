@@ -9,6 +9,7 @@ use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use missive_a2a::ServiceParameters;
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
 
+pub mod adapter;
 pub mod agent;
 pub(crate) mod artifact;
 pub(crate) mod auth;
@@ -44,7 +45,8 @@ pub const BINARY_NAME: &str = missive_core::PROJECT_NAME;
 /// Short description of this crate's target responsibility.
 pub const CRATE_PURPOSE: &str = "command parsing, output rendering, and exit codes";
 
-const REQUIRED_SUBCOMMANDS: [&str; 20] = [
+const REQUIRED_SUBCOMMANDS: [&str; 21] = [
+    "adapter",
     "agent",
     "send",
     "stream",
@@ -195,6 +197,16 @@ pub struct GlobalArgs {
 /// Top-level command groups and leaf commands exposed by the CLI skeleton.
 #[derive(Debug, Clone, Subcommand)]
 pub enum Commands {
+    /// Run local adapters for subprocess and gateway integration.
+    #[command(
+        long_about = "Run concrete local adapters that translate external or local frames into missive communication commands. The current stdio adapter reads JSON/NDJSON request frames from stdin, maps them to send, stream, and task commands, and writes JSON/NDJSON response frames to stdout for subprocess automation."
+    )]
+    Adapter {
+        /// Adapter operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<adapter::AdapterCommands>,
+    },
+
     /// Manage configured A2A agents and cached Agent Cards.
     #[command(
         long_about = "Manage configured A2A agent aliases in the local SQLite registry, inspect public A2A Agent Cards, refresh the local Agent Card cache, and summarize public capabilities for selection."
@@ -361,6 +373,7 @@ impl Commands {
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
+            Self::Adapter { .. } => "adapter",
             Self::Agent { .. } => "agent",
             Self::Send(_) => "send",
             Self::Stream(_) => "stream",
@@ -408,7 +421,7 @@ pub fn workspace_crates() -> [missive_core::CrateInfo; 8] {
 
 /// Returns the required top-level subcommands for tests and documentation checks.
 #[must_use]
-pub const fn required_subcommands() -> [&'static str; 20] {
+pub const fn required_subcommands() -> [&'static str; 21] {
     REQUIRED_SUBCOMMANDS
 }
 
@@ -456,6 +469,16 @@ where
     let mode = OutputMode::from_globals_and_config(&cli.globals, loaded_config.output_format()?)?;
 
     match &cli.command {
+        Some(Commands::Adapter {
+            command: Some(adapter_command),
+        }) => adapter::execute_adapter_command(
+            adapter_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            input,
+            writer,
+        ),
         Some(Commands::Agent {
             command: Some(agent_command),
         }) => agent::execute_agent_command(

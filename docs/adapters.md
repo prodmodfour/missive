@@ -2,7 +2,7 @@
 
 Adapters are the boundary between external/local message sources and missive's gateway control plane. They are not agent frameworks and they do not replace A2A; adapters translate source input into missive gateway events and receive redacted gateway updates that can be rendered back to the source.
 
-Ticket 043 defines the shared trait and registry only. The stdio, file-drop, HTTP, and external chat adapters remain later tickets.
+The shared trait and registry are in place, and ticket 044 adds the first concrete adapter: `stdio`. File-drop, HTTP, and external chat adapters remain later tickets.
 
 ## Crate contract
 
@@ -16,8 +16,9 @@ Ticket 043 defines the shared trait and registry only. The stdio, file-drop, HTT
 * `AdapterInboundMessage` and `AdapterInboundPayload` — text or JSON inbound input ready for later command/job mapping.
 * `AdapterOutboundUpdate` — redacted gateway output that future adapter workers can deliver to their source.
 * `AdapterRegistry` and `AdapterFactory` — deterministic factory lookup by adapter kind.
+* `StdioAdapter`, `StdioInputFrame`, `StdioOutputFrame`, and frame helpers — the built-in stdin/stdout JSON/NDJSON adapter boundary.
 
-The registry is intentionally generic. Built-in adapters added by later tickets should register factories such as `stdio`, `file`, or `http`; external chat/platform adapters should stay feature-gated or stubbed until their own ticket.
+The registry is intentionally generic. The built-in `stdio` factory can be registered with `register_stdio_adapter`; later tickets should add factories such as `file` or `http`. External chat/platform adapters should stay feature-gated or stubbed until their own ticket.
 
 ## Configuration schema
 
@@ -57,7 +58,72 @@ The intended gateway lifecycle is:
 8. Gateway workers call `deliver_update` for source-visible progress/results and `acknowledge` for accepted/rejected/delivered/failed delivery state.
 9. On shutdown or configuration changes, the gateway calls `stop` and records lifecycle state.
 
-The current daemon exposes the adapter event-bus bridge and reports adapter bus events as `gateway_adapter_event` in runtime output when a future adapter worker emits them. It does not start configured adapters yet.
+The current daemon exposes the adapter event-bus bridge and reports adapter bus events as `gateway_adapter_event` in runtime output when an adapter worker emits them. It does not start configured adapters yet; use `missive adapter stdio` as a foreground subprocess adapter today.
+
+## stdin/stdout adapter
+
+`missive adapter stdio` is designed for local subprocess automation. It reads
+request frames from stdin and writes response frames to stdout. The frame schema
+version is `missive.stdio.v1`.
+
+Modes and framing:
+
+* Single-shot mode reads one JSON frame and writes response frame(s):
+
+  ```bash
+  printf '%s\n' '{"schema_version":"missive.stdio.v1","id":"req-1","command":"task_list"}' \
+    | missive adapter stdio --mode single-shot --framing json
+  ```
+
+* Long-running mode reads one NDJSON frame per line until EOF and writes NDJSON
+  responses. Invalid frames produce error frames and the loop continues:
+
+  ```bash
+  {
+    printf '%s\n' '{"schema_version":"missive.stdio.v1","id":"req-send","command":"send","agent":"echo","message":"hello"}'
+    printf '%s\n' '{"schema_version":"missive.stdio.v1","id":"req-tasks","command":"task_list"}'
+  } | missive adapter stdio --mode long-running
+  ```
+
+Supported `command` values are:
+
+* `send` — fields match the local send command: `agent`, optional `message`,
+  `text_parts`, `json_parts`, `files`, `file_bytes`, `mime`, `metadata`,
+  `context`, `task`, and `accepted_output_modes`.
+* `stream` — same fields as `send`, plus `force` for streaming capability
+  interoperability testing.
+* `task_get`, `task_list`, `task_wait`, and `task_cancel` — fields mirror the
+  corresponding task subcommands (`task_id`, `agent`, `remote`, `local`,
+  `state`, `source`, pagination, interval, and history options where relevant).
+
+Example streaming frame:
+
+```bash
+printf '%s\n' \
+  '{"schema_version":"missive.stdio.v1","id":"req-stream","command":"stream","agent":"echo","message":"hello over stdio"}' \
+  | missive adapter stdio --mode long-running
+```
+
+For stream frames in long-running mode, each A2A stream update is wrapped as a
+stdio response frame with the original request `id`; the final wrapped event is
+`stream_result`. This makes the adapter suitable for another agent supervising
+`missive` as a child process.
+
+Response frames contain:
+
+```json
+{
+  "schema_version": "missive.stdio.v1",
+  "id": "req-1",
+  "ok": true,
+  "kind": "stdio_command_output",
+  "sequence": 0,
+  "data": {"schema_version": "missive.output.v1", "kind": "task_list"}
+}
+```
+
+Error frames use `ok: false`, `kind: "stdio_error"`, and the same stable
+`missive::...` error report shape used by `--json`/`--ndjson` CLI errors.
 
 ## Gateway event bus
 
@@ -76,4 +142,4 @@ Gateway event output uses redacted serialized adapter events. Source ids and cha
 
 ## Current limitations
 
-No production adapter is started by `missive gateway run` yet. The trait, registry, config conversion, fake-adapter tests, and gateway event-bus bridge are in place for later adapter tickets. Busy-input policy is available to future adapter workers but is not invoked by a live adapter path yet.
+`missive adapter stdio` is a foreground subprocess adapter, not a daemon-started worker. `missive gateway run` still does not start configured adapters from `[adapters]`, and the file-drop, HTTP, and external chat adapters remain later tickets. Busy-input policy is available to future adapter workers but is not invoked automatically by the current stdio foreground loop.

@@ -204,14 +204,15 @@ jobs remain known limitations. Future gateway worker and adapter tickets must
 reuse the same resolution and redaction path when they add broader outbound
 requests.
 
-Adapter workers are not live yet, but the trait and registry treat every
-external source as untrusted input. Future adapters must validate framing,
-message size, identity mapping, acknowledgements, and outbound rendering before
-emitting gateway events or displaying updates. Adapter `settings` metadata in
-config must remain non-secret; credentials should stay in auth refs, env vars,
+Daemon-managed adapter workers are not live yet, but the trait, registry, and
+foreground stdio adapter treat every external source as untrusted input.
+`missive adapter stdio` validates JSON/NDJSON framing, schema version,
+correlation ids, command names, source identity, and command fields before it
+maps frames to send/stream/task commands. Adapter `settings` metadata in config
+must remain non-secret; credentials should stay in auth refs, env vars,
 keyrings, or future explicit secret references.
 
-Webhook signature/JWT verification, live adapter trust-boundary enforcement,
+Webhook signature/JWT verification, daemon adapter trust-boundary enforcement,
 trace/log sinks, rate limits beyond busy-input `max_queue_depth`, gateway
 subscription/job auth resolution, user-facing session management commands, and
 insecure local token storage policy are not implemented yet.

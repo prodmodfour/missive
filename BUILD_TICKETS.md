@@ -1325,7 +1325,7 @@ Validation:
 
 ## 044 — Implement stdin/stdout adapter
 
-Status: TODO
+Status: DONE
 
 Phase: Adapters
 

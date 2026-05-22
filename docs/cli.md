@@ -3,7 +3,8 @@
 `missive` currently exposes a clap-based command tree with shared flags,
 configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
-commands, public A2A Agent Card inspection/refresh, non-streaming
+commands, public A2A Agent Card inspection/refresh, the subprocess-oriented
+`missive adapter stdio` JSON/NDJSON frame loop, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
 `missive context create/list/show/fork/close/export`, `missive group
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
@@ -17,6 +18,8 @@ Run help with:
 
 ```bash
 missive --help
+missive adapter --help
+missive adapter stdio --help
 missive agent --help
 missive send --help
 missive stream --help
@@ -79,12 +82,14 @@ timeout semantics are intentionally left to their ordered implementation tickets
 The current skeleton includes these top-level commands:
 
 ```text
+adapter     Run local adapters for subprocess and gateway integration
 agent       Manage configured A2A agents and cached Agent Cards
 send        Send one message to an A2A agent
 stream      Stream message updates from an A2A agent
 task        Inspect, list, wait for, or cancel A2A tasks
 context     Manage conversation contexts and session continuity
 group       Manage groups of agents for collective operations
+route       Explain dry-run routing decisions for agents or groups
 bcast       Broadcast one message to every member of a local group
 barrier     Wait for group member tasks to reach terminal or requested states
 gather      Gather latest local outputs and artifacts from group member tasks
@@ -106,6 +111,48 @@ command-status record through the selected renderer. Implemented command groups
 with no selected subcommand, such as `missive context --json`, `missive gateway
 --json`, or `missive webhook --json`, still emit that parsed command-status
 record so automation can distinguish parser support from a specific operation.
+
+## Adapter commands
+
+`missive adapter stdio` is the first concrete adapter. It is intended for a
+human or another local agent invoking `missive` as a subprocess without scraping
+human terminal text. The adapter reads framed JSON from stdin, maps each frame to
+one existing `send`, `stream`, or `task` command, and writes framed responses to
+stdout.
+
+Modes:
+
+* `--mode single-shot` (default) reads one request and writes response frame(s).
+  JSON framing is the default.
+* `--mode long-running` reads one NDJSON request frame per line until EOF and
+  writes NDJSON response frames as each request completes. Long-running mode
+  requires NDJSON framing so callers can correlate each line by frame `id`.
+
+Supported request commands are `send`, `stream`, `task_get`, `task_list`,
+`task_wait`, and `task_cancel`. The frame schema marker is
+`missive.stdio.v1`; each frame must include an `id` for correlation.
+
+Single-shot task list example:
+
+```bash
+printf '%s\n' '{"schema_version":"missive.stdio.v1","id":"req-1","command":"task_list"}' \
+  | missive adapter stdio --mode single-shot --framing json
+```
+
+Long-running stream example:
+
+```bash
+printf '%s\n' \
+  '{"schema_version":"missive.stdio.v1","id":"req-stream","command":"stream","agent":"echo","message":"hello"}' \
+  | missive adapter stdio --mode long-running
+```
+
+Each response frame has `schema_version`, optional `id`, `ok`, `kind`,
+`sequence`, and either `data` or `error`. `data` is the normal missive
+machine-readable command envelope, so a streaming request produces one wrapped
+`stream_event` frame per event followed by a wrapped `stream_result` frame.
+Invalid request frames produce `ok:false`, `kind:"stdio_error"` frames and do
+not stop a long-running loop.
 
 ## Agent registry commands
 

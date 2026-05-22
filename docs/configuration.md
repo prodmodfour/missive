@@ -108,8 +108,10 @@ Supported sections in this ticket:
   `broadcast`, `first-success`, `quorum`, and `fallback`.
 * `adapters` — adapter kind, enablement, profile mapping, optional source-level
   busy-input overrides, and non-secret settings. The shared adapter trait and
-  registry can derive `AdapterDefinition` values from this schema today; concrete
-  stdio/file/HTTP/external platform workers arrive in later tickets.
+  registry can derive `AdapterDefinition` values from this schema today; the
+  foreground `missive adapter stdio` frame loop is implemented, while
+  daemon-started stdio plus file/HTTP/external platform workers arrive in later
+  tickets.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
   bytes, and concurrency defaults. `qos.max_request_bytes` is currently enforced
   by `missive send` and `missive stream` while parsing local text, file-reference,

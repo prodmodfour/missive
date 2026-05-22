@@ -9,6 +9,17 @@ use missive_core::{AgentAlias, ContextId, EventId, MessageId, Metadata, MissiveE
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod stdio;
+
+pub use stdio::{
+    STDIO_ADAPTER_KIND, STDIO_FRAME_SCHEMA_VERSION, STDIO_OUTPUT_KIND_COMMAND_OUTPUT,
+    STDIO_OUTPUT_KIND_ERROR, STDIO_OUTPUT_KIND_LIFECYCLE, StdioAdapter, StdioCommand,
+    StdioFrameSource, StdioFraming, StdioInputFrame, StdioMessageFields, StdioOutputFrame,
+    StdioRunMode, StdioStreamCommand, StdioTaskCancelCommand, StdioTaskGetCommand,
+    StdioTaskListCommand, StdioTaskWaitCommand, read_ndjson_frames, read_single_frame,
+    register_stdio_adapter, write_output_frame,
+};
+
 /// Event type used when an adapter sends user/source input into the gateway.
 pub const ADAPTER_EVENT_TYPE_INBOUND_MESSAGE: &str = "missive.adapter.inbound_message";
 

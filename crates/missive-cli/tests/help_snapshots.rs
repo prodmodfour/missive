@@ -29,6 +29,14 @@ fn top_level_help_snapshot_is_stable() {
 fn key_subcommand_help_snapshots_are_stable() {
     let cases: &[(&[&str], &str)] = &[
         (
+            &["missive", "adapter", "--help"],
+            include_str!("snapshots/help-adapter.txt"),
+        ),
+        (
+            &["missive", "adapter", "stdio", "--help"],
+            include_str!("snapshots/help-adapter-stdio.txt"),
+        ),
+        (
             &["missive", "agent", "--help"],
             include_str!("snapshots/help-agent.txt"),
         ),

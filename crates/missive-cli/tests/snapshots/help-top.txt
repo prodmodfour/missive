@@ -3,6 +3,7 @@ missive is a local control-plane CLI for A2A-native agent communication. The com
 Usage: missive [OPTIONS] [COMMAND]
 
 Commands:
+  adapter     Run local adapters for subprocess and gateway integration
   agent       Manage configured A2A agents and cached Agent Cards
   send        Send one message to an A2A agent
   stream      Stream message updates from an A2A agent
