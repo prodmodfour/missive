@@ -19,8 +19,9 @@ pub use repository::{
     ArtifactRecord, ArtifactUpsert, AuthRefKind, AuthRefRecord, AuthRefUpsert, AuthSecretStorage,
     ContextRecord, ContextState, ContextUpsert, EventInsert, EventRecord, GatewayJobId,
     GatewayJobRecord, GatewayJobState, GatewayJobUpsert, GroupMemberRecord, GroupMemberUpsert,
-    GroupRecord, GroupUpsert, MessageDirection, MessageInsert, MessageRecord, MessageRole, Store,
-    StoreTransaction, TaskRecord, TaskSource, TaskState, TaskUpsert,
+    GroupRecord, GroupUpsert, MessageDirection, MessageInsert, MessageRecord, MessageRole,
+    PushConfigId, PushConfigRecord, PushConfigUpsert, Store, StoreTransaction, TaskRecord,
+    TaskSource, TaskState, TaskUpsert,
 };
 
 /// Cargo package name for this crate.

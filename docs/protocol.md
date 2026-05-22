@@ -181,8 +181,8 @@ events update the local `tasks` row state and preserve A2A protocol-version
 metadata. Artifacts embedded in task events are persisted as dedicated artifact
 rows. `artifactUpdate` events upsert the referenced artifact row, and appended
 chunks merge their parts into the existing A2A artifact JSON while incrementing a
-local version. Task subscription/resume and push configuration remain mapped for
-later tickets.
+local version. Task subscription/resume remains mapped for later gateway
+tickets; task push notification config CRUD is implemented by `missive push`.
 
 ## Task GetTask/ListTasks/CancelTask
 
@@ -216,6 +216,39 @@ loop treats `completed`, `failed`, `cancelled`, and `input_required` as decisive
 states and returns deterministic process exit codes documented in `docs/cli.md`.
 Timeout is controlled by global `--timeout`; polling cadence is controlled by
 `--interval`.
+
+## Push notification config CRUD
+
+`missive push create/get/list/delete` uses the official `a2a-lf` push config
+models behind `missive_a2a::protocol`: `TaskPushNotificationConfig`,
+`GetTaskPushNotificationConfigRequest`,
+`ListTaskPushNotificationConfigsRequest`,
+`ListTaskPushNotificationConfigsResponse`, and
+`DeleteTaskPushNotificationConfigRequest`. The upstream SDK currently models
+create as the `TaskPushNotificationConfig` payload itself.
+
+Transport mapping follows the negotiated interface:
+
+* `http+json` maps create/list to
+  `POST`/`GET <interface>/tasks/{taskId}/pushNotificationConfigs`, get to
+  `GET <interface>/tasks/{taskId}/pushNotificationConfigs/{configId}`, and
+  delete to
+  `DELETE <interface>/tasks/{taskId}/pushNotificationConfigs/{configId}`. Task
+  ids and config ids are percent-encoded as path segments. List pagination uses
+  `pageSize` and `pageToken` query parameters.
+* `json-rpc` posts JSON-RPC 2.0 methods `CreateTaskPushNotificationConfig`,
+  `GetTaskPushNotificationConfig`, `ListTaskPushNotificationConfigs`, and
+  `DeleteTaskPushNotificationConfig` to the selected JSON-RPC interface URL.
+
+Both transports send `A2A-Version`, optional `A2A-Extensions`, configured extra
+service parameters, and resolved auth headers for talking to the remote agent.
+Callback authentication is separate: `push create --auth-scheme ...
+--auth-credentials-env ...` places the environment value into the A2A
+`authentication.credentials` field for the remote agent to use when calling the
+callback URL. CLI output, event payloads, and local `push_configs.remote_config_json`
+redact those credentials. A local placeholder task row is created when needed so
+push config rows and events can link to the configured task id even before
+`missive task get/list` observes the remote task.
 
 ## Context continuity
 
@@ -285,6 +318,6 @@ cargo test -p missive-cli --test a2a_conformance_fixtures --all-features
 ```
 
 Authentication material is resolved for implemented Agent Card fetch/refresh,
-non-streaming send, streaming send, and task get/list/wait/cancel requests.
-Future push protocol calls should reuse `AuthHeaders` plus the CLI/config auth
-resolver instead of inventing separate secret handling paths.
+non-streaming send, streaming send, task get/list/wait/cancel, and push config
+requests. These paths share `AuthHeaders` plus the CLI/config auth resolver
+instead of inventing separate outbound secret handling paths.

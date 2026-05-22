@@ -63,6 +63,12 @@ server.handle().set_stream_events(vec![
 ]);
 ```
 
+For push config tests, `MockA2aServer` serves both HTTP+JSON
+`/a2a/tasks/{taskId}/pushNotificationConfigs` routes and JSON-RPC
+`Create/Get/List/DeleteTaskPushNotificationConfig` methods. Use
+`server.handle().insert_push_config(...)` or run the CLI `push create` command to
+seed fixture state.
+
 For auth and protocol-version error paths, configure the builder:
 
 ```rust
@@ -112,6 +118,7 @@ Targeted checks for the reusable mock server and CLI integration are:
 ```bash
 cargo test -p missive-test-support --all-targets
 cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
+cargo test -p missive-cli --test push_command --all-features
 ```
 
 The default quality gate also runs these tests and the conformance suite through
@@ -123,7 +130,7 @@ scripts/quality-gate.sh
 
 ## Extending fixtures
 
-When later tickets add push clients, gateway subscriptions, adapters, collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
+When later tickets add gateway subscriptions, adapters, collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
 
 1. add a helper or route to `MockA2aServer`/`MockA2aHandle`
 2. cover it with a local test in `crates/missive-test-support`

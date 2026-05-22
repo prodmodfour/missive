@@ -8,7 +8,7 @@ This repository is at early workspace stage. It contains:
 
 * a Cargo workspace with the target crate layout under `crates/`, plus a dev-support crate for local A2A integration fixtures and protocol-versioned A2A conformance fixtures under `tests/fixtures/a2a/1.0/`
 * a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, context `create/list/show/fork/close/export`, and event journal `list/tail/replay/export`
+* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, agent registry commands, A2A Agent Card discovery/cache inspection, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, context `create/list/show/fork/close/export`, push notification config `create/get/list/delete`, and event journal `list/tail/replay/export`
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
@@ -28,7 +28,7 @@ crates/missive-observe    tracing, logs, diagnostics, event export helpers
 crates/missive-test-support reusable local A2A integration fixtures for tests
 ```
 
-The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, and `missive events list/tail/replay/export`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
+The current binary exposes help for the top-level command tree, accepts global flags, implements `missive agent add/list/show/inspect/refresh/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, `missive push create/get/list/delete`, and `missive events list/tail/replay/export`, and renders remaining skeletal command status in human, JSON, NDJSON, or quiet modes:
 
 ```bash
 cargo run -p missive-cli --bin missive -- --help
@@ -49,6 +49,9 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- task ar
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- context create --name "Planning round" --agent echo --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- context list
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- context export "Planning round" --json
+MISSIVE_PUSH_CALLBACK_SECRET=change-me MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- push create echo task-123 http://127.0.0.1:9090/a2a/push --config-id local-webhook --auth-scheme Bearer --auth-credentials-env MISSIVE_PUSH_CALLBACK_SECRET --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- push list echo task-123 --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- push delete echo task-123 local-webhook
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events list --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events export --ndjson
@@ -57,7 +60,7 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events 
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task/artifact mapping, context continuity, interface negotiation mapping, and conformance fixture coverage, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, [`docs/security.md`](docs/security.md) for auth storage tradeoffs, and [`docs/testing.md`](docs/testing.md) for local validation, reusable mock A2A fixtures, and protocol-versioned conformance fixtures. Future tickets add gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task/push/artifact mapping, context continuity, interface negotiation mapping, and conformance fixture coverage, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, [`docs/security.md`](docs/security.md) for auth storage tradeoffs, and [`docs/testing.md`](docs/testing.md) for local validation, reusable mock A2A fixtures, and protocol-versioned conformance fixtures. Future tickets add webhook receiver/gateway runtime behaviour, adapters, collectives, broader tests, and packaging.
 
 ## Build and validation
 

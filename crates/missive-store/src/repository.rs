@@ -146,6 +146,7 @@ macro_rules! store_identifier {
 store_identifier!(GatewayJobId, "gateway job id");
 store_identifier!(AdapterBindingId, "adapter binding id");
 store_identifier!(ArtifactId, "artifact id");
+store_identifier!(PushConfigId, "push config id");
 
 /// Durable authentication reference kind stored without raw secret material.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1013,6 +1014,73 @@ pub struct GroupMemberRecord {
     pub created_at: MissiveTimestamp,
 }
 
+/// Input used to create or update a local A2A task push notification config row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PushConfigUpsert {
+    /// Local/remote push config id.
+    pub push_config_id: PushConfigId,
+    /// Owning agent alias.
+    pub agent_alias: AgentAlias,
+    /// Optional linked A2A task id.
+    pub task_id: Option<TaskId>,
+    /// Callback URL configured on the remote task.
+    pub callback_url: String,
+    /// Optional non-secret auth reference name associated with the callback.
+    pub auth_ref_name: Option<String>,
+    /// Redacted remote A2A TaskPushNotificationConfig JSON.
+    pub remote_config_json: Option<Value>,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+    /// Soft-deletion timestamp.
+    pub deleted_at: Option<MissiveTimestamp>,
+}
+
+impl PushConfigUpsert {
+    /// Creates an active push config upsert.
+    #[must_use]
+    pub fn new(
+        push_config_id: PushConfigId,
+        agent_alias: AgentAlias,
+        callback_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            push_config_id,
+            agent_alias,
+            task_id: None,
+            callback_url: callback_url.into(),
+            auth_ref_name: None,
+            remote_config_json: None,
+            metadata: Metadata::new(),
+            deleted_at: None,
+        }
+    }
+}
+
+/// Stored local A2A task push notification config row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PushConfigRecord {
+    /// Local/remote push config id.
+    pub push_config_id: PushConfigId,
+    /// Owning agent alias.
+    pub agent_alias: AgentAlias,
+    /// Optional linked A2A task id.
+    pub task_id: Option<TaskId>,
+    /// Callback URL configured on the remote task.
+    pub callback_url: String,
+    /// Optional non-secret auth reference name associated with the callback.
+    pub auth_ref_name: Option<String>,
+    /// Redacted remote A2A TaskPushNotificationConfig JSON.
+    pub remote_config_json: Option<Value>,
+    /// Non-secret metadata.
+    pub metadata: Metadata,
+    /// Creation time recorded by SQLite.
+    pub created_at: MissiveTimestamp,
+    /// Last update time recorded by SQLite.
+    pub updated_at: MissiveTimestamp,
+    /// Soft-deletion timestamp.
+    pub deleted_at: Option<MissiveTimestamp>,
+}
+
 /// Input used to create or update a gateway job row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GatewayJobUpsert {
@@ -1366,6 +1434,38 @@ impl Store {
         remove_group_member(&self.connection, group_name, agent_alias)
     }
 
+    /// Creates or updates a push config and returns the stored row.
+    pub fn upsert_push_config(&self, input: &PushConfigUpsert) -> Result<PushConfigRecord> {
+        upsert_push_config(&self.connection, input)
+    }
+
+    /// Reads one push config by id.
+    pub fn get_push_config(
+        &self,
+        push_config_id: &PushConfigId,
+    ) -> Result<Option<PushConfigRecord>> {
+        get_push_config(&self.connection, push_config_id)
+    }
+
+    /// Lists push configs in deterministic agent/task/id order.
+    pub fn list_push_configs(&self) -> Result<Vec<PushConfigRecord>> {
+        list_push_configs(&self.connection)
+    }
+
+    /// Lists push configs for one task in deterministic id order.
+    pub fn list_push_configs_for_task(
+        &self,
+        agent_alias: &AgentAlias,
+        task_id: &TaskId,
+    ) -> Result<Vec<PushConfigRecord>> {
+        list_push_configs_for_task(&self.connection, agent_alias, task_id)
+    }
+
+    /// Soft-deletes a push config by id. Returns `true` when an active row was marked deleted.
+    pub fn delete_push_config(&self, push_config_id: &PushConfigId) -> Result<bool> {
+        delete_push_config(&self.connection, push_config_id)
+    }
+
     /// Creates or updates a gateway job and returns the stored row.
     pub fn upsert_gateway_job(&self, input: &GatewayJobUpsert) -> Result<GatewayJobRecord> {
         upsert_gateway_job(&self.connection, input)
@@ -1578,6 +1678,38 @@ impl StoreTransaction<'_> {
         agent_alias: &AgentAlias,
     ) -> Result<bool> {
         remove_group_member(&self.transaction, group_name, agent_alias)
+    }
+
+    /// Creates or updates a push config and returns the stored row.
+    pub fn upsert_push_config(&self, input: &PushConfigUpsert) -> Result<PushConfigRecord> {
+        upsert_push_config(&self.transaction, input)
+    }
+
+    /// Reads one push config by id.
+    pub fn get_push_config(
+        &self,
+        push_config_id: &PushConfigId,
+    ) -> Result<Option<PushConfigRecord>> {
+        get_push_config(&self.transaction, push_config_id)
+    }
+
+    /// Lists push configs in deterministic agent/task/id order.
+    pub fn list_push_configs(&self) -> Result<Vec<PushConfigRecord>> {
+        list_push_configs(&self.transaction)
+    }
+
+    /// Lists push configs for one task in deterministic id order.
+    pub fn list_push_configs_for_task(
+        &self,
+        agent_alias: &AgentAlias,
+        task_id: &TaskId,
+    ) -> Result<Vec<PushConfigRecord>> {
+        list_push_configs_for_task(&self.transaction, agent_alias, task_id)
+    }
+
+    /// Soft-deletes a push config by id. Returns `true` when an active row was marked deleted.
+    pub fn delete_push_config(&self, push_config_id: &PushConfigId) -> Result<bool> {
+        delete_push_config(&self.transaction, push_config_id)
     }
 
     /// Creates or updates a gateway job and returns the stored row.
@@ -2332,6 +2464,120 @@ fn remove_group_member(
         .map_err(|error| storage_error("removing group member", error))
 }
 
+fn upsert_push_config(
+    connection: &Connection,
+    input: &PushConfigUpsert,
+) -> Result<PushConfigRecord> {
+    validate_store_identifier("push config id", input.push_config_id.as_str())?;
+    validate_len("push config callback_url", &input.callback_url, 4096)?;
+    if let Some(auth_ref_name) = &input.auth_ref_name {
+        validate_store_identifier("push config auth_ref_name", auth_ref_name)?;
+    }
+    let remote_config_json = optional_json_text(
+        "push config remote config",
+        input.remote_config_json.as_ref(),
+    )?;
+    let metadata_json = to_json_text("push config metadata", &input.metadata)?;
+    let deleted_at = input.deleted_at.map(MissiveTimestamp::to_rfc3339);
+
+    connection
+        .execute(
+            "INSERT INTO push_configs (
+                push_config_id, agent_alias, task_id, callback_url, auth_ref_name,
+                remote_config_json, metadata_json, deleted_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(push_config_id) DO UPDATE SET
+                agent_alias = excluded.agent_alias,
+                task_id = excluded.task_id,
+                callback_url = excluded.callback_url,
+                auth_ref_name = excluded.auth_ref_name,
+                remote_config_json = excluded.remote_config_json,
+                metadata_json = excluded.metadata_json,
+                deleted_at = excluded.deleted_at,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            params![
+                input.push_config_id.as_str(),
+                input.agent_alias.as_str(),
+                input.task_id.as_ref().map(TaskId::as_str),
+                &input.callback_url,
+                input.auth_ref_name.as_deref(),
+                remote_config_json,
+                metadata_json,
+                deleted_at,
+            ],
+        )
+        .map_err(|error| storage_error("upserting push config", error))?;
+
+    get_push_config(connection, &input.push_config_id)?
+        .ok_or_else(|| missing_after_write("push config", input.push_config_id.as_str()))
+}
+
+fn get_push_config(
+    connection: &Connection,
+    push_config_id: &PushConfigId,
+) -> Result<Option<PushConfigRecord>> {
+    connection
+        .query_row(
+            "SELECT push_config_id, agent_alias, task_id, callback_url, auth_ref_name,
+                remote_config_json, metadata_json, created_at, updated_at, deleted_at
+             FROM push_configs WHERE push_config_id = ?1",
+            params![push_config_id.as_str()],
+            read_push_config_row,
+        )
+        .optional()
+        .map_err(|error| storage_error("reading push config", error))
+}
+
+fn list_push_configs(connection: &Connection) -> Result<Vec<PushConfigRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT push_config_id, agent_alias, task_id, callback_url, auth_ref_name,
+                remote_config_json, metadata_json, created_at, updated_at, deleted_at
+             FROM push_configs ORDER BY agent_alias, task_id, push_config_id",
+        )
+        .map_err(|error| storage_error("preparing push config list", error))?;
+    collect_rows(
+        statement.query_map([], read_push_config_row),
+        "listing push configs",
+    )
+}
+
+fn list_push_configs_for_task(
+    connection: &Connection,
+    agent_alias: &AgentAlias,
+    task_id: &TaskId,
+) -> Result<Vec<PushConfigRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT push_config_id, agent_alias, task_id, callback_url, auth_ref_name,
+                remote_config_json, metadata_json, created_at, updated_at, deleted_at
+             FROM push_configs
+             WHERE agent_alias = ?1 AND task_id = ?2
+             ORDER BY push_config_id",
+        )
+        .map_err(|error| storage_error("preparing push config task list", error))?;
+    collect_rows(
+        statement.query_map(
+            params![agent_alias.as_str(), task_id.as_str()],
+            read_push_config_row,
+        ),
+        "listing task push configs",
+    )
+}
+
+fn delete_push_config(connection: &Connection, push_config_id: &PushConfigId) -> Result<bool> {
+    connection
+        .execute(
+            "UPDATE push_configs
+             SET deleted_at = COALESCE(deleted_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE push_config_id = ?1 AND deleted_at IS NULL",
+            params![push_config_id.as_str()],
+        )
+        .map(|affected| affected > 0)
+        .map_err(|error| storage_error("deleting push config", error))
+}
+
 fn upsert_gateway_job(
     connection: &Connection,
     input: &GatewayJobUpsert,
@@ -2581,6 +2827,21 @@ fn read_group_member_row(row: &Row<'_>) -> rusqlite::Result<GroupMemberRecord> {
         weight: row.get(4)?,
         routing_metadata: json_from_sql(5, row.get(5)?)?,
         created_at: timestamp_from_sql(6, row.get(6)?)?,
+    })
+}
+
+fn read_push_config_row(row: &Row<'_>) -> rusqlite::Result<PushConfigRecord> {
+    Ok(PushConfigRecord {
+        push_config_id: parse_sql(0, row.get(0)?)?,
+        agent_alias: parse_sql(1, row.get(1)?)?,
+        task_id: optional_parse_sql(2, row.get(2)?)?,
+        callback_url: row.get(3)?,
+        auth_ref_name: row.get(4)?,
+        remote_config_json: optional_json_from_sql(5, row.get(5)?)?,
+        metadata: json_from_sql(6, row.get(6)?)?,
+        created_at: timestamp_from_sql(7, row.get(7)?)?,
+        updated_at: timestamp_from_sql(8, row.get(8)?)?,
+        deleted_at: optional_timestamp_from_sql(9, row.get(9)?)?,
     })
 }
 
@@ -3042,6 +3303,68 @@ mod tests {
                 .get_artifact(&artifact_id)
                 .expect("artifact cascaded")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn push_config_crud_round_trip_soft_deletes() {
+        let store = Store::open_in_memory().expect("store");
+        let agent = seed_agent(&store, "echo");
+        let task = seed_task(&store, &agent, "task-push");
+        let push_config_id = PushConfigId::new("push-1").expect("push config id");
+        let mut input = PushConfigUpsert::new(
+            push_config_id.clone(),
+            agent.clone(),
+            "http://127.0.0.1:8080/callback",
+        );
+        input.task_id = Some(task.clone());
+        input.remote_config_json = Some(json!({
+            "id": "push-1",
+            "taskId": "task-push",
+            "url": "http://127.0.0.1:8080/callback",
+            "authentication": {"scheme": "Bearer", "credentials": "[REDACTED]"}
+        }));
+        input
+            .metadata
+            .insert_str("purpose", "repository-test")
+            .expect("metadata");
+
+        let created = store.upsert_push_config(&input).expect("push upsert");
+        assert_eq!(created.push_config_id, push_config_id);
+        assert_eq!(created.agent_alias, agent);
+        assert_eq!(created.task_id.as_ref(), Some(&task));
+        assert_eq!(created.metadata.get_str("purpose"), Some("repository-test"));
+        assert!(created.deleted_at.is_none());
+        assert_eq!(
+            store
+                .list_push_configs_for_task(&created.agent_alias, &task)
+                .expect("task push configs"),
+            vec![created.clone()]
+        );
+        assert_eq!(
+            store.list_push_configs().expect("push configs"),
+            vec![created.clone()]
+        );
+
+        let mut updated = input.clone();
+        updated.callback_url = "https://example.test/callback".to_owned();
+        let updated = store.upsert_push_config(&updated).expect("push update");
+        assert_eq!(updated.callback_url, "https://example.test/callback");
+
+        assert!(
+            store
+                .delete_push_config(&push_config_id)
+                .expect("delete push")
+        );
+        let deleted = store
+            .get_push_config(&push_config_id)
+            .expect("get deleted push")
+            .expect("push row retained");
+        assert!(deleted.deleted_at.is_some());
+        assert!(
+            !store
+                .delete_push_config(&push_config_id)
+                .expect("delete again")
         );
     }
 

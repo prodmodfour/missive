@@ -102,7 +102,7 @@ fn apply_auth_ref(
     headers.insert(&auth_ref.header_name, header_value)
 }
 
-fn required_env_secret(
+pub(crate) fn required_env_secret(
     source: &str,
     env_name: &str,
     environment: &BTreeMap<String, String>,
@@ -139,7 +139,7 @@ fn parse_header_arg(value: &str) -> Result<(&str, &str)> {
     Ok((name, header_value))
 }
 
-fn validate_env_var_name(source: &str, value: &str) -> Result<()> {
+pub(crate) fn validate_env_var_name(source: &str, value: &str) -> Result<()> {
     if value.is_empty() {
         return Err(MissiveError::validation(format!(
             "{source} must name a non-empty environment variable"

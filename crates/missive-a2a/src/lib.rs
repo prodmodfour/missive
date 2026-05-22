@@ -60,12 +60,14 @@ const DEFAULT_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_TASK_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_PUSH_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT: &str = concat!("missive/", env!("CARGO_PKG_VERSION"), " a2a-client");
 const A2A_JSON_CONTENT_TYPE: &str = "application/a2a+json";
 const EVENT_STREAM_CONTENT_TYPE: &str = "text/event-stream";
 const SEND_MESSAGE_REST_PATH: &str = "message:send";
 const SEND_STREAMING_MESSAGE_REST_PATH: &str = "message:stream";
 const TASKS_REST_PATH: &str = "tasks";
+const PUSH_CONFIGS_REST_PATH: &str = "pushNotificationConfigs";
 const MAX_SSE_EVENT_DATA_BYTES: usize = 16 * 1024 * 1024;
 
 /// Canonical missive name for the A2A HTTP+JSON protocol binding.
@@ -1731,6 +1733,472 @@ pub struct CancelTaskOutcome {
     pub raw_json: Value,
 }
 
+/// Result of an A2A `CreateTaskPushNotificationConfig` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CreatePushConfigOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed A2A push notification config.
+    pub config: protocol::TaskPushNotificationConfig,
+    /// Raw config JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Result of an A2A `GetTaskPushNotificationConfig` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GetPushConfigOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed A2A push notification config.
+    pub config: protocol::TaskPushNotificationConfig,
+    /// Raw config JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Result of an A2A `ListTaskPushNotificationConfigs` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ListPushConfigsOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Parsed A2A list response.
+    pub response: protocol::ListTaskPushNotificationConfigsResponse,
+    /// Raw response JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Result of an A2A `DeleteTaskPushNotificationConfig` request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct DeletePushConfigOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Raw delete response JSON after unwrapping any JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Blocking A2A client for task push notification config operations.
+#[derive(Debug, Clone)]
+pub struct PushConfigClient {
+    client: Client,
+}
+
+impl PushConfigClient {
+    /// Creates a push config client with a bounded timeout and missive user agent.
+    pub fn new() -> Result<Self> {
+        Self::with_timeout(DEFAULT_PUSH_TIMEOUT)
+    }
+
+    /// Creates a push config client with a caller-provided timeout.
+    pub fn with_timeout(timeout: Duration) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(timeout)
+            .user_agent(USER_AGENT)
+            .build()
+            .map_err(|error| {
+                MissiveError::transport("building A2A push config HTTP client")
+                    .with_source(error)
+                    .with_help("Check local TLS certificate roots and HTTP client configuration.")
+            })?;
+        Ok(Self { client })
+    }
+
+    /// Creates one task push notification config using the negotiated interface.
+    pub fn create_config(
+        &self,
+        interface: &NegotiatedInterface,
+        config: &protocol::TaskPushNotificationConfig,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<CreatePushConfigOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.create_http_json(interface, config, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => {
+                self.create_json_rpc(interface, config, service_parameters, auth_headers)
+            }
+            binding => Err(MissiveError::transport(format!(
+                "A2A CreateTaskPushNotificationConfig cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    /// Gets one task push notification config using the negotiated interface.
+    pub fn get_config(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::GetTaskPushNotificationConfigRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<GetPushConfigOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.get_http_json(interface, request, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => {
+                self.get_json_rpc(interface, request, service_parameters, auth_headers)
+            }
+            binding => Err(MissiveError::transport(format!(
+                "A2A GetTaskPushNotificationConfig cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    /// Lists task push notification configs using the negotiated interface.
+    pub fn list_configs(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::ListTaskPushNotificationConfigsRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<ListPushConfigsOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.list_http_json(interface, request, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => {
+                self.list_json_rpc(interface, request, service_parameters, auth_headers)
+            }
+            binding => Err(MissiveError::transport(format!(
+                "A2A ListTaskPushNotificationConfigs cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    /// Deletes one task push notification config using the negotiated interface.
+    pub fn delete_config(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::DeleteTaskPushNotificationConfigRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<DeletePushConfigOutcome> {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => {
+                self.delete_http_json(interface, request, service_parameters, auth_headers)
+            }
+            JSON_RPC_BINDING => {
+                self.delete_json_rpc(interface, request, service_parameters, auth_headers)
+            }
+            binding => Err(MissiveError::transport(format!(
+                "A2A DeleteTaskPushNotificationConfig cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    fn create_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        config: &protocol::TaskPushNotificationConfig,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<CreatePushConfigOutcome> {
+        let request_body = push_config_with_interface_tenant(config, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let endpoint = push_config_collection_url(interface, &request_body.task_id)?;
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE)
+            .header("Content-Type", A2A_JSON_CONTENT_TYPE)
+            .json(&request_body);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) = send_task_request(
+            http_request,
+            &endpoint,
+            service_parameters,
+            "A2A CreateTaskPushNotificationConfig",
+        )?;
+        let config = push_config_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A CreateTaskPushNotificationConfig response",
+        )?;
+        Ok(CreatePushConfigOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            config,
+            raw_json,
+        })
+    }
+
+    fn create_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        config: &protocol::TaskPushNotificationConfig,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<CreatePushConfigOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = push_config_with_interface_tenant(config, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let id = request_body
+            .id
+            .clone()
+            .unwrap_or_else(|| request_body.task_id.clone());
+        let raw_json = json_rpc_push_call(
+            &self.client,
+            &endpoint,
+            protocol::JsonRpcId::String(id),
+            protocol::jsonrpc_methods::CREATE_PUSH_CONFIG,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        let config = push_config_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A JSON-RPC CreateTaskPushNotificationConfig result",
+        )?;
+        Ok(CreatePushConfigOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            config,
+            raw_json,
+        })
+    }
+
+    fn get_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::GetTaskPushNotificationConfigRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<GetPushConfigOutcome> {
+        let request_body = get_push_config_request_with_interface_tenant(request, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let mut endpoint =
+            push_config_item_url(interface, &request_body.task_id, &request_body.id)?;
+        append_optional_tenant_query(&mut endpoint, request_body.tenant.as_deref());
+        let mut http_request = self
+            .client
+            .get(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) = send_task_request(
+            http_request,
+            &endpoint,
+            service_parameters,
+            "A2A GetTaskPushNotificationConfig",
+        )?;
+        let config = push_config_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A GetTaskPushNotificationConfig response",
+        )?;
+        Ok(GetPushConfigOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            config,
+            raw_json,
+        })
+    }
+
+    fn get_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::GetTaskPushNotificationConfigRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<GetPushConfigOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = get_push_config_request_with_interface_tenant(request, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let raw_json = json_rpc_push_call(
+            &self.client,
+            &endpoint,
+            protocol::JsonRpcId::String(format!("{}:{}", request_body.task_id, request_body.id)),
+            protocol::jsonrpc_methods::GET_PUSH_CONFIG,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        let config = push_config_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A JSON-RPC GetTaskPushNotificationConfig result",
+        )?;
+        Ok(GetPushConfigOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            config,
+            raw_json,
+        })
+    }
+
+    fn list_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::ListTaskPushNotificationConfigsRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<ListPushConfigsOutcome> {
+        let request_body = list_push_configs_request_with_interface_tenant(request, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let mut endpoint = push_config_collection_url(interface, &request_body.task_id)?;
+        append_list_push_configs_query(&mut endpoint, &request_body);
+        let mut http_request = self
+            .client
+            .get(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) = send_task_request(
+            http_request,
+            &endpoint,
+            service_parameters,
+            "A2A ListTaskPushNotificationConfigs",
+        )?;
+        let response = push_config_list_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A ListTaskPushNotificationConfigs response",
+        )?;
+        Ok(ListPushConfigsOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            response,
+            raw_json,
+        })
+    }
+
+    fn list_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::ListTaskPushNotificationConfigsRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<ListPushConfigsOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = list_push_configs_request_with_interface_tenant(request, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let raw_json = json_rpc_push_call(
+            &self.client,
+            &endpoint,
+            protocol::JsonRpcId::String(format!("{}:push-configs", request_body.task_id)),
+            protocol::jsonrpc_methods::LIST_PUSH_CONFIGS,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        let response = push_config_list_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A JSON-RPC ListTaskPushNotificationConfigs result",
+        )?;
+        Ok(ListPushConfigsOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            response,
+            raw_json,
+        })
+    }
+
+    fn delete_http_json(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::DeleteTaskPushNotificationConfigRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<DeletePushConfigOutcome> {
+        let request_body = delete_push_config_request_with_interface_tenant(request, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let mut endpoint =
+            push_config_item_url(interface, &request_body.task_id, &request_body.id)?;
+        append_optional_tenant_query(&mut endpoint, request_body.tenant.as_deref());
+        let mut http_request = self
+            .client
+            .delete(endpoint.clone())
+            .header("Accept", A2A_JSON_CONTENT_TYPE);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let (status, raw_json) = send_task_request(
+            http_request,
+            &endpoint,
+            service_parameters,
+            "A2A DeleteTaskPushNotificationConfig",
+        )?;
+        Ok(DeletePushConfigOutcome {
+            url: endpoint.to_string(),
+            status,
+            interface: interface.clone(),
+            raw_json,
+        })
+    }
+
+    fn delete_json_rpc(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::DeleteTaskPushNotificationConfigRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+    ) -> Result<DeletePushConfigOutcome> {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = delete_push_config_request_with_interface_tenant(request, interface);
+        validate_push_task_id(&request_body.task_id)?;
+        let raw_json = json_rpc_push_call(
+            &self.client,
+            &endpoint,
+            protocol::JsonRpcId::String(format!("{}:{}", request_body.task_id, request_body.id)),
+            protocol::jsonrpc_methods::DELETE_PUSH_CONFIG,
+            &request_body,
+            service_parameters,
+            auth_headers,
+        )?;
+        Ok(DeletePushConfigOutcome {
+            url: endpoint.to_string(),
+            status: StatusCode::OK.as_u16(),
+            interface: interface.clone(),
+            raw_json,
+        })
+    }
+}
+
+impl Default for PushConfigClient {
+    fn default() -> Self {
+        Self::new().expect("default A2A push config HTTP client should build")
+    }
+}
+
 /// Blocking A2A client for task get/list/cancel operations.
 #[derive(Debug, Clone)]
 pub struct TaskClient {
@@ -2117,6 +2585,223 @@ impl Default for TaskClient {
     fn default() -> Self {
         Self::new().expect("default A2A task HTTP client should build")
     }
+}
+
+fn push_config_with_interface_tenant(
+    config: &protocol::TaskPushNotificationConfig,
+    interface: &NegotiatedInterface,
+) -> protocol::TaskPushNotificationConfig {
+    let mut config = config.clone();
+    if config.tenant.is_none() {
+        config.tenant.clone_from(&interface.tenant);
+    }
+    config
+}
+
+fn get_push_config_request_with_interface_tenant(
+    request: &protocol::GetTaskPushNotificationConfigRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::GetTaskPushNotificationConfigRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn list_push_configs_request_with_interface_tenant(
+    request: &protocol::ListTaskPushNotificationConfigsRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::ListTaskPushNotificationConfigsRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn delete_push_config_request_with_interface_tenant(
+    request: &protocol::DeleteTaskPushNotificationConfigRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::DeleteTaskPushNotificationConfigRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn validate_push_task_id(task_id: &str) -> Result<()> {
+    if task_id.trim().is_empty() {
+        return Err(MissiveError::validation(
+            "A2A task push notification config taskId cannot be empty",
+        ));
+    }
+    Ok(())
+}
+
+fn push_config_collection_url(interface: &NegotiatedInterface, task_id: &str) -> Result<Url> {
+    rest_endpoint_url(
+        &interface.url,
+        &format!(
+            "{TASKS_REST_PATH}/{}/{}",
+            encode_path_segment(task_id),
+            PUSH_CONFIGS_REST_PATH
+        ),
+    )
+}
+
+fn push_config_item_url(
+    interface: &NegotiatedInterface,
+    task_id: &str,
+    config_id: &str,
+) -> Result<Url> {
+    if config_id.trim().is_empty() {
+        return Err(MissiveError::validation(
+            "A2A task push notification config id cannot be empty",
+        ));
+    }
+    rest_endpoint_url(
+        &interface.url,
+        &format!(
+            "{TASKS_REST_PATH}/{}/{}/{}",
+            encode_path_segment(task_id),
+            PUSH_CONFIGS_REST_PATH,
+            encode_path_segment(config_id)
+        ),
+    )
+}
+
+fn append_optional_tenant_query(endpoint: &mut Url, tenant: Option<&str>) {
+    if let Some(tenant) = tenant {
+        endpoint.query_pairs_mut().append_pair("tenant", tenant);
+    }
+}
+
+fn append_list_push_configs_query(
+    endpoint: &mut Url,
+    request: &protocol::ListTaskPushNotificationConfigsRequest,
+) {
+    if request.page_size.is_none() && request.page_token.is_none() && request.tenant.is_none() {
+        return;
+    }
+
+    let mut query = endpoint.query_pairs_mut();
+    if let Some(page_size) = request.page_size {
+        query.append_pair("pageSize", &page_size.to_string());
+    }
+    if let Some(page_token) = &request.page_token {
+        query.append_pair("pageToken", page_token);
+    }
+    if let Some(tenant) = &request.tenant {
+        query.append_pair("tenant", tenant);
+    }
+}
+
+fn push_config_from_json(
+    raw_json: Value,
+    endpoint: &Url,
+    label: &str,
+) -> Result<protocol::TaskPushNotificationConfig> {
+    serde_json::from_value::<protocol::TaskPushNotificationConfig>(raw_json).map_err(|error| {
+        MissiveError::protocol(format!(
+            "{label} from {endpoint} is not a TaskPushNotificationConfig"
+        ))
+        .with_source(error)
+        .with_help("Expected an A2A TaskPushNotificationConfig object with taskId and url fields.")
+    })
+}
+
+fn push_config_list_from_json(
+    raw_json: Value,
+    endpoint: &Url,
+    label: &str,
+) -> Result<protocol::ListTaskPushNotificationConfigsResponse> {
+    serde_json::from_value::<protocol::ListTaskPushNotificationConfigsResponse>(raw_json).map_err(
+        |error| {
+            MissiveError::protocol(format!(
+                "{label} from {endpoint} is not a ListTaskPushNotificationConfigsResponse"
+            ))
+            .with_source(error)
+        },
+    )
+}
+
+fn json_rpc_push_call<P: Serialize>(
+    client: &Client,
+    endpoint: &Url,
+    id: protocol::JsonRpcId,
+    method: &str,
+    params: &P,
+    service_parameters: &ServiceParameters,
+    auth_headers: &AuthHeaders,
+) -> Result<Value> {
+    let params = serde_json::to_value(params).map_err(|error| {
+        MissiveError::protocol(format!("encoding {method} request as JSON-RPC params"))
+            .with_source(error)
+    })?;
+    let rpc_request = protocol::JsonRpcRequest::new(id, method, Some(params));
+    let mut http_request = client
+        .post(endpoint.clone())
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&rpc_request);
+    http_request = service_parameters.apply_to_blocking_request(http_request)?;
+    http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+    let response = http_request.send().map_err(|error| {
+        MissiveError::transport(format!("sending A2A JSON-RPC {method} to {endpoint} failed"))
+            .with_source(error)
+            .with_help("Verify the selected Agent Card JSON-RPC interface URL, local network access, and TLS configuration.")
+    })?;
+    let status = response.status();
+    let body = response.text().map_err(|error| {
+        MissiveError::transport(format!(
+            "reading A2A JSON-RPC {method} response from {endpoint} failed"
+        ))
+        .with_source(error)
+    })?;
+    if !status.is_success() {
+        if response_reports_unsupported_version(&body) {
+            return Err(unsupported_protocol_version_error(
+                &service_parameters.protocol_version,
+                endpoint,
+                status,
+            ));
+        }
+        return Err(MissiveError::transport(format!(
+            "A2A JSON-RPC {method} returned HTTP {status} for {endpoint}"
+        ))
+        .with_help("Inspect the remote agent logs or retry after refreshing its Agent Card."));
+    }
+
+    let raw_rpc = parse_response_json(&body, endpoint, "A2A JSON-RPC push response")?;
+    let rpc_response =
+        serde_json::from_value::<protocol::JsonRpcResponse>(raw_rpc).map_err(|error| {
+            MissiveError::protocol(format!(
+                "A2A JSON-RPC {method} response from {endpoint} is not a JSON-RPC response"
+            ))
+            .with_source(error)
+        })?;
+    if let Some(error) = rpc_response.error {
+        if error.code == protocol::error_code::VERSION_NOT_SUPPORTED {
+            return Err(unsupported_protocol_version_error(
+                &service_parameters.protocol_version,
+                endpoint,
+                status,
+            ));
+        }
+        return Err(MissiveError::protocol(format!(
+            "A2A JSON-RPC {method} failed with code {}: {}",
+            error.code, error.message
+        ))
+        .with_help("Inspect the remote agent error data and retry if appropriate."));
+    }
+    rpc_response.result.ok_or_else(|| {
+        MissiveError::protocol(format!(
+            "A2A JSON-RPC {method} response from {endpoint} did not include result or error"
+        ))
+    })
 }
 
 fn get_task_request_with_interface_tenant(

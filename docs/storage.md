@@ -121,12 +121,13 @@ should use for multi-row state changes.
 ## Current limitations
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
-and the CLI now uses the auth-ref, agent, context, task, artifact, message, and
-event repositories for `missive agent` registry commands, public Agent Card cache
-updates, non-streaming `missive send` persistence, streaming `missive stream`
-request/event/artifact persistence, task get/list/wait/cancel state updates,
-`missive task artifact` local export commands, context
-create/list/show/fork/close/export state management, and event journal
-list/tail/replay/export. Push-config and adapter-binding repositories, retention
-enforcement, compaction, and durable event producers for future group/gateway,
-webhook, and adapter callbacks are implemented by later tickets.
+and the CLI now uses the auth-ref, agent, context, task, artifact, message,
+event, and push-config repositories for `missive agent` registry commands,
+public Agent Card cache updates, non-streaming `missive send` persistence,
+streaming `missive stream` request/event/artifact persistence, task
+get/list/wait/cancel state updates, `missive task artifact` local export
+commands, context create/list/show/fork/close/export state management, push
+notification config create/get/list/delete state, and event journal
+list/tail/replay/export. Adapter-binding repositories, retention enforcement,
+compaction, and durable event producers for future group/gateway, webhook, and
+adapter callbacks are implemented by later tickets.

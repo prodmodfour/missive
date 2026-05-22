@@ -850,7 +850,7 @@ Validation:
 
 ## 028 — Implement push notification config commands
 
-Status: TODO
+Status: DONE
 
 Phase: Push
 

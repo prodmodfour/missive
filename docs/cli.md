@@ -5,8 +5,9 @@ configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
 commands, public A2A Agent Card inspection/refresh, non-streaming
 `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`,
-and `missive context create/list/show/fork/close/export`; other top-level
-commands still emit skeletal parsed status until their ordered tickets land.
+`missive context create/list/show/fork/close/export`, and `missive push
+create/get/list/delete`; other top-level commands still emit skeletal parsed
+status until their ordered tickets land.
 
 Run help with:
 
@@ -17,6 +18,7 @@ missive send --help
 missive stream --help
 missive task --help
 missive context --help
+missive push --help
 ```
 
 ## Global flags
@@ -48,10 +50,10 @@ locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
 requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
-Agent Card HTTP requests plus implemented send, stream, and remote task calls,
-and are shared with future A2A push clients. Task wait uses global `--timeout`;
-tracing and broader command-specific timeout semantics are intentionally left to
-their ordered implementation tickets.
+Agent Card HTTP requests plus implemented send, stream, remote task, and push
+config calls. Task wait uses global `--timeout`; tracing and broader
+command-specific timeout semantics are intentionally left to their ordered
+implementation tickets.
 
 ## Top-level commands
 
@@ -438,6 +440,45 @@ Machine-readable context output uses `context_create`, `context_list`,
 kinds. Context views include the context id, optional name/agent/parent, state,
 summary, metadata, timestamps, closed timestamp, and linked message/task/event
 counts.
+
+## Push notification config commands
+
+`missive push` configures A2A task push notification callback endpoints on a
+registered remote agent. Commands fetch or reuse the agent's cached Agent Card,
+negotiate `http+json` or `json-rpc`, send the standard A2A service-parameter and
+auth headers, and persist redacted local `push_configs` records plus redacted
+journal events.
+
+Implemented commands:
+
+```bash
+MISSIVE_PUSH_CALLBACK_SECRET=change-me \
+  missive push create echo task-123 https://example.test/a2a/push \
+    --config-id local-webhook \
+    --auth-scheme Bearer \
+    --auth-credentials-env MISSIVE_PUSH_CALLBACK_SECRET \
+    --metadata purpose=demo \
+    --json
+missive push get echo task-123 local-webhook --json
+missive push list echo task-123 --json
+missive push delete echo task-123 local-webhook
+```
+
+`push create` requires a registered `<agent>`, a task id, and an absolute
+`http`/`https` callback URL without embedded credentials. `--config-id` supplies
+the optional remote config id. `--auth-scheme` may be paired with
+`--auth-credentials-env ENV`; the environment variable value is sent to the
+remote A2A agent in the `authentication.credentials` field but is redacted from
+stdout, stderr, local event payloads, and the persisted `remote_config_json`.
+`--metadata KEY=VALUE` stores non-secret local metadata on the `push_configs`
+row; A2A v1.0 `TaskPushNotificationConfig` does not carry arbitrary metadata on
+the wire.
+
+`push list` accepts `--page-size` and `--page-token` for remote pagination and
+persists each returned config. `push delete` calls the remote delete endpoint and
+soft-deletes any active local row by setting `deleted_at`; the event journal
+keeps the redacted delete response for audit. Machine-readable output uses
+`push_create`, `push_get`, `push_list`, and `push_delete` envelope kinds.
 
 ## Event commands
 

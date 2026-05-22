@@ -84,7 +84,10 @@ builder are marked sensitive, and their debug representation is redacted.
 same output redaction and also redact raw message, task, and event payload JSON
 before including those records in stdout. Event producers created in current CLI
 paths store redacted event payloads for agent registry changes, send/stream
-requests, send responses, streaming updates, and changed remote task records.
+requests, send responses, streaming updates, changed remote task records, and
+push notification config create/get/list/delete operations. `missive push` also
+redacts `authentication.credentials` before persisting local
+`push_configs.remote_config_json` rows.
 
 Redaction is a guardrail, not a substitute for secret hygiene. Do not place real
 tokens in config files, command examples, tests, fixtures, docs, event payloads,
@@ -105,6 +108,21 @@ attach files you are willing to send to that agent. Both forms are bounded by th
 selected profile's `qos.max_request_bytes`; streaming/chunked upload is not
 implemented yet.
 
+## Push callback authentication
+
+`missive push create --auth-scheme SCHEME --auth-credentials-env ENV` sends the
+value of `ENV` to the remote A2A agent as callback authentication information.
+That value is needed so the remote agent can authenticate when it later calls the
+configured webhook URL, but it is treated as secret material: stdout/stderr,
+structured output, event payloads, and the local redacted push config record do
+not print the raw credential. The environment variable name and non-secret local
+metadata may still appear in shell history or automation logs if users include
+them there; do not pass real credentials in examples or committed scripts.
+
+Webhook receiving and validation are implemented by later tickets. Until then,
+only configure callback URLs that point at trusted local or test endpoints and do
+not expose long-lived production webhook credentials through missive demos.
+
 ## Artifact exports
 
 `missive task artifact save` and `missive task artifact export` write only
@@ -118,9 +136,9 @@ fetching or dereferencing remote/local URLs.
 ## Current limitations
 
 Authentication is wired into implemented Agent Card fetch/refresh,
-non-streaming send, streaming send, and task get/list/wait/cancel requests.
-Future push, gateway, and adapter tickets must reuse the same resolution and
+non-streaming send, streaming send, task get/list/wait/cancel, and push config
+requests. Future gateway and adapter tickets must reuse the same resolution and
 redaction path when they add outbound requests.
 
-Webhook verification, adapter trust boundaries, trace/log sinks, rate limits, and
-insecure local token storage policy are not implemented yet.
+Webhook receiver verification, adapter trust boundaries, trace/log sinks, rate
+limits, and insecure local token storage policy are not implemented yet.

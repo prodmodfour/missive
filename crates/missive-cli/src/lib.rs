@@ -15,6 +15,7 @@ pub(crate) mod auth;
 pub mod context;
 pub mod events;
 pub mod output;
+pub mod push;
 pub mod send;
 pub mod stream;
 pub mod task;
@@ -240,9 +241,13 @@ pub enum Commands {
 
     /// Manage A2A push notification configurations.
     #[command(
-        long_about = "Create, inspect, list, and delete A2A push notification configurations for remote tasks. Push behavior is implemented by a later push ticket."
+        long_about = "Create, inspect, list, and delete A2A push notification configurations for remote tasks. Push commands call the selected A2A interface and persist redacted local records of configured callback endpoints."
     )]
-    Push,
+    Push {
+        /// Push notification config operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<push::PushCommands>,
+    },
 
     /// Diagnose local configuration, storage, gateway, and endpoint health.
     #[command(
@@ -292,7 +297,7 @@ impl Commands {
             Self::Group => "group",
             Self::Gateway => "gateway",
             Self::Webhook => "webhook",
-            Self::Push => "push",
+            Self::Push { .. } => "push",
             Self::Doctor => "doctor",
             Self::Logs => "logs",
             Self::Events { .. } => "events",
@@ -424,6 +429,16 @@ where
             command: Some(events_command),
         }) => events::execute_events_command(
             events_command,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            writer,
+        ),
+        Some(Commands::Push {
+            command: Some(push_command),
+        }) => push::execute_push_command(
+            push_command,
             &cli.globals,
             &loaded_config,
             environment,
