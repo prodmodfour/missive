@@ -13,6 +13,7 @@ pub mod agent;
 pub(crate) mod auth;
 pub mod output;
 pub mod send;
+pub mod stream;
 
 pub use output::{
     CommandStatus, ConfigLoadStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header,
@@ -191,9 +192,9 @@ pub enum Commands {
 
     /// Stream message updates from an A2A agent.
     #[command(
-        long_about = "Start an A2A streaming message exchange and render status or artifact events. Streaming execution is implemented by a later messaging ticket."
+        long_about = "Start an A2A SendStreamingMessage exchange, render status/artifact updates as they arrive, and persist streaming events locally."
     )]
-    Stream,
+    Stream(stream::StreamArgs),
 
     /// Inspect, list, wait for, or cancel A2A tasks.
     #[command(
@@ -269,7 +270,7 @@ impl Commands {
         match self {
             Self::Agent { .. } => "agent",
             Self::Send(_) => "send",
-            Self::Stream => "stream",
+            Self::Stream(_) => "stream",
             Self::Task => "task",
             Self::Context => "context",
             Self::Group => "group",
@@ -367,6 +368,15 @@ where
             writer,
         ),
         Some(Commands::Send(args)) => send::execute_send_command(
+            args,
+            &cli.globals,
+            &loaded_config,
+            environment,
+            mode,
+            input,
+            writer,
+        ),
+        Some(Commands::Stream(args)) => stream::execute_stream_command(
             args,
             &cli.globals,
             &loaded_config,

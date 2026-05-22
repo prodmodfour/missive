@@ -78,13 +78,13 @@ pub struct SendArgs {
 }
 
 #[derive(Debug, Clone)]
-struct PreparedSend {
-    request: SendMessageRequest,
-    request_message_id: MessageId,
-    requested_context_id: Option<ContextId>,
-    requested_task_id: Option<TaskId>,
-    local_metadata: Metadata,
-    accepted_output_modes: Vec<String>,
+pub(crate) struct PreparedSend {
+    pub(crate) request: SendMessageRequest,
+    pub(crate) request_message_id: MessageId,
+    pub(crate) requested_context_id: Option<ContextId>,
+    pub(crate) requested_task_id: Option<TaskId>,
+    pub(crate) local_metadata: Metadata,
+    pub(crate) accepted_output_modes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -198,7 +198,7 @@ where
     render_success(writer, mode, "send_result", &output, &output.message)
 }
 
-fn prepare_send_request<R>(
+pub(crate) fn prepare_send_request<R>(
     args: &SendArgs,
     service_parameters: &ServiceParameters,
     input: &mut R,
@@ -343,7 +343,7 @@ fn parse_metadata(values: &[String]) -> Result<Metadata> {
     Ok(metadata)
 }
 
-fn metadata_hash_map(metadata: &Metadata) -> HashMap<String, Value> {
+pub(crate) fn metadata_hash_map(metadata: &Metadata) -> HashMap<String, Value> {
     metadata
         .iter()
         .map(|(key, value)| (key.to_owned(), value.clone()))
@@ -383,7 +383,7 @@ fn split_key_value<'a>(flag: &str, value: &'a str) -> Result<(&'a str, &'a str)>
     Ok((key, raw_value))
 }
 
-fn resolve_send_interface(
+pub(crate) fn resolve_send_interface(
     registry: &AgentRegistry,
     agent: AgentRecord,
     service_parameters: &ServiceParameters,
@@ -676,7 +676,7 @@ fn task_response(outcome: &SendMessageOutcome) -> Option<&Task> {
     }
 }
 
-fn store_message_role(role: &Role) -> Option<MessageRole> {
+pub(crate) fn store_message_role(role: &Role) -> Option<MessageRole> {
     Some(match role {
         Role::User => MessageRole::User,
         Role::Agent => MessageRole::Agent,
@@ -684,7 +684,7 @@ fn store_message_role(role: &Role) -> Option<MessageRole> {
     })
 }
 
-fn store_task_state(state: &missive_a2a::protocol::TaskState) -> TaskState {
+pub(crate) fn store_task_state(state: &missive_a2a::protocol::TaskState) -> TaskState {
     match state {
         missive_a2a::protocol::TaskState::Submitted => TaskState::Submitted,
         missive_a2a::protocol::TaskState::Working => TaskState::Working,
@@ -699,7 +699,7 @@ fn store_task_state(state: &missive_a2a::protocol::TaskState) -> TaskState {
     }
 }
 
-fn new_local_message_id() -> MessageId {
+pub(crate) fn new_local_message_id() -> MessageId {
     MessageId::new(missive_a2a::protocol::new_message_id())
         .expect("official generated message id should be valid")
 }

@@ -76,10 +76,12 @@ strings:
 * messages: `MessageInsert`, `MessageRecord`, `MessageDirection`,
   `MessageRole`, and append/get/list/delete methods for request/response rows
   linked to agents, contexts, and tasks; `missive send` uses these rows for
-  non-streaming A2A request/response persistence
+  non-streaming A2A request/response persistence, and `missive stream` appends
+  request plus `stream_event` rows for parsed SSE updates
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
   monotonic SQLite sequences; `EventInsert::record_a2a_protocol_version` records
-  the selected A2A version in event metadata
+  the selected A2A version in event metadata, and `missive stream` appends
+  `a2a.stream.*` rows with redacted payloads as events arrive
 * groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, and membership
   methods with rank uniqueness enforced by SQLite
 * gateway jobs: `GatewayJobUpsert`, `GatewayJobRecord`, `GatewayJobId`, and CRUD
@@ -104,9 +106,10 @@ should use for multi-row state changes.
 ## Current limitations
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
-and the CLI now uses the auth-ref, agent, context, task, and message repositories
-for `missive agent` registry commands, public Agent Card cache updates, and
-non-streaming `missive send` persistence. Artifact/push-config and
-adapter-binding repositories, retention enforcement, compaction, event replay,
-streaming event persistence, and broader durable A2A protocol persistence beyond
-send/task rows are implemented by later tickets.
+and the CLI now uses the auth-ref, agent, context, task, message, and event
+repositories for `missive agent` registry commands, public Agent Card cache
+updates, non-streaming `missive send` persistence, and streaming `missive stream`
+request/event persistence. Artifact/push-config and adapter-binding repositories,
+retention enforcement, compaction, event replay commands, dedicated artifact
+export, and broader durable A2A protocol persistence beyond send/stream/task rows
+are implemented by later tickets.

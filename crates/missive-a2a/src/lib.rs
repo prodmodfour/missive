@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
 pub use missive_core::{
@@ -9,7 +10,7 @@ pub use missive_core::{
 };
 use missive_core::{Metadata, MissiveError, Result};
 use reqwest::StatusCode;
-use reqwest::blocking::{Client, RequestBuilder};
+use reqwest::blocking::{Client, RequestBuilder, Response};
 use reqwest::header::{
     ETAG, HeaderMap, HeaderName, HeaderValue, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
 };
@@ -33,9 +34,10 @@ pub mod protocol {
         JsonRpcRequest, JsonRpcResponse, ListTaskPushNotificationConfigsRequest,
         ListTaskPushNotificationConfigsResponse, ListTasksRequest, ListTasksResponse, Message,
         Part, PartContent, ProtocolVersion, Role, SVC_PARAM_EXTENSIONS, SVC_PARAM_VERSION,
-        SendMessageConfiguration, SendMessageRequest, SendMessageResponse, SubscribeToTaskRequest,
-        TRANSPORT_PROTOCOL_GRPC, TRANSPORT_PROTOCOL_HTTP_JSON, TRANSPORT_PROTOCOL_JSONRPC,
-        TRANSPORT_PROTOCOL_SLIMRPC, Task, TaskPushNotificationConfig, TaskState, TaskStatus,
+        SendMessageConfiguration, SendMessageRequest, SendMessageResponse, StreamResponse,
+        SubscribeToTaskRequest, TRANSPORT_PROTOCOL_GRPC, TRANSPORT_PROTOCOL_HTTP_JSON,
+        TRANSPORT_PROTOCOL_JSONRPC, TRANSPORT_PROTOCOL_SLIMRPC, Task, TaskArtifactUpdateEvent,
+        TaskPushNotificationConfig, TaskState, TaskStatus, TaskStatusUpdateEvent,
         TransportProtocol, VERSION, error_code, methods as jsonrpc_methods, new_message_id,
     };
 }
@@ -55,9 +57,13 @@ pub const PUBLIC_AGENT_CARD_PATH: &str = "/.well-known/agent-card.json";
 
 const DEFAULT_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT: &str = concat!("missive/", env!("CARGO_PKG_VERSION"), " a2a-client");
 const A2A_JSON_CONTENT_TYPE: &str = "application/a2a+json";
+const EVENT_STREAM_CONTENT_TYPE: &str = "text/event-stream";
 const SEND_MESSAGE_REST_PATH: &str = "message:send";
+const SEND_STREAMING_MESSAGE_REST_PATH: &str = "message:stream";
+const MAX_SSE_EVENT_DATA_BYTES: usize = 16 * 1024 * 1024;
 
 /// Canonical missive name for the A2A HTTP+JSON protocol binding.
 pub const HTTP_JSON_BINDING: &str = "http+json";
@@ -1491,6 +1497,403 @@ impl Default for SendMessageClient {
     }
 }
 
+/// One parsed A2A streaming event delivered over an SSE response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct StreamMessageEvent {
+    /// Zero-based event sequence within this stream response.
+    pub sequence: u64,
+    /// Optional SSE `event:` field, when the server sent one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sse_event_type: Option<String>,
+    /// Parsed official A2A stream response payload.
+    pub event: protocol::StreamResponse,
+    /// Raw event payload after unwrapping an optional JSON-RPC envelope.
+    pub raw_json: Value,
+}
+
+/// Summary of a completed A2A streaming send.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct StreamMessageOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the streaming transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Number of parsed stream events delivered to the caller.
+    pub event_count: u64,
+}
+
+/// Blocking A2A client for streaming message sends over SSE.
+#[derive(Debug, Clone)]
+pub struct StreamMessageClient {
+    client: Client,
+}
+
+impl StreamMessageClient {
+    /// Creates a streaming client with a bounded timeout and missive user agent.
+    pub fn new() -> Result<Self> {
+        Self::with_timeout(DEFAULT_STREAM_TIMEOUT)
+    }
+
+    /// Creates a streaming client with a caller-provided timeout.
+    pub fn with_timeout(timeout: Duration) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(timeout)
+            .user_agent(USER_AGENT)
+            .build()
+            .map_err(|error| {
+                MissiveError::transport("building A2A streaming HTTP client")
+                    .with_source(error)
+                    .with_help("Check local TLS certificate roots and HTTP client configuration.")
+            })?;
+        Ok(Self { client })
+    }
+
+    /// Sends one A2A streaming message and invokes `on_event` once per SSE
+    /// event as soon as it is parsed from the response body.
+    pub fn stream_message<F>(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SendMessageRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+        on_event: F,
+    ) -> Result<StreamMessageOutcome>
+    where
+        F: FnMut(StreamMessageEvent) -> Result<()>,
+    {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => self.stream_http_json(
+                interface,
+                request,
+                service_parameters,
+                auth_headers,
+                on_event,
+            ),
+            JSON_RPC_BINDING => self.stream_json_rpc(
+                interface,
+                request,
+                service_parameters,
+                auth_headers,
+                on_event,
+            ),
+            binding => Err(MissiveError::transport(format!(
+                "A2A stream cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
+    fn stream_http_json<F>(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SendMessageRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+        on_event: F,
+    ) -> Result<StreamMessageOutcome>
+    where
+        F: FnMut(StreamMessageEvent) -> Result<()>,
+    {
+        let endpoint = rest_endpoint_url(&interface.url, SEND_STREAMING_MESSAGE_REST_PATH)?;
+        let request_body = request_with_interface_tenant(request, interface);
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", EVENT_STREAM_CONTENT_TYPE)
+            .header("Content-Type", A2A_JSON_CONTENT_TYPE)
+            .json(&request_body);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!("streaming A2A message from {endpoint} failed"))
+                .with_source(error)
+                .with_help("Verify the selected Agent Card interface URL, local network access, and TLS configuration.")
+        })?;
+        stream_sse_response(
+            response,
+            endpoint,
+            interface,
+            service_parameters,
+            "A2A stream",
+            on_event,
+        )
+    }
+
+    fn stream_json_rpc<F>(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SendMessageRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+        on_event: F,
+    ) -> Result<StreamMessageOutcome>
+    where
+        F: FnMut(StreamMessageEvent) -> Result<()>,
+    {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = request_with_interface_tenant(request, interface);
+        let params = serde_json::to_value(&request_body).map_err(|error| {
+            MissiveError::protocol("encoding SendMessageRequest as JSON-RPC streaming params")
+                .with_source(error)
+        })?;
+        let rpc_request = protocol::JsonRpcRequest::new(
+            protocol::JsonRpcId::String(request_body.message.message_id.clone()),
+            protocol::jsonrpc_methods::SEND_STREAMING_MESSAGE,
+            Some(params),
+        );
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", EVENT_STREAM_CONTENT_TYPE)
+            .header("Content-Type", "application/json")
+            .json(&rpc_request);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!(
+                "streaming A2A JSON-RPC message from {endpoint} failed"
+            ))
+            .with_source(error)
+            .with_help("Verify the selected Agent Card JSON-RPC interface URL, local network access, and TLS configuration.")
+        })?;
+        stream_sse_response(
+            response,
+            endpoint,
+            interface,
+            service_parameters,
+            "A2A JSON-RPC stream",
+            on_event,
+        )
+    }
+}
+
+impl Default for StreamMessageClient {
+    fn default() -> Self {
+        Self::new().expect("default A2A streaming HTTP client should build")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SseRecord {
+    event_type: Option<String>,
+    data: String,
+}
+
+fn stream_sse_response<F>(
+    response: Response,
+    endpoint: Url,
+    interface: &NegotiatedInterface,
+    service_parameters: &ServiceParameters,
+    label: &str,
+    mut on_event: F,
+) -> Result<StreamMessageOutcome>
+where
+    F: FnMut(StreamMessageEvent) -> Result<()>,
+{
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().map_err(|error| {
+            MissiveError::transport(format!(
+                "reading {label} error response from {endpoint} failed"
+            ))
+            .with_source(error)
+        })?;
+        if response_reports_unsupported_version(&body) {
+            return Err(unsupported_protocol_version_error(
+                &service_parameters.protocol_version,
+                &endpoint,
+                status,
+            ));
+        }
+        return Err(MissiveError::transport(format!(
+            "{label} returned HTTP {status} for {endpoint}"
+        ))
+        .with_help("Inspect the remote agent logs or retry after refreshing its Agent Card."));
+    }
+
+    let mut reader = BufReader::new(response);
+    let mut event_count = 0_u64;
+    read_sse_records(&mut reader, &endpoint, |record| {
+        let (event, raw_json) = parse_stream_event_data(
+            &record.data,
+            &endpoint,
+            event_count,
+            &service_parameters.protocol_version,
+        )?;
+        let item = StreamMessageEvent {
+            sequence: event_count,
+            sse_event_type: record.event_type,
+            event,
+            raw_json,
+        };
+        event_count += 1;
+        on_event(item)
+    })?;
+
+    Ok(StreamMessageOutcome {
+        url: endpoint.to_string(),
+        status: status.as_u16(),
+        interface: interface.clone(),
+        event_count,
+    })
+}
+
+fn read_sse_records<R, F>(reader: &mut R, endpoint: &Url, mut on_record: F) -> Result<()>
+where
+    R: BufRead,
+    F: FnMut(SseRecord) -> Result<()>,
+{
+    let mut line = String::new();
+    let mut event_type = None;
+    let mut data_lines = Vec::<String>::new();
+    let mut current_data_bytes = 0_usize;
+
+    loop {
+        line.clear();
+        let bytes_read = reader.read_line(&mut line).map_err(|error| {
+            MissiveError::transport(format!("reading A2A SSE stream from {endpoint} failed"))
+                .with_source(error)
+        })?;
+        if bytes_read == 0 {
+            dispatch_sse_record(
+                &mut event_type,
+                &mut data_lines,
+                &mut current_data_bytes,
+                &mut on_record,
+            )?;
+            return Ok(());
+        }
+
+        let field_line = line.trim_end_matches(['\r', '\n']);
+        if field_line.is_empty() {
+            dispatch_sse_record(
+                &mut event_type,
+                &mut data_lines,
+                &mut current_data_bytes,
+                &mut on_record,
+            )?;
+            continue;
+        }
+        if field_line.starts_with(':') {
+            continue;
+        }
+
+        let (field, value) = field_line
+            .split_once(':')
+            .map(|(field, value)| (field, value.strip_prefix(' ').unwrap_or(value)))
+            .unwrap_or((field_line, ""));
+        match field {
+            "event" => event_type = Some(value.to_owned()),
+            "data" => {
+                current_data_bytes = current_data_bytes.saturating_add(value.len());
+                if current_data_bytes > MAX_SSE_EVENT_DATA_BYTES {
+                    return Err(MissiveError::protocol(format!(
+                        "A2A SSE event from {endpoint} exceeds the {MAX_SSE_EVENT_DATA_BYTES} byte data limit"
+                    )));
+                }
+                data_lines.push(value.to_owned());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn dispatch_sse_record<F>(
+    event_type: &mut Option<String>,
+    data_lines: &mut Vec<String>,
+    current_data_bytes: &mut usize,
+    on_record: &mut F,
+) -> Result<()>
+where
+    F: FnMut(SseRecord) -> Result<()>,
+{
+    if data_lines.is_empty() {
+        *event_type = None;
+        *current_data_bytes = 0;
+        return Ok(());
+    }
+
+    let record = SseRecord {
+        event_type: event_type.take(),
+        data: data_lines.join("\n"),
+    };
+    data_lines.clear();
+    *current_data_bytes = 0;
+    on_record(record)
+}
+
+fn parse_stream_event_data(
+    data: &str,
+    endpoint: &Url,
+    sequence: u64,
+    protocol_version: &str,
+) -> Result<(protocol::StreamResponse, Value)> {
+    let raw_json = serde_json::from_str::<Value>(data).map_err(|error| {
+        MissiveError::protocol(format!(
+            "A2A stream event {sequence} from {endpoint} is not valid JSON"
+        ))
+        .with_source(error)
+        .with_help("Each SSE data field must contain one complete JSON stream response object.")
+    })?;
+
+    let event_json = if looks_like_json_rpc_response(&raw_json) {
+        let rpc_response = serde_json::from_value::<protocol::JsonRpcResponse>(raw_json.clone())
+            .map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A stream event {sequence} from {endpoint} is not a JSON-RPC response"
+                ))
+                .with_source(error)
+            })?;
+        if let Some(error) = rpc_response.error {
+            if error.code == protocol::error_code::VERSION_NOT_SUPPORTED {
+                return Err(unsupported_protocol_version_error(
+                    protocol_version,
+                    endpoint,
+                    StatusCode::OK,
+                ));
+            }
+            return Err(MissiveError::protocol(format!(
+                "A2A stream event {sequence} failed with JSON-RPC code {}: {}",
+                error.code, error.message
+            ))
+            .with_help("Inspect the remote agent error data and retry if appropriate."));
+        }
+        rpc_response.result.ok_or_else(|| {
+            MissiveError::protocol(format!(
+                "A2A stream event {sequence} from {endpoint} did not include result or error"
+            ))
+        })?
+    } else {
+        raw_json.clone()
+    };
+
+    let event = serde_json::from_value::<protocol::StreamResponse>(event_json.clone()).map_err(
+        |error| {
+            MissiveError::protocol(format!(
+                "malformed A2A stream event {sequence} from {endpoint}"
+            ))
+            .with_source(error)
+            .with_help("Expected exactly one of task, message, statusUpdate, or artifactUpdate.")
+        },
+    )?;
+    Ok((event, event_json))
+}
+
+fn looks_like_json_rpc_response(value: &Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        object.contains_key("jsonrpc")
+            || object.contains_key("result")
+            || object.contains_key("error")
+    })
+}
+
 fn request_with_interface_tenant(
     request: &protocol::SendMessageRequest,
     interface: &NegotiatedInterface,
@@ -1810,6 +2213,47 @@ mod tests {
         assert!(!response_reports_unsupported_version(
             "VERSION_NOT_SUPPORTED"
         ));
+    }
+
+    #[test]
+    fn stream_event_data_parses_direct_and_json_rpc_wrapped_payloads() {
+        let endpoint = Url::parse("http://127.0.0.1:8080/a2a/message:stream").expect("url");
+        let direct = r#"{"statusUpdate":{"taskId":"task-1","contextId":"ctx-1","status":{"state":"TASK_STATE_WORKING"}}}"#;
+        let (event, raw_json) =
+            parse_stream_event_data(direct, &endpoint, 0, protocol::VERSION).expect("direct event");
+        assert!(matches!(event, protocol::StreamResponse::StatusUpdate(_)));
+        assert!(raw_json.get("statusUpdate").is_some());
+
+        let rpc = protocol::JsonRpcResponse::success(
+            protocol::JsonRpcId::String("request-1".to_owned()),
+            json!({
+                "artifactUpdate": {
+                    "taskId": "task-1",
+                    "contextId": "ctx-1",
+                    "artifact": {"artifactId": "artifact-1", "parts": [{"text": "chunk"}]},
+                    "append": true,
+                    "lastChunk": false
+                }
+            }),
+        );
+        let (event, raw_json) = parse_stream_event_data(
+            &serde_json::to_string(&rpc).expect("rpc json"),
+            &endpoint,
+            1,
+            protocol::VERSION,
+        )
+        .expect("rpc event");
+        assert!(matches!(event, protocol::StreamResponse::ArtifactUpdate(_)));
+        assert!(raw_json.get("artifactUpdate").is_some());
+    }
+
+    #[test]
+    fn malformed_stream_event_reports_sequence() {
+        let endpoint = Url::parse("http://127.0.0.1:8080/a2a/message:stream").expect("url");
+        let error = parse_stream_event_data(r#"{"unknown":{}}"#, &endpoint, 7, protocol::VERSION)
+            .expect_err("unknown stream response should fail");
+
+        assert!(error.to_string().contains("malformed A2A stream event 7"));
     }
 
     #[test]

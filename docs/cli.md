@@ -3,9 +3,9 @@
 `missive` currently exposes a clap-based command tree with shared flags,
 configuration discovery, profile validation, and stable human/JSON/NDJSON/quiet
 rendering. Implemented operational commands are the SQLite-backed agent registry
-commands, public A2A Agent Card inspection/refresh, and non-streaming
-`missive send`; other top-level commands still emit skeletal parsed status until
-their ordered tickets land.
+commands, public A2A Agent Card inspection/refresh, non-streaming
+`missive send`, and streaming `missive stream`; other top-level commands still
+emit skeletal parsed status until their ordered tickets land.
 
 Run help with:
 
@@ -13,6 +13,7 @@ Run help with:
 missive --help
 missive agent --help
 missive send --help
+missive stream --help
 ```
 
 ## Global flags
@@ -44,10 +45,10 @@ locations, and repository-local `missive.toml`/`.missive.toml` when explicitly
 requested with `MISSIVE_REPO_CONFIG=1`. `--profile` selects and validates a named
 profile. See [`configuration.md`](configuration.md) for the schema and discovery
 order. Protocol service-parameter and auth header flags are currently applied to
-Agent Card HTTP requests and are shared with future A2A send/stream/task/push
-clients. Timeout enforcement, tracing, streaming, task polling, and broader
-command-specific semantics are intentionally left to their ordered implementation
-tickets.
+Agent Card HTTP requests plus implemented send/stream calls and are shared with
+future A2A task/push clients. Timeout enforcement, tracing, task polling, and
+broader command-specific semantics are intentionally left to their ordered
+implementation tickets.
 
 ## Top-level commands
 
@@ -203,9 +204,9 @@ Supported inputs for this ticket are text-only:
 * repeatable `--accepted-output-mode MIME` populates
   `configuration.acceptedOutputModes`
 
-Binary file bytes, MIME-specific file parts, JSON structured-data parts,
-streaming, remote task polling, and artifact export are intentionally deferred to
-later ordered tickets.
+Binary file bytes, MIME-specific file parts, JSON structured-data parts, remote
+task polling, and artifact export are intentionally deferred to later ordered
+tickets.
 
 `send` resolves auth the same way as Agent Card commands: agent auth refs,
 `--bearer-token-env`, and repeatable `--header Name:Value` are applied to both
@@ -222,6 +223,61 @@ Human output is a concise one-line send summary. Request and response rows are
 stored in SQLite `messages`; returned task responses are stored or updated in
 `tasks` and linked to the messages.
 
+## Stream command
+
+`missive stream` sends an A2A `SendStreamingMessage` request to a registered
+agent and reads the server's Server-Sent Events (SSE) response. It shares the
+same text-only input flags as `send`: positional `[MESSAGE]`, `--stdin`,
+repeatable `--file PATH`, repeatable `--part text=VALUE`, repeatable
+`--metadata KEY=VALUE`, `--context`, `--task`, and repeatable
+`--accepted-output-mode`.
+
+Before opening the stream, missive fetches or uses the cached Agent Card and
+requires `capabilities.streaming = true`. If an interoperability test endpoint
+streams despite an incomplete card, pass `--force` to attempt the request anyway.
+Without `--force`, missing or false streaming capability is a usage/validation
+error and no `message:stream` request is sent.
+
+Transport mapping follows the negotiated interface:
+
+* `http+json` appends `message:stream` to the selected interface URL and sends
+  `POST <interface>/message:stream` with `Content-Type: application/a2a+json`
+  and `Accept: text/event-stream`.
+* `json-rpc` posts method `SendStreamingMessage` to the selected JSON-RPC URL
+  and expects SSE `data` fields containing JSON-RPC responses. The parser also
+  accepts direct A2A stream-response objects for HTTP+JSON interoperability.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive stream echo "Show progress"
+MISSIVE_HOME=/tmp/missive-demo missive stream echo "Show progress" --ndjson
+printf 'stream from stdin' | MISSIVE_HOME=/tmp/missive-demo missive stream echo --stdin --json
+MISSIVE_HOME=/tmp/missive-demo missive stream echo --file ./prompt.txt --accepted-output-mode text/plain
+```
+
+Human output prints one redacted status line per stream event as it arrives, then
+a final summary. `--ndjson` emits one `kind: "stream_event"` envelope per SSE
+event with monotonically increasing `sequence` values and a final
+`kind: "stream_result"` summary line. `--json` collects the parsed events and
+prints one final `stream_result` document after the stream closes. `--quiet`
+persists events but prints no non-error output.
+
+Each stream event is appended to the SQLite `events` journal as
+`a2a.stream.task`, `a2a.stream.message`, `a2a.stream.status_update`, or
+`a2a.stream.artifact_update` with redacted payload JSON and A2A protocol-version
+metadata. A `messages` row with direction `stream_event` is also written for each
+parsed event, status updates update the local `tasks` row state, and task/artifact
+updates are linked to their task/context IDs when the remote payload includes
+them. Artifact content is retained in event/message JSON for now; dedicated
+artifact listing, saving, and export commands land in a later ticket.
+
+Malformed SSE data, JSON-RPC stream errors, unsupported protocol-version
+responses, and stream payloads that are not one of `task`, `message`,
+`statusUpdate`, or `artifactUpdate` fail with deterministic protocol or transport
+errors. If an error occurs mid-stream, earlier event rows and any earlier
+human/NDJSON output remain as a truthful partial stream record.
+
 ## Output contract
 
 The current renderer supports four modes:
@@ -230,10 +286,10 @@ The current renderer supports four modes:
   or one redacted status line for an unimplemented parsed command
 * config `output.format = "json"` or `--json` — one JSON document using stable
   top-level fields
-* config `output.format = "ndjson"` or `--ndjson` — one JSON object per line,
-  currently one command-specific event for implemented agent registry/send
-  commands or one command-status event for skeletal commands, and reserved for
-  future event streams
+* config `output.format = "ndjson"` or `--ndjson` — one JSON object per line;
+  stream emits one `stream_event` line per SSE event plus a `stream_result`
+  summary, while other implemented commands emit one command-specific envelope
+  and skeletal commands emit one command-status event
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are

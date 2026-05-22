@@ -3,7 +3,8 @@
 `missive` treats A2A as the canonical protocol layer. The current implemented
 protocol behavior covers public Agent Card discovery for registered agents,
 official Rust protocol type integration through `missive-a2a`, local interface
-negotiation, and non-streaming `SendMessage` calls for `missive send`.
+negotiation, non-streaming `SendMessage` calls for `missive send`, and SSE
+`SendStreamingMessage` calls for `missive stream`.
 
 ## Public Agent Card discovery
 
@@ -53,9 +54,9 @@ The effective protocol defaults come from `[protocol]` or
 `--protocol-version <VERSION>` overrides the configured version,
 `--a2a-extension <EXTENSION>` appends an extension, and the
 `--service-param NAME=VALUE` flag adds or overrides an extra service parameter.
-Current implemented uses are Agent Card discovery/refresh and non-streaming
-`missive send`; future stream, task, and push clients should reuse the same
-helper so request metadata remains consistent.
+Current implemented uses are Agent Card discovery/refresh, non-streaming
+`missive send`, and streaming `missive stream`; future task and push clients
+should reuse the same helper so request metadata remains consistent.
 
 When an HTTP response body reports the official A2A
 `VERSION_NOT_SUPPORTED` error code/reason, missive maps it to a protocol error
@@ -77,8 +78,9 @@ repeatable `--header Name:Value` inputs for Agent Card fetch/refresh requests.
 
 Auth resolution is deliberately outside protocol type parsing: config and CLI
 code locate secrets in environment variables or platform keyrings, while the A2A
-client only validates and applies already-resolved headers. `missive send` uses
-the same auth headers for the optional Agent Card fetch and the A2A send request.
+client only validates and applies already-resolved headers. `missive send` and
+`missive stream` use the same auth headers for the optional Agent Card fetch and
+the A2A message request.
 
 ## Interface negotiation
 
@@ -137,9 +139,40 @@ version metadata, and a linked response message row using the task status messag
 when one is present or a local synthetic response row when the task has no status
 message.
 
-The send implementation is non-streaming only. SSE streaming, artifact
-persistence/export, task polling, cancellation, richer file/JSON parts, and push
-configuration remain mapped for later tickets.
+## Streaming SendStreamingMessage
+
+`missive stream` builds the same official `a2a-lf` `SendMessageRequest` shape as
+`missive send`, then validates that the fetched or cached Agent Card advertises
+`capabilities.streaming = true`. Passing `--force` bypasses that local capability
+check for interoperability testing; without `--force`, missive fails before
+opening a stream.
+
+Transport mapping:
+
+* `http+json` appends `message:stream` to the selected interface URL and sends
+  `POST <interface>/message:stream` with `Content-Type: application/a2a+json`
+  and `Accept: text/event-stream`.
+* `json-rpc` posts a JSON-RPC 2.0 request with method `SendStreamingMessage` to
+  the selected JSON-RPC interface URL and expects an SSE response.
+
+Each SSE record's `data` field is parsed as either a direct A2A `StreamResponse`
+object or a JSON-RPC response whose `result` is a `StreamResponse`. Supported
+stream payloads are the official SDK `task`, `message`, `statusUpdate`, and
+`artifactUpdate` variants. JSON-RPC stream errors become protocol errors, and
+malformed JSON or unknown stream variants include the event sequence number in
+the diagnostic.
+
+The CLI processes stream events incrementally. Human output writes one line per
+parsed event, NDJSON writes one `stream_event` envelope per event followed by a
+`stream_result` envelope, and JSON mode writes one final `stream_result` document
+after the stream closes. Every parsed event is appended to the local event journal
+with event types `a2a.stream.task`, `a2a.stream.message`,
+`a2a.stream.status_update`, or `a2a.stream.artifact_update`; a corresponding
+`messages` row with direction `stream_event` is also written. Task and status
+events update the local `tasks` row state and preserve A2A protocol-version
+metadata. Dedicated artifact rows, artifact export, task polling, local task
+cancellation commands, richer file/JSON parts, and push configuration remain
+mapped for later tickets.
 
 ## Error mapping
 
@@ -170,7 +203,7 @@ Fixtures live under `tests/fixtures/a2a/1.0/`. Update the fixtures and rerun
 `cargo test -p missive-a2a --all-targets` when updating the upstream SDK or when
 A2A wire shapes change.
 
-Authentication material is resolved for implemented Agent Card fetch/refresh and
-non-streaming send requests. Future stream, task, and push protocol calls should
-reuse `AuthHeaders` plus the CLI/config auth resolver instead of inventing
-separate secret handling paths.
+Authentication material is resolved for implemented Agent Card fetch/refresh,
+non-streaming send, and streaming send requests. Future task and push protocol
+calls should reuse `AuthHeaders` plus the CLI/config auth resolver instead of
+inventing separate secret handling paths.

@@ -1,14 +1,15 @@
 # Security
 
 `missive` is still early-stage. The current security implementation focuses on
-safe authentication inputs for implemented outbound Agent Card and send
+safe authentication inputs for implemented outbound Agent Card, send, and stream
 requests, redaction at output boundaries, and keeping runtime state out of the
 repository.
 
 ## Authentication inputs
 
 Implemented outbound A2A HTTP requests (`agent inspect` when it fetches,
-`agent refresh`, and `send`) can receive auth material from three sources:
+`agent refresh`, `send`, and `stream`) can receive auth material from three
+sources:
 
 1. Config auth refs linked from an agent with `auth_ref = "name"`.
 2. `--bearer-token-env ENV`, which reads `ENV` and sends
@@ -48,9 +49,9 @@ parse keyring refs but fail clearly if a keyring-backed token is needed.
 
 Precedence for a single request is: config auth ref first,
 `--bearer-token-env` second, and repeated `--header` values last. Later values
-replace earlier values with the same HTTP header name. `missive send` applies the
-resolved headers to the optional Agent Card fetch and to the A2A `SendMessage`
-request.
+replace earlier values with the same HTTP header name. `missive send` and
+`missive stream` apply the resolved headers to the optional Agent Card fetch and
+to the A2A message request.
 
 ## Storage tradeoffs
 
@@ -86,10 +87,10 @@ metadata, notes, or committed runtime files.
 
 ## Current limitations
 
-Authentication is wired into implemented Agent Card fetch/refresh and
-non-streaming send requests. Future stream, task, push, gateway, and adapter
-tickets must reuse the same resolution and redaction path when they add outbound
-requests.
+Authentication is wired into implemented Agent Card fetch/refresh,
+non-streaming send, and streaming send requests. Future task, push, gateway, and
+adapter tickets must reuse the same resolution and redaction path when they add
+outbound requests.
 
 Webhook verification, adapter trust boundaries, trace/log sinks, rate limits, and
 insecure local token storage policy are not implemented yet.

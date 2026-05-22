@@ -199,6 +199,42 @@ where
     }
 }
 
+/// Renders one item from a streaming command.
+///
+/// Human mode writes the supplied status line immediately; NDJSON mode writes a
+/// schema envelope with the caller-provided sequence number. JSON mode is
+/// intentionally silent so streaming commands can emit one final summary
+/// document after the stream closes.
+pub fn render_stream_item<W, T>(
+    writer: &mut W,
+    mode: OutputMode,
+    kind: &str,
+    sequence: u64,
+    data: &T,
+    human_message: &str,
+) -> Result<()>
+where
+    W: Write,
+    T: Serialize,
+{
+    match mode {
+        OutputMode::Human => {
+            writeln!(writer, "{}", redact_text(human_message))
+                .map_err(|error| MissiveError::io("writing human stream output", error))?;
+            writer
+                .flush()
+                .map_err(|error| MissiveError::io("flushing human stream output", error))
+        }
+        OutputMode::Json | OutputMode::Quiet => Ok(()),
+        OutputMode::Ndjson => {
+            write_envelope(&mut *writer, true, kind, Some(sequence), data)?;
+            writer
+                .flush()
+                .map_err(|error| MissiveError::io("flushing NDJSON stream output", error))
+        }
+    }
+}
+
 /// Renders an error according to output flags that were already parsed.
 pub fn render_error<W>(writer: &mut W, globals: &GlobalArgs, error: &MissiveError) -> Result<()>
 where

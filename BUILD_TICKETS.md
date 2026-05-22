@@ -609,7 +609,7 @@ Validation:
 
 ## 020 — Implement streaming message command
 
-Status: TODO
+Status: DONE
 
 Phase: Messaging
 
