@@ -16,6 +16,9 @@ Runs autonomous missive build cycles.
 Options:
 --max-cycles N       Number of cycles to run. Default: 1.
 --sleep SECONDS      Pause between successful cycles. Default: 0.
+--failure-retry-sleep SECONDS
+                     Pause before retrying a failed cycle after cleanup. Default: 600.
+--no-failure-retry   Clean after a failed cycle and exit instead of retrying.
 --no-push            Do not push after successful cycles. Default pushes.
 --push               Push after successful cycles.
 --branch NAME        Select existing local or unique remote branch before running.
@@ -26,11 +29,15 @@ Options:
 
 Environment:
 MISSIVE_BUILD_LOOP_STATE_DIR     Override build-loop logs/lock state directory.
+MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP
+                                 Override failed-cycle retry delay in seconds.
 USAGE
 }
 
 MAX_CYCLES=1
 SLEEP_SECONDS=0
+FAILURE_RETRY_SLEEP="${MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP:-600}"
+RETRY_ON_FAILURE=1
 PUSH_AFTER=1
 SELECT_BRANCH=""
 CREATE_BRANCH=""
@@ -43,6 +50,8 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage; exit 0 ;;
     --max-cycles) MAX_CYCLES="${2:?}"; shift 2 ;;
     --sleep) SLEEP_SECONDS="${2:?}"; shift 2 ;;
+    --failure-retry-sleep) FAILURE_RETRY_SLEEP="${2:?}"; shift 2 ;;
+    --no-failure-retry) RETRY_ON_FAILURE=0; shift ;;
     --push) PUSH_AFTER=1; shift ;;
     --no-push) PUSH_AFTER=0; shift ;;
     --branch) SELECT_BRANCH="${2:?}"; shift 2 ;;
@@ -60,6 +69,11 @@ fi
 
 if ! [[ "$SLEEP_SECONDS" =~ ^[0-9]+$ ]]; then
   pp_error "--sleep must be a non-negative integer"
+  exit 2
+fi
+
+if ! [[ "$FAILURE_RETRY_SLEEP" =~ ^[0-9]+$ ]]; then
+  pp_error "--failure-retry-sleep must be a non-negative integer"
   exit 2
 fi
 
@@ -138,6 +152,14 @@ require_customised_template() {
 
 get_upstream_ref() {
   git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true
+}
+
+failure_retry_summary() {
+  if (( RETRY_ON_FAILURE == 1 )); then
+    printf 'on after %ss' "$FAILURE_RETRY_SLEEP"
+  else
+    printf 'off'
+  fi
 }
 
 get_automation_status() {
@@ -261,6 +283,50 @@ refuse_if_remote_advanced() {
   fi
 }
 
+clean_failed_cycle() {
+  local restore_ref="$1"
+
+  pp_section "Cleanup failed cycle"
+  pp_cmd "git reset --hard $restore_ref"
+  git reset --hard "$restore_ref" || return 1
+  pp_cmd "git clean -fd"
+  git clean -fd || return 1
+
+  if [[ -n "$(git status --porcelain)" ]]; then
+    pp_error "Working tree is still dirty after failed-cycle cleanup."
+    git status --short >&2
+    return 1
+  fi
+
+  pp_success "Working tree cleaned for retry."
+}
+
+handle_failed_cycle() {
+  local restore_ref="$1"
+  local message="$2"
+  local log_file="${3:-}"
+
+  pp_error "$message"
+  if [[ -n "$log_file" ]]; then
+    pp_hint "See $log_file"
+  fi
+
+  clean_failed_cycle "$restore_ref" || exit 1
+
+  if (( RETRY_ON_FAILURE == 0 )); then
+    pp_error "Stopping after failed cycle because failure retry is disabled."
+    exit 1
+  fi
+
+  cycle=$((cycle - 1))
+  if (( FAILURE_RETRY_SLEEP > 0 )); then
+    pp_info "Sleeping ${FAILURE_RETRY_SLEEP}s before retrying failed cycle."
+    sleep "$FAILURE_RETRY_SLEEP"
+  else
+    pp_info "Retrying failed cycle immediately."
+  fi
+}
+
 require_command git
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -274,6 +340,7 @@ acquire_lock
 pp_banner "missive autonomous build loop"
 pp_kv "Max cycles" "$MAX_CYCLES"
 pp_kv "Sleep" "${SLEEP_SECONDS}s"
+pp_kv "Failure retry" "$(failure_retry_summary)"
 pp_kv "Push after commit" "$(pp_on_off "$PUSH_AFTER")"
 pp_kv "State dir" "$BUILD_LOOP_STATE_DIR"
 pp_kv "Logs" "$LOG_DIR"
@@ -327,23 +394,23 @@ while (( cycle < MAX_CYCLES )); do
 
   pp_section "Agent run"
   if ! scripts/run-agent.sh "$PROMPT" 2>&1 | tee "$log_file"; then
-    pp_error "Agent failed during cycle $cycle; stopping."
-    pp_hint "See $log_file"
-    exit 1
+    handle_failed_cycle "$before_head" "Agent failed during cycle $cycle." "$log_file"
+    continue
   fi
 
   if [[ -n "$(git status --porcelain)" ]]; then
-    pp_error "Agent left a dirty working tree; stopping for manual review."
+    pp_error "Agent left a dirty working tree during cycle $cycle."
     git status --short >&2
-    exit 1
+    handle_failed_cycle "$before_head" "Retrying after dirty working tree." "$log_file"
+    continue
   fi
 
   refuse_if_remote_advanced "$CYCLE_UPSTREAM_REF" "$CYCLE_UPSTREAM_HEAD"
 
   after_head="$(git rev-parse HEAD)"
   if [[ "$after_head" == "$before_head" ]]; then
-    pp_error "Cycle completed without a new commit; stopping."
-    exit 1
+    handle_failed_cycle "$before_head" "Cycle completed without a new commit." "$log_file"
+    continue
   fi
 
   pp_success "Cycle committed $(git rev-parse --short HEAD)"

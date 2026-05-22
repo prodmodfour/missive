@@ -20,6 +20,8 @@ Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-
 
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script.
 
+`scripts/build-loop.sh` now cleans failed agent attempts by default: when the agent process fails, leaves the checkout dirty, or returns without a new commit, the loop resets to the pre-attempt `HEAD`, removes untracked non-ignored files with `git clean -fd`, waits 600 seconds, and retries the same cycle. The delay is configurable with `--failure-retry-sleep` or `MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP`; `--no-failure-retry` cleans once and exits.
+
 Architecture decision records live under `docs/adr/`, with a template and accepted ADRs for Rust workspace structure, A2A-first protocol strategy, SQLite local state, CLI-first UX, and the official A2A Rust protocol type strategy. `docs/architecture.md` links the ADRs and records the current high-level crate boundaries, shared error handling contract, core primitive/routing-policy/capability-selection/busy-input contract, CLI command/agent-registry/Agent-Card/capability-summary/send/route/bcast/barrier/gather/reduce/stream/task/context/push/webhook/gateway/job/events/adapter-stdio/adapter-file-drop/adapter-http/service-parameter/auth contract, configuration contract, adapter trait/registry/stdio-frame/file-drop/http-frame/external-chat-stub boundary, output rendering contract, store path/lock contract, SQLite migration contract, typed repository contract, A2A type boundary, and reusable local A2A fixture crate. `docs/gateway.md` documents the current gateway daemon, endpoints, opt-in HTTP inbound adapter, task subscription/resume worker, background communication job worker, adapter event-bus bridge, persistent session store and daily/idle/both reset policies, busy-input queue/interrupt/steer policy evaluation, service installation, journal/log inspection commands, locking, output, external stub non-start behavior, and limitations. `docs/adapters.md` documents the adapter trait, registry, config-derived definitions, lifecycle, foreground stdio JSON/NDJSON frame loop, foreground file-drop inbox/outbox schema and atomic handoff, opt-in HTTP control frame schema and curl examples, feature-gated external chat stubs, gateway event-bus bridge, and current daemon-started-adapter limitation. `docs/adapter-roadmap.md` documents Discord, Slack, Telegram, Matrix, and Email placeholder status, feature flags, required secret references, permissions/scopes, platform behaviours, Hermes-inspired design boundaries, and future implementation checklist. `docs/protocol.md` documents the current official Rust type boundary, Agent Card discovery and capability extraction, rich SendMessage/SendStreamingMessage message-part mapping, task GetTask/ListTasks/CancelTask/SubscribeToTask mapping, barrier GetTask polling, gather local output/artifact collection, reduce reducer-agent SendMessage mapping, push config and webhook mapping, local context continuity mapping, service-parameter handling, auth-header handling, interface negotiation mapping, error mapping, conformance fixture coverage, and fixture update process. `docs/security.md` documents current auth inputs, keyring support, gateway local endpoint and HTTP inbound adapter exposure, gateway-session/source identity and adapter trust-boundary/file-drop/HTTP/external-stub handoff tradeoffs, service-file environment safety, subscription/job-auth limitation, webhook/header-token validation, external platform secret-reference boundaries, storage tradeoffs, local file-input path disclosure tradeoffs, background job request persistence tradeoffs, redaction, context/event export redaction, broadcast/barrier/gather/reduce redaction behavior, and limitations. `docs/cli.md` documents `missive adapter stdio`, `missive adapter file-drop`, `missive gateway run --http-adapter`, `missive agent capabilities`, `missive group capabilities`, `missive route explain`, `missive job`, and built-in routing policy behavior. `docs/collectives.md` documents the implemented broadcast, barrier, gather, and reduce collectives. `docs/testing.md` documents local validation, how to run/extend the reusable mock A2A server fixtures including SubscribeToTask, adapter trait/registry/stdio/file-drop/HTTP/external-stub tests, route/capability selection coverage, gateway/webhook/job command coverage, gateway service dry-run coverage, subscription coverage, fixed-clock gateway-session reset-policy coverage, and how to run/update protocol-versioned A2A conformance fixtures.
 
 `missive-core` exposes `MissiveError`, `Result<T>`, `ErrorCategory`, `MissiveExitCode`, and `ErrorReport`. The error taxonomy covers I/O, configuration, protocol, transport, storage, authentication, validation, and orchestration failures. Each category has a stable diagnostic code, deterministic exit code mapping for CLI use, human `Display` rendering, `miette::Diagnostic` metadata, and a serializable JSON/NDJSON report shape. `MissiveError::with_exit_code` allows command-specific deterministic exit codes, currently used by task wait and barrier: failed `80`, cancelled `81`, timeout `82`, and input-required `83`.
@@ -112,21 +114,20 @@ Checks run by the default gate included:
 * optional `cargo machete` check because it is installed
 * optional `cargo audit` check because it is installed
 
-Additional targeted validation run during this cycle:
+Additional targeted validation run during this maintenance update:
 
 ```bash
-cargo fmt --all
-cargo test -p missive-adapters --all-features
-cargo test -p missive-adapters --no-default-features
-cargo check -p missive-adapters --features external-chat-stubs
-cargo clippy -p missive-adapters --all-targets --all-features -- -D warnings
-cargo check -p missive-adapters --all-targets --no-default-features
+bash -n scripts/build-loop.sh
+shellcheck scripts/build-loop.sh scripts/lib/pretty-print.sh scripts/lib/git-branch.sh
+scripts/build-loop.sh --help
+# temp-git-repo smoke: failing MISSIVE_AGENT_COMMAND dirtied tracked and untracked files;
+# scripts/build-loop.sh --no-failure-retry reset to pre-attempt HEAD and removed untracked files.
 scripts/quality-gate.sh
 ```
 
-The targeted checks covered feature-gated external chat stub registration, all-features and no-default-features adapter tests, the external-chat-stubs umbrella feature, explicit config errors for live stub operations, external source identity mapping, touched-crate clippy, no-default-features checking, and the full quality gate.
+The targeted checks covered shell syntax/linting for the touched build-loop script, help text for the new retry options, and a disposable Git repository smoke test proving failed-cycle cleanup resets tracked edits and removes untracked files before stopping when `--no-failure-retry` is set.
 
-Environment/tooling notes: no new cargo subcommands, Rust components, OS packages, or workspace dependencies were installed or added during this cycle.
+Environment/tooling notes: no new cargo subcommands, Rust components, OS packages, or workspace dependencies were installed or added during this maintenance update.
 
 ## Latest cycle notes
 
@@ -139,6 +140,12 @@ Included:
 * added adapter unit tests covering platform metadata, all-features stub factory registration, no-default-features behavior, identity mapping, unknown/mismatched kind validation, and explicit live-operation rejection
 * added `docs/adapter-roadmap.md` documenting required secret references, permissions/scopes, platform behaviours, Hermes-inspired boundaries, and the future implementation checklist for Discord, Slack, Telegram, Matrix, and Email
 * updated README plus configuration, architecture, gateway, adapters, security, and testing docs to describe feature-gated stubs, no-credential boundaries, and the fact that no live external platform clients are implemented yet
+
+## Latest maintenance notes
+
+Out-of-band automation update requested by the user: `scripts/build-loop.sh` now retries failed agent attempts after cleaning the checkout. A failed attempt is an agent command failure, a dirty tree after the agent returns, or a run that produces no new commit. Cleanup runs `git reset --hard <pre-attempt HEAD>` and `git clean -fd`; retry waits 600 seconds by default, can be tuned with `--failure-retry-sleep`/`MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP`, and can be disabled with `--no-failure-retry`.
+
+Updated `docs/AUTONOMOUS_BUILD.md` and `docs/USAGE.md` with the cleanup/retry behavior. The ticket queue was not advanced; next recommended ticket remains 048.
 
 ## Known blockers
 

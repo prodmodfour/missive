@@ -41,7 +41,20 @@ scripts/build-loop.sh --create-branch feature/autonomous-build --max-cycles 70
 scripts/build-loop.sh --create-branch feature/autonomous-build --max-cycles 70 --no-push
 ```
 
-## 6. Use a different agent
+## 6. Failed-cycle cleanup and retry
+
+By default, if an agent cycle fails, leaves the working tree dirty, or returns
+without creating a commit, `scripts/build-loop.sh` resets back to the cycle's
+starting `HEAD`, removes untracked non-ignored files with `git clean -fd`, waits
+600 seconds, and retries the same cycle.
+
+```bash
+scripts/build-loop.sh --failure-retry-sleep 600
+MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP=600 scripts/build-loop.sh
+scripts/build-loop.sh --no-failure-retry
+```
+
+## 7. Use a different agent
 
 Edit only:
 
@@ -55,7 +68,7 @@ The default wrapper expects `pi`:
 pi --no-session -p @AGENTS.md @PROJECT_BRIEF.md @BUILD_TICKETS.md @BUILD_NOTES.md "$PROMPT"
 ```
 
-## 7. Create GitHub issues from tickets
+## 8. Create GitHub issues from tickets
 
 After installing `gh` and `jq`, run:
 
@@ -65,7 +78,7 @@ scripts/create-github-issues.sh --repo OWNER/missive
 
 This is optional. The autonomous loop uses `BUILD_TICKETS.md` as the source of truth.
 
-## 8. Aggressive testing
+## 9. Aggressive testing
 
 ```bash
 MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh

@@ -21,6 +21,13 @@ Each cycle:
 9. requires a new commit
 10. pushes unless `--no-push` is used
 
+If the agent command fails, leaves a dirty working tree, or returns without a new
+commit, the loop treats that attempt as failed. By default it resets the checkout
+back to the pre-attempt `HEAD`, removes untracked non-ignored files with
+`git clean -fd`, waits 600 seconds, and retries the same cycle. Use
+`--failure-retry-sleep SECONDS` or `MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP` to
+change the delay, and `--no-failure-retry` to clean once and stop.
+
 ## missive-specific expectations
 
 The agent should build a Rust CLI that is:
