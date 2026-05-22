@@ -1733,6 +1733,31 @@ pub struct CancelTaskOutcome {
     pub raw_json: Value,
 }
 
+/// Summary of an A2A `SubscribeToTask` streaming request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SubscribeTaskOutcome {
+    /// URL called by the selected transport.
+    pub url: String,
+    /// HTTP status code returned by the streaming transport.
+    pub status: u16,
+    /// Negotiated interface used for the call.
+    pub interface: NegotiatedInterface,
+    /// Number of parsed stream events delivered to the caller.
+    pub event_count: u64,
+}
+
+impl From<StreamMessageOutcome> for SubscribeTaskOutcome {
+    fn from(outcome: StreamMessageOutcome) -> Self {
+        Self {
+            url: outcome.url,
+            status: outcome.status,
+            interface: outcome.interface,
+            event_count: outcome.event_count,
+        }
+    }
+}
+
 /// Result of an A2A `CreateTaskPushNotificationConfig` request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2290,6 +2315,41 @@ impl TaskClient {
         }
     }
 
+    /// Subscribes to streaming updates for an existing task using the negotiated interface.
+    pub fn subscribe_task<F>(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SubscribeToTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+        on_event: F,
+    ) -> Result<SubscribeTaskOutcome>
+    where
+        F: FnMut(StreamMessageEvent) -> Result<()>,
+    {
+        match interface.binding.as_str() {
+            HTTP_JSON_BINDING => self.subscribe_http_json(
+                interface,
+                request,
+                service_parameters,
+                auth_headers,
+                on_event,
+            ),
+            JSON_RPC_BINDING => self.subscribe_json_rpc(
+                interface,
+                request,
+                service_parameters,
+                auth_headers,
+                on_event,
+            ),
+            binding => Err(MissiveError::transport(format!(
+                "A2A SubscribeToTask cannot use unsupported negotiated binding {binding:?}; missive supports locally: {}",
+                locally_supported_bindings_text()
+            ))
+            .with_help(local_support_help(Some(binding)))),
+        }
+    }
+
     fn get_http_json(
         &self,
         interface: &NegotiatedInterface,
@@ -2500,6 +2560,101 @@ impl TaskClient {
             task,
             raw_json,
         })
+    }
+
+    fn subscribe_http_json<F>(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SubscribeToTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+        on_event: F,
+    ) -> Result<SubscribeTaskOutcome>
+    where
+        F: FnMut(StreamMessageEvent) -> Result<()>,
+    {
+        let request_body = subscribe_task_request_with_interface_tenant(request, interface);
+        let endpoint = rest_endpoint_url(
+            &interface.url,
+            &format!(
+                "{TASKS_REST_PATH}/{}:subscribe",
+                encode_path_segment(&request_body.id)
+            ),
+        )?;
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", EVENT_STREAM_CONTENT_TYPE)
+            .header("Content-Type", A2A_JSON_CONTENT_TYPE)
+            .json(&request_body);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!(
+                "subscribing to A2A task updates from {endpoint} failed"
+            ))
+            .with_source(error)
+            .with_help("Verify the selected Agent Card interface URL, local network access, and TLS configuration.")
+        })?;
+        Ok(stream_sse_response(
+            response,
+            endpoint,
+            interface,
+            service_parameters,
+            "A2A task subscription",
+            on_event,
+        )?
+        .into())
+    }
+
+    fn subscribe_json_rpc<F>(
+        &self,
+        interface: &NegotiatedInterface,
+        request: &protocol::SubscribeToTaskRequest,
+        service_parameters: &ServiceParameters,
+        auth_headers: &AuthHeaders,
+        on_event: F,
+    ) -> Result<SubscribeTaskOutcome>
+    where
+        F: FnMut(StreamMessageEvent) -> Result<()>,
+    {
+        let endpoint = validate_absolute_url("JSON-RPC interface URL", &interface.url)?;
+        let request_body = subscribe_task_request_with_interface_tenant(request, interface);
+        let params = serde_json::to_value(&request_body).map_err(|error| {
+            MissiveError::protocol("encoding SubscribeToTask request as JSON-RPC params")
+                .with_source(error)
+        })?;
+        let rpc_request = protocol::JsonRpcRequest::new(
+            protocol::JsonRpcId::String(request_body.id.clone()),
+            protocol::jsonrpc_methods::SUBSCRIBE_TO_TASK,
+            Some(params),
+        );
+        let mut http_request = self
+            .client
+            .post(endpoint.clone())
+            .header("Accept", EVENT_STREAM_CONTENT_TYPE)
+            .header("Content-Type", "application/json")
+            .json(&rpc_request);
+        http_request = service_parameters.apply_to_blocking_request(http_request)?;
+        http_request = auth_headers.apply_to_blocking_request(http_request)?;
+
+        let response = http_request.send().map_err(|error| {
+            MissiveError::transport(format!(
+                "subscribing to A2A JSON-RPC task updates from {endpoint} failed"
+            ))
+            .with_source(error)
+            .with_help("Verify the selected Agent Card JSON-RPC interface URL, local network access, and TLS configuration.")
+        })?;
+        Ok(stream_sse_response(
+            response,
+            endpoint,
+            interface,
+            service_parameters,
+            "A2A JSON-RPC task subscription",
+            on_event,
+        )?
+        .into())
     }
 
     fn json_rpc_call<P: Serialize>(
@@ -2830,6 +2985,17 @@ fn cancel_task_request_with_interface_tenant(
     request: &protocol::CancelTaskRequest,
     interface: &NegotiatedInterface,
 ) -> protocol::CancelTaskRequest {
+    let mut request = request.clone();
+    if request.tenant.is_none() {
+        request.tenant.clone_from(&interface.tenant);
+    }
+    request
+}
+
+fn subscribe_task_request_with_interface_tenant(
+    request: &protocol::SubscribeToTaskRequest,
+    interface: &NegotiatedInterface,
+) -> protocol::SubscribeToTaskRequest {
     let mut request = request.clone();
     if request.tenant.is_none() {
         request.tenant.clone_from(&interface.tenant);

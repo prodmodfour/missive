@@ -1,9 +1,9 @@
-Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, and background jobs. The current daemon skeleton supervises the event bus, store access, health/status endpoints, and idle placeholders for later workers.
+Run and manage the local missive gateway daemon for subscriptions, webhooks, adapters, and background jobs. The current daemon supervises the event bus, store access, health/status endpoints, and A2A task subscription/resume worker while reserving later workers for webhooks, jobs, and adapters.
 
 Usage: missive gateway [OPTIONS] [COMMAND]
 
 Commands:
-  run  Run the local gateway daemon skeleton
+  run  Run the local gateway daemon
 
 Options:
   -h, --help

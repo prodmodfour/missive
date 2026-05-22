@@ -14,13 +14,13 @@ use missive_gateway::{
 use missive_store::StatePathResolver;
 use tokio::sync::mpsc;
 
-use crate::GlobalArgs;
 use crate::output::{OutputMode, render_stream_item, render_success};
+use crate::{GlobalArgs, service_parameters_from_config_and_globals};
 
 /// Gateway daemon subcommands.
 #[derive(Debug, Clone, Subcommand)]
 pub enum GatewayCommands {
-    /// Run the local gateway daemon skeleton.
+    /// Run the local gateway daemon.
     Run(GatewayRunArgs),
 }
 
@@ -114,6 +114,7 @@ fn build_daemon_config(
         .transpose()?;
 
     let gateway_config = effective_gateway_config(loaded_config)?;
+    let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
     let config = GatewayDaemonConfig {
         profile: loaded_config.selected_profile.clone(),
         bind_addr,
@@ -123,6 +124,7 @@ fn build_daemon_config(
         ready_path: args.ready_path.clone(),
         status_path: args.status_path.clone(),
         job_concurrency: gateway_config.job_concurrency,
+        service_parameters,
     };
     config.validate()?;
     Ok(config)

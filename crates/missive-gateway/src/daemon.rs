@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
-use missive_a2a::protocol;
+use missive_a2a::{ServiceParameters, protocol};
 use missive_core::{EventId, Metadata, MissiveError, Result};
 use missive_store::{EventInsert, EventRecord, ProcessLock, ProcessLockKind, StatePaths, Store};
 use serde::Serialize;
@@ -23,6 +23,8 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio::time::sleep;
+
+use crate::subscription::{SubscriptionManagerConfig, run_subscription_manager};
 
 /// Default health endpoint for the local gateway daemon.
 pub const DEFAULT_GATEWAY_HEALTH_PATH: &str = "/healthz";
@@ -38,7 +40,7 @@ const COMPONENT_SUPERVISOR: &str = "supervisor";
 const COMPONENT_EVENT_BUS: &str = "event_bus";
 const COMPONENT_STORE: &str = "store";
 const COMPONENT_HEALTH_HTTP: &str = "health_http";
-const COMPONENT_SUBSCRIPTIONS: &str = "subscriptions";
+pub(crate) const COMPONENT_SUBSCRIPTIONS: &str = "subscriptions";
 const COMPONENT_WEBHOOK_RECEIVER: &str = "webhook_receiver";
 const COMPONENT_BACKGROUND_JOBS: &str = "background_jobs";
 const COMPONENT_ADAPTERS: &str = "adapters";
@@ -62,6 +64,8 @@ pub struct GatewayDaemonConfig {
     pub status_path: String,
     /// Maximum number of concurrently running gateway jobs reserved by config.
     pub job_concurrency: u16,
+    /// A2A service parameters used by gateway-managed outbound protocol calls.
+    pub service_parameters: ServiceParameters,
 }
 
 impl GatewayDaemonConfig {
@@ -85,6 +89,7 @@ impl GatewayDaemonConfig {
                 "gateway job concurrency must be greater than zero",
             ));
         }
+        self.service_parameters.validate()?;
         Ok(())
     }
 }
@@ -134,7 +139,7 @@ pub struct GatewayComponentStatus {
 }
 
 impl GatewayComponentStatus {
-    fn new(name: &str, state: &str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(name: &str, state: &str, detail: impl Into<String>) -> Self {
         let detail = detail.into();
         Self {
             name: name.to_owned(),
@@ -144,19 +149,19 @@ impl GatewayComponentStatus {
         }
     }
 
-    fn running(name: &str, detail: impl Into<String>) -> Self {
+    pub(crate) fn running(name: &str, detail: impl Into<String>) -> Self {
         Self::new(name, "running", detail)
     }
 
-    fn ready(name: &str, detail: impl Into<String>) -> Self {
+    pub(crate) fn ready(name: &str, detail: impl Into<String>) -> Self {
         Self::new(name, "ready", detail)
     }
 
-    fn idle(name: &str, detail: impl Into<String>) -> Self {
+    pub(crate) fn idle(name: &str, detail: impl Into<String>) -> Self {
         Self::new(name, "idle", detail)
     }
 
-    fn stopped(name: &str, detail: impl Into<String>) -> Self {
+    pub(crate) fn stopped(name: &str, detail: impl Into<String>) -> Self {
         Self::new(name, "stopped", detail)
     }
 }
@@ -212,7 +217,7 @@ pub struct GatewayDaemonSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ShutdownReason {
+pub(crate) enum ShutdownReason {
     Timeout,
     Signal,
     ServerStopped,
@@ -353,7 +358,7 @@ impl GatewayAppState {
 }
 
 #[derive(Debug, Clone)]
-enum GatewayBusEvent {
+pub(crate) enum GatewayBusEvent {
     Component(GatewayComponentStatus),
 }
 
@@ -401,6 +406,16 @@ pub async fn run_gateway_daemon(
     let started = started_event(&config, &state, local_addr);
     let _ = event_tx.send(GatewayRuntimeEvent::Started(started));
     emit_component_snapshot(&state, &bus_tx);
+    let subscription_config = SubscriptionManagerConfig {
+        profile: config.profile.clone(),
+        state_paths: config.state_paths.clone(),
+        service_parameters: config.service_parameters.clone(),
+    };
+    let subscription_handle = tokio::spawn(run_subscription_manager(
+        subscription_config,
+        bus_tx.clone(),
+        shutdown_rx.clone(),
+    ));
 
     let app = Router::new()
         .route(&config.health_path, get(health))
@@ -418,6 +433,7 @@ pub async fn run_gateway_daemon(
         .await
         .map_err(|error| MissiveError::io("serving gateway daemon", error))?;
 
+    shutdown.request(ShutdownReason::ServerStopped);
     drop(gateway_lock);
 
     let reason = shutdown.reason();
@@ -425,6 +441,9 @@ pub async fn run_gateway_daemon(
         COMPONENT_HEALTH_HTTP,
         "HTTP health/status listener stopped",
     )));
+    subscription_handle.await.map_err(|error| {
+        MissiveError::orchestration("joining gateway subscription manager task").with_source(error)
+    })??;
     drop(bus_tx);
     supervisor_handle.await.map_err(|error| {
         MissiveError::orchestration("joining gateway supervisor task").with_source(error)
@@ -583,7 +602,7 @@ fn initial_components(job_concurrency: u16) -> Vec<GatewayComponentStatus> {
         ),
         GatewayComponentStatus::idle(
             COMPONENT_SUBSCRIPTIONS,
-            "remote task subscription workers are reserved for a later ticket",
+            "remote task subscription worker will scan in-flight tasks after startup",
         ),
         GatewayComponentStatus::idle(
             COMPONENT_WEBHOOK_RECEIVER,
@@ -726,11 +745,17 @@ fn local_url(addr: SocketAddr, path: &str) -> String {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use missive_core::ConfigDiscovery;
-    use missive_store::StatePathResolver;
+    use missive_core::{AgentAlias, ConfigDiscovery, TaskId};
+    use missive_store::{
+        AgentUpsert, GatewayJobState, GatewayJobUpsert, StatePathResolver, Store, TaskState,
+        TaskUpsert,
+    };
+    use missive_test_support::{MockA2aServer, status_update_event};
+    use serde_json::{Value, json};
     use tempfile::{TempDir, tempdir};
 
     use super::*;
+    use crate::subscription::{TASK_SUBSCRIPTION_JOB_KIND, subscription_job_id};
 
     fn test_config(shutdown_after: Option<Duration>) -> (TempDir, GatewayDaemonConfig) {
         let temp = tempdir().expect("tempdir");
@@ -755,6 +780,7 @@ mod tests {
             ready_path: DEFAULT_GATEWAY_READY_PATH.to_owned(),
             status_path: DEFAULT_GATEWAY_STATUS_PATH.to_owned(),
             job_concurrency: 2,
+            service_parameters: ServiceParameters::default(),
         };
         (temp, config)
     }
@@ -783,6 +809,69 @@ mod tests {
         assert_eq!(by_name[COMPONENT_SUBSCRIPTIONS], "idle");
         assert_eq!(by_name[COMPONENT_BACKGROUND_JOBS], "idle");
         assert_eq!(by_name[COMPONENT_ADAPTERS], "idle");
+    }
+
+    fn streaming_agent_card(server: &MockA2aServer) -> Value {
+        json!({
+            "name": "mock subscription agent",
+            "description": "Gateway subscription fixture",
+            "version": "0.1.0",
+            "capabilities": {"streaming": true, "pushNotifications": true},
+            "defaultInputModes": ["text/plain"],
+            "defaultOutputModes": ["text/plain"],
+            "skills": [
+                {
+                    "id": "echo",
+                    "name": "Echo",
+                    "description": "Returns deterministic fixture responses.",
+                    "tags": ["mock", "test"],
+                    "inputModes": ["text/plain"],
+                    "outputModes": ["text/plain"]
+                }
+            ],
+            "supportedInterfaces": [
+                {
+                    "url": server.http_json_interface_url(),
+                    "protocolBinding": "HTTP+JSON",
+                    "protocolVersion": "1.0"
+                }
+            ]
+        })
+    }
+
+    fn seed_streaming_task(
+        config: &GatewayDaemonConfig,
+        server: &MockA2aServer,
+        task_id: &str,
+        state: TaskState,
+        seed_job: bool,
+    ) {
+        config
+            .state_paths
+            .ensure_directories()
+            .expect("state directories");
+        let alias = AgentAlias::new("echo".to_owned()).expect("agent alias");
+        let task_id = TaskId::new(task_id.to_owned()).expect("task id");
+        let store = Store::open(config.state_paths.database_path()).expect("store");
+        let mut agent = AgentUpsert::new(alias.clone(), server.base_url());
+        agent.agent_card_json = Some(streaming_agent_card(server));
+        store.upsert_agent(&agent).expect("agent");
+        let mut task = TaskUpsert::new(task_id.clone(), alias.clone(), state);
+        task.record_a2a_protocol_version("1.0").expect("version");
+        store.upsert_task(&task).expect("task");
+        if seed_job {
+            let job_id = subscription_job_id(&alias, &task_id).expect("subscription job id");
+            let mut job = GatewayJobUpsert::new(
+                job_id,
+                TASK_SUBSCRIPTION_JOB_KIND,
+                json!({"seeded_by": "restart_test"}),
+            );
+            job.state = GatewayJobState::Retrying;
+            job.agent_alias = Some(alias);
+            job.task_id = Some(task_id);
+            job.max_attempts = u32::MAX;
+            store.upsert_gateway_job(&job).expect("gateway job");
+        }
     }
 
     #[tokio::test]
@@ -820,6 +909,99 @@ mod tests {
             journal
                 .iter()
                 .any(|event| event.event_type == "missive.gateway.stopped")
+        );
+    }
+
+    #[tokio::test]
+    async fn gateway_subscriptions_resume_in_flight_task_and_clean_terminal_job() {
+        let server = MockA2aServer::start();
+        server.handle().set_stream_events(vec![status_update_event(
+            "task-resume",
+            "ctx-resume",
+            "TASK_STATE_COMPLETED",
+            Some("done"),
+        )]);
+        let (_temp, config) = test_config(Some(Duration::from_millis(250)));
+        seed_streaming_task(&config, &server, "task-resume", TaskState::Working, true);
+        let database_path = config.state_paths.database_path().to_path_buf();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let summary = run_gateway_daemon(config, event_tx)
+            .await
+            .expect("gateway daemon");
+
+        assert_eq!(summary.shutdown_reason, "timeout");
+        assert!(server.requests().iter().any(|request| {
+            request.method == "POST" && request.path == "/a2a/tasks/task-resume:subscribe"
+        }));
+
+        let runtime_events: Vec<_> = std::iter::from_fn(|| event_rx.try_recv().ok()).collect();
+        assert!(runtime_events.iter().any(|event| {
+            matches!(event, GatewayRuntimeEvent::Component(component) if component.name == COMPONENT_SUBSCRIPTIONS && component.detail.contains("task=task-resume"))
+        }));
+
+        let store = Store::open(database_path).expect("store");
+        let task = store
+            .get_task(&TaskId::new("task-resume".to_owned()).expect("task id"))
+            .expect("get task")
+            .expect("task row");
+        assert_eq!(task.state, TaskState::Completed);
+        assert!(task.completed_at.is_some());
+        assert!(
+            store
+                .list_gateway_jobs()
+                .expect("gateway jobs")
+                .iter()
+                .all(|job| job.kind != TASK_SUBSCRIPTION_JOB_KIND)
+        );
+        let journal = store.list_events().expect("journal");
+        assert!(
+            journal
+                .iter()
+                .any(|event| event.event_type == "a2a.subscription.status_update")
+        );
+        assert!(
+            journal
+                .iter()
+                .any(|event| event.event_type == "missive.gateway.subscription.cleaned")
+        );
+    }
+
+    #[tokio::test]
+    async fn gateway_subscription_failures_persist_bounded_backoff() {
+        let server = MockA2aServer::builder().malformed_stream_event().start();
+        let (_temp, config) = test_config(Some(Duration::from_millis(250)));
+        seed_streaming_task(&config, &server, "task-backoff", TaskState::Working, false);
+        let database_path = config.state_paths.database_path().to_path_buf();
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+
+        run_gateway_daemon(config, event_tx)
+            .await
+            .expect("gateway daemon");
+
+        assert!(server.requests().iter().any(|request| {
+            request.method == "POST" && request.path == "/a2a/tasks/task-backoff:subscribe"
+        }));
+        let store = Store::open(database_path).expect("store");
+        let jobs = store.list_gateway_jobs().expect("gateway jobs");
+        let job = jobs
+            .iter()
+            .find(|job| job.kind == TASK_SUBSCRIPTION_JOB_KIND)
+            .expect("retrying subscription job");
+        assert_eq!(job.state, GatewayJobState::Retrying);
+        assert_eq!(job.retry_count, 1);
+        assert!(job.next_run_at.is_some());
+        let backoff_ms = job
+            .metadata
+            .get("gateway.subscription.backoff_ms")
+            .and_then(Value::as_u64)
+            .expect("backoff metadata");
+        assert!((1_000..=30_000).contains(&backoff_ms));
+        let journal = store.list_events().expect("journal");
+        assert!(
+            journal
+                .iter()
+                .any(|event| event.event_type == "missive.gateway.subscription.retrying")
         );
     }
 }

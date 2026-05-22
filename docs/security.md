@@ -135,11 +135,13 @@ committing them. The current receiver validates JSON shape and optional header
 tokens, but it does not yet implement JWT/signature verification, replay
 protection, rate limits, or credential rotation.
 
-`missive gateway run` also serves local HTTP only in the current skeleton. Its
-`/healthz`, `/readyz`, and `/status` endpoints are unauthenticated and intended
-for loopback process supervision. Keep the listener bound to `127.0.0.1` unless
-you intentionally place it behind trusted local infrastructure; do not expose it
-as a public control API.
+`missive gateway run` also serves local HTTP only. Its `/healthz`, `/readyz`,
+and `/status` endpoints are unauthenticated and intended for loopback process
+supervision. Keep the listener bound to `127.0.0.1` unless you intentionally
+place it behind trusted local infrastructure; do not expose it as a public
+control API. The subscription worker makes outbound `SubscribeToTask` calls only
+for cached streaming-capable agents and redacts subscription event payloads
+before journal insertion.
 
 ## Artifact exports
 
@@ -155,10 +157,13 @@ fetching or dereferencing remote/local URLs.
 
 Authentication is wired into implemented Agent Card fetch/refresh,
 non-streaming send, streaming send, task get/list/wait/cancel, push config
-requests, and the inbound webhook header-token hook. The current gateway daemon
-skeleton has no outbound authenticated protocol calls; future gateway worker and
+requests, and the inbound webhook header-token hook. Gateway subscriptions
+currently send A2A service parameters but do not yet resolve outbound auth refs,
+keyring entries, `--bearer-token-env`, or `--header` values, so authenticated
+remote subscription resume remains a known limitation. Future gateway worker and
 adapter tickets must reuse the same resolution and redaction path when they add
-outbound requests.
+broader outbound requests.
 
 Webhook signature/JWT verification, adapter trust boundaries, trace/log sinks,
-rate limits, and insecure local token storage policy are not implemented yet.
+rate limits, gateway subscription auth resolution, and insecure local token
+storage policy are not implemented yet.

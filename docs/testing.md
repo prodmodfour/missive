@@ -78,7 +78,7 @@ let server = MockA2aServer::builder()
     .start();
 ```
 
-The fixture records request method, path, lowercase headers, and UTF-8 body for assertions. It is intentionally deterministic and local-only; tests must not use it as a proxy to external services.
+The fixture records request method, path, lowercase headers, and UTF-8 body for assertions. It supports task resubscription through `POST`/`GET /a2a/tasks/{id}:subscribe` and JSON-RPC `SubscribeToTask`, returning deterministic SSE events from the same stream-event queue used by `message:stream`. It is intentionally deterministic and local-only; tests must not use it as a proxy to external services.
 
 ## A2A conformance fixture suite
 
@@ -135,14 +135,17 @@ scripts/quality-gate.sh
 The gateway command integration test spawns the `missive` binary, waits for the
 local `/healthz` endpoint, checks `/status` component JSON over loopback HTTP,
 verifies graceful `--timeout` shutdown, checks NDJSON lifecycle output, and
-inspects persisted `missive.gateway.*` event journal rows. The webhook command
-integration test similarly spawns the binary, waits for local `/healthz`, posts
-unauthorized, malformed, and valid A2A `StreamResponse` payloads over loopback
-HTTP, verifies graceful `--max-events` shutdown, checks NDJSON output, and
-inspects the persisted event journal. Neither test contacts external tunnel
-providers or third-party services.
+inspects persisted `missive.gateway.*` event journal rows. The `missive-gateway`
+crate tests also exercise subscription resume by seeding an in-flight task plus a
+persisted `task_subscription` job, serving local mock `SubscribeToTask` SSE
+updates, verifying terminal cleanup, and checking bounded retry/backoff metadata
+for malformed streams. The webhook command integration test similarly spawns the
+binary, waits for local `/healthz`, posts unauthorized, malformed, and valid A2A
+`StreamResponse` payloads over loopback HTTP, verifies graceful `--max-events`
+shutdown, checks NDJSON output, and inspects the persisted event journal. Neither
+test contacts external tunnel providers or third-party services.
 
-When later tickets add gateway subscriptions, adapters, collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
+When later tickets add adapters, collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
 
 1. add a helper or route to `MockA2aServer`/`MockA2aHandle`
 2. cover it with a local test in `crates/missive-test-support`

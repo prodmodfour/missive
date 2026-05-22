@@ -1,4 +1,4 @@
-Run the local gateway daemon skeleton
+Run the local gateway daemon
 
 Usage: missive gateway run [OPTIONS]
 

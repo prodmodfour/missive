@@ -1,6 +1,7 @@
 #![doc = "Gateway daemon scaffolding for missive."]
 
 pub mod daemon;
+mod subscription;
 pub mod webhook;
 
 pub use daemon::{

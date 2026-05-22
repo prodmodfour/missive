@@ -181,8 +181,18 @@ events update the local `tasks` row state and preserve A2A protocol-version
 metadata. Artifacts embedded in task events are persisted as dedicated artifact
 rows. `artifactUpdate` events upsert the referenced artifact row, and appended
 chunks merge their parts into the existing A2A artifact JSON while incrementing a
-local version. Task subscription/resume remains mapped for later gateway
-tickets; task push notification config CRUD is implemented by `missive push`.
+local version. Gateway task subscription/resume is implemented by `missive gateway run` for cached streaming-capable agents; task push notification config CRUD is implemented by `missive push`.
+
+## Gateway SubscribeToTask
+
+`missive gateway run` monitors local in-flight tasks and uses the official `SubscribeToTaskRequest` plus `StreamResponse` types to resume remote updates when a cached Agent Card advertises `capabilities.streaming = true`.
+
+Transport mapping follows the same negotiated interface as other task operations:
+
+* `http+json` maps `SubscribeToTask` to `POST <interface>/tasks/{id}:subscribe` with `Accept: text/event-stream` and `Content-Type: application/a2a+json`.
+* `json-rpc` posts a JSON-RPC 2.0 method `SubscribeToTask` to the selected JSON-RPC interface URL and expects an SSE response.
+
+Each parsed `task`, `message`, `statusUpdate`, or `artifactUpdate` is appended to the event journal as `a2a.subscription.task`, `a2a.subscription.message`, `a2a.subscription.status_update`, or `a2a.subscription.artifact_update`. Task and status events update the local task row and terminal states clean up the durable `task_subscription` gateway job. Streams that fail or close while the task remains in-flight leave a retrying gateway job with bounded backoff metadata.
 
 ## Task GetTask/ListTasks/CancelTask
 

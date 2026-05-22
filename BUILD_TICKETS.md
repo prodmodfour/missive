@@ -939,7 +939,7 @@ Validation:
 
 ## 031 — Implement gateway subscriptions and resume
 
-Status: TODO
+Status: DONE
 
 Phase: Gateway
 

@@ -1068,6 +1068,7 @@ dependencies = [
  "missive-core",
  "missive-router",
  "missive-store",
+ "missive-test-support",
  "serde",
  "serde_json",
  "tempfile",

@@ -96,13 +96,16 @@ strings:
   redacted rows for agent registry mutations, A2A send/stream requests, A2A send
   responses, `a2a.stream.*` updates, changed remote task payloads observed by
   send/task commands, push-config CRUD, gateway daemon lifecycle
-  start/stop events, and webhook callback acceptance/rejection events. `missive
-  events list/tail/replay/export` reads these rows without hand-written SQL in
-  CLI code.
+  start/stop events, gateway subscription lifecycle and `a2a.subscription.*`
+  updates, and webhook callback acceptance/rejection events. `missive events
+  list/tail/replay/export` reads these rows without hand-written SQL in CLI
+  code.
 * groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, and membership
   methods with rank uniqueness enforced by SQLite
 * gateway jobs: `GatewayJobUpsert`, `GatewayJobRecord`, `GatewayJobId`, and CRUD
-  methods for background job state
+  methods for background job state; the gateway currently uses kind
+  `task_subscription` to persist/resume A2A task subscription state and bounded
+  backoff
 
 Repository records reuse `missive-core` identifiers such as `AgentAlias`,
 `ContextId`, `TaskId`, `EventId`, `GroupName`, `RankName`, `TransportName`,
@@ -130,7 +133,8 @@ streaming `missive stream` request/event/artifact persistence, task
 get/list/wait/cancel state updates, `missive task artifact` local export
 commands, context create/list/show/fork/close/export state management, push
 notification config create/get/list/delete state, gateway daemon lifecycle event
-persistence, webhook callback event persistence, and event journal
-list/tail/replay/export. Adapter-binding repositories, retention enforcement,
-compaction, and durable event producers for future group/gateway workers and
-adapter callbacks are implemented by later tickets.
+persistence, gateway task subscription/resume job state and event persistence,
+webhook callback event persistence, and event journal list/tail/replay/export.
+Adapter-binding repositories, retention enforcement, compaction, and durable
+event producers for future group workers, background jobs, and adapter callbacks
+are implemented by later tickets.

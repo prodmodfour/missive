@@ -489,11 +489,12 @@ keeps the redacted delete response for audit. Machine-readable output uses
 
 ## Gateway daemon
 
-`missive gateway run` starts the local gateway daemon skeleton. It creates the
-selected profile state directories, acquires the profile `gateway.lock`, opens
-and migrates the SQLite store, starts an async supervisor and local event bus,
-serves health/readiness/status HTTP endpoints, records gateway lifecycle events,
-and shuts down gracefully on Ctrl-C or global `--timeout`.
+`missive gateway run` starts the local gateway daemon. It creates the selected
+profile state directories, acquires the profile `gateway.lock`, opens and
+migrates the SQLite store, starts an async supervisor and local event bus, serves
+health/readiness/status HTTP endpoints, records gateway lifecycle events, runs
+the task subscription/resume worker, and shuts down gracefully on Ctrl-C or
+global `--timeout`.
 
 ```bash
 MISSIVE_HOME=/tmp/missive-demo \
@@ -510,15 +511,20 @@ status endpoints are local unauthenticated JSON endpoints: `GET /healthz`,
 `--ready-path`, and `--status-path`; the paths must be distinct non-root HTTP
 paths. Status output reports the selected profile, bound address, uptime,
 configured `job_concurrency`, event-bus count, and components: running
-`supervisor`, `event_bus`, `store`, and `health_http` plus idle placeholders for
-future `subscriptions`, embedded `webhook_receiver`, `background_jobs`, and
-`adapters`.
+`supervisor`, `event_bus`, `store`, `health_http`, an active or idle
+`subscriptions` component, plus idle placeholders for embedded
+`webhook_receiver`, `background_jobs`, and `adapters`. The subscriptions
+component scans local in-flight tasks, resumes persisted `task_subscription`
+gateway jobs, calls A2A `SubscribeToTask` for cached streaming-capable agents,
+updates task state from stream events, cleans up terminal jobs, and reports
+bounded retry/backoff details through component output.
 
 Machine-readable stream output uses `gateway_started`, `gateway_component`, and
 `gateway_stopped` envelope kinds. `--json` emits only the final
 `gateway_stopped` summary after shutdown; use `--ndjson` for one object per
-runtime event. The daemon appends redacted `missive.gateway.started` and
-`missive.gateway.stopped` rows to the local event journal.
+runtime event. The daemon appends redacted `missive.gateway.started`,
+`missive.gateway.stopped`, `missive.gateway.subscription.*`, and
+`a2a.subscription.*` rows to the local event journal as applicable.
 
 See [`gateway.md`](gateway.md) for operational details and current limitations.
 
