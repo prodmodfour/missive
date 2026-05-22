@@ -220,7 +220,7 @@ Validation:
 
 ## 007 — Implement CLI skeleton and global flags
 
-Status: TODO
+Status: DONE
 
 Phase: CLI
 

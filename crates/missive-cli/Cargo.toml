@@ -15,6 +15,7 @@ name = "missive"
 path = "src/main.rs"
 
 [dependencies]
+clap.workspace = true
 missive-adapters.workspace = true
 missive-a2a.workspace = true
 missive-core.workspace = true

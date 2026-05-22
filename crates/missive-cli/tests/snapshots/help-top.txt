@@ -1,0 +1,54 @@
+missive is a local control-plane CLI for A2A-native agent communication. This skeleton exposes the stable top-level command tree and global flags; operational subcommands are implemented by later tickets.
+
+Usage: missive [OPTIONS] [COMMAND]
+
+Commands:
+  agent       Manage configured A2A agents and cached Agent Cards
+  send        Send one message to an A2A agent
+  stream      Stream message updates from an A2A agent
+  task        Inspect, list, wait for, or cancel A2A tasks
+  context     Manage conversation contexts and session continuity
+  group       Manage groups of agents for collective operations
+  gateway     Run and manage the local missive gateway daemon
+  webhook     Receive A2A push notification callbacks locally
+  push        Manage A2A push notification configurations
+  doctor      Diagnose local configuration, storage, gateway, and endpoint health
+  logs        Inspect local missive logs
+  events      Inspect, tail, replay, or export the local event journal
+  completion  Generate shell completion scripts
+  manpage     Generate manual pages
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Global options:
+      --json
+          Emit a single JSON document for command output when the command supports it
+
+      --ndjson
+          Emit newline-delimited JSON events when the command supports streaming output
+
+  -q, --quiet
+          Suppress non-error output
+
+      --no-color
+          Disable colored terminal output and diagnostics
+
+      --config <PATH>
+          Read configuration from this file path
+
+      --profile <PROFILE>
+          Select a named configuration profile
+
+      --timeout <DURATION>
+          Set an overall command timeout such as 30s, 2m, or 1h
+
+      --trace
+          Enable trace-oriented diagnostics for this invocation
+
+  -v, --verbose...
+          Increase human diagnostic verbosity; repeat for more detail

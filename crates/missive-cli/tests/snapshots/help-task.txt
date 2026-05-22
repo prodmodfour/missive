@@ -1,0 +1,38 @@
+Inspect, list, wait for, and cancel A2A tasks while preserving local task state. Task operations are implemented by later task tickets.
+
+Usage: missive task [OPTIONS]
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Global options:
+      --json
+          Emit a single JSON document for command output when the command supports it
+
+      --ndjson
+          Emit newline-delimited JSON events when the command supports streaming output
+
+  -q, --quiet
+          Suppress non-error output
+
+      --no-color
+          Disable colored terminal output and diagnostics
+
+      --config <PATH>
+          Read configuration from this file path
+
+      --profile <PROFILE>
+          Select a named configuration profile
+
+      --timeout <DURATION>
+          Set an overall command timeout such as 30s, 2m, or 1h
+
+      --trace
+          Enable trace-oriented diagnostics for this invocation
+
+  -v, --verbose...
+          Increase human diagnostic verbosity; repeat for more detail

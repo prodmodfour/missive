@@ -29,6 +29,14 @@ CLI/adapters -> command model -> router/session/context -> A2A client -> remote 
 
 Human-facing rendering uses normal `Display` text plus `miette::Diagnostic` codes and optional help text. Machine-facing rendering should serialize `ErrorReport` instead of parsing human messages.
 
+## CLI command skeleton
+
+`crates/missive-cli` owns the clap-derived `Cli`, `GlobalArgs`, and `Commands` types. The skeleton currently exposes top-level commands for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`.
+
+Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`. The flags establish a stable invocation contract before later tickets implement rendering, configuration discovery, timeout enforcement, and tracing.
+
+Help output for the top-level CLI and key commands is covered by snapshot tests under `crates/missive-cli/tests/snapshots/`.
+
 ## Core primitive contract
 
 `crates/missive-core` owns the small domain primitives that other crates should share instead of passing raw strings everywhere:
