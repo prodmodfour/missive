@@ -15,6 +15,7 @@ pub(crate) mod auth;
 pub mod context;
 pub mod events;
 pub mod gateway;
+pub mod group;
 pub mod output;
 pub mod push;
 pub mod send;
@@ -225,9 +226,13 @@ pub enum Commands {
 
     /// Manage groups of agents for collective operations.
     #[command(
-        long_about = "Manage named groups of agents for later broadcast, barrier, gather, reduce, and routing operations. Group persistence is implemented by later group tickets."
+        long_about = "Create, list, show, rename, and delete profile-scoped groups, and add/remove registered agent members with rank names, tags, weights, and routing metadata for later collective operations."
     )]
-    Group,
+    Group {
+        /// Group operation to run. With no operation, missive emits a parsed command status.
+        #[command(subcommand)]
+        command: Option<group::GroupCommands>,
+    },
 
     /// Run and manage the local missive gateway daemon.
     #[command(
@@ -304,7 +309,7 @@ impl Commands {
             Self::Stream(_) => "stream",
             Self::Task { .. } => "task",
             Self::Context { .. } => "context",
-            Self::Group => "group",
+            Self::Group { .. } => "group",
             Self::Gateway { .. } => "gateway",
             Self::Webhook { .. } => "webhook",
             Self::Push { .. } => "push",
@@ -445,6 +450,11 @@ where
             mode,
             writer,
         ),
+        Some(Commands::Group {
+            command: Some(group_command),
+        }) => {
+            group::execute_group_command(group_command, &loaded_config, environment, mode, writer)
+        }
         Some(Commands::Gateway {
             command: Some(gateway_command),
         }) => gateway::execute_gateway_command(

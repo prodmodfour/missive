@@ -451,6 +451,54 @@ kinds. Context views include the context id, optional name/agent/parent, state,
 summary, metadata, timestamps, closed timestamp, and linked message/task/event
 counts.
 
+## Group commands
+
+`missive group` manages local groups of registered agent aliases for later
+collective and routing commands. Groups live in the selected profile's SQLite
+store and contain only local control-plane metadata: a group name, routing policy
+label, notes, metadata, and member rows. No A2A network calls are made by group
+commands.
+
+Implemented commands:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive group create team \
+  --routing-policy weighted \
+  --notes "Planner/writer/reviewer group" \
+  --metadata purpose=demo \
+  --json
+MISSIVE_HOME=/tmp/missive-demo missive group add team planner --rank rank-0 --tag planner --weight 2
+MISSIVE_HOME=/tmp/missive-demo missive group add team writer --rank rank-1 --tag writer --routing-metadata lane=blue
+MISSIVE_HOME=/tmp/missive-demo missive group show team --json
+MISSIVE_HOME=/tmp/missive-demo missive group list
+MISSIVE_HOME=/tmp/missive-demo missive group remove team writer
+MISSIVE_HOME=/tmp/missive-demo missive group rename team demo-team
+MISSIVE_HOME=/tmp/missive-demo missive group delete demo-team
+```
+
+`group create` refuses duplicate group names. `--routing-policy` defaults to
+`direct` and stores a policy label for future router/collective tickets; current
+group commands do not execute routing decisions. `--metadata KEY=VALUE` stores
+non-secret group metadata and parses `VALUE` as JSON when possible.
+
+`group add` requires an existing group and an existing registered agent alias.
+Each member stores the alias, required `--rank RANK`, repeatable `--tag TAG`, a
+positive finite `--weight`, and repeatable `--routing-metadata KEY=VALUE` values.
+Rank names must be unique within a group; attempting to assign one rank to two
+agents fails before writing. Re-running `group add` for the same agent updates
+that member when the requested rank is available.
+
+`group show` displays the routing policy and members in deterministic rank/name
+order. `group rename` changes the group primary key and preserves membership.
+`group remove` removes one member by agent alias. `group delete` deletes the
+group and cascades its member rows. Group mutation commands append redacted
+`missive.group.*` rows to the local event journal for audit and later replay.
+
+Machine-readable group output uses `group_create`, `group_list`, `group_show`,
+`group_add`, `group_remove`, `group_rename`, and `group_delete` envelope kinds.
+Group views include the routing policy, notes, metadata, member count, timestamps,
+and member rows with rank, tags, weight, and routing metadata.
+
 ## Push notification config commands
 
 `missive push` configures A2A task push notification callback endpoints on a
@@ -608,12 +656,12 @@ one object per runtime event.
 ## Event commands
 
 `missive events` exposes the selected profile's append-only SQLite event
-journal. The current producers record local agent registry changes, A2A
-send/stream request records, A2A send responses, streaming updates, remote
-task changes observed by send/task commands, push-config changes, gateway
-daemon lifecycle events, and webhook callback acceptance/rejection events.
-Future group, gateway worker, and adapter tickets will append the same event
-table through the existing typed store API.
+journal. The current producers record local agent registry changes, group
+membership changes, A2A send/stream request records, A2A send responses,
+streaming updates, remote task changes observed by send/task commands,
+push-config changes, gateway daemon lifecycle events, and webhook callback
+acceptance/rejection events. Future gateway worker and adapter tickets will
+append the same event table through the existing typed store API.
 
 Implemented commands:
 

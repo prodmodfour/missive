@@ -93,15 +93,15 @@ strings:
 * events: `EventInsert`, `EventRecord`, append/get/list/delete methods, and
   monotonic SQLite sequences; `EventInsert::record_a2a_protocol_version` records
   the selected A2A version in event metadata. Current CLI producers append
-  redacted rows for agent registry mutations, A2A send/stream requests, A2A send
-  responses, `a2a.stream.*` updates, changed remote task payloads observed by
-  send/task commands, push-config CRUD, gateway daemon lifecycle
-  start/stop events, gateway subscription lifecycle and `a2a.subscription.*`
-  updates, and webhook callback acceptance/rejection events. `missive events
-  list/tail/replay/export` reads these rows without hand-written SQL in CLI
-  code.
-* groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, and membership
-  methods with rank uniqueness enforced by SQLite
+  redacted rows for agent registry mutations, group CRUD/membership mutations,
+  A2A send/stream requests, A2A send responses, `a2a.stream.*` updates, changed
+  remote task payloads observed by send/task commands, push-config CRUD, gateway
+  daemon lifecycle start/stop events, gateway subscription lifecycle and
+  `a2a.subscription.*` updates, and webhook callback acceptance/rejection events.
+  `missive events list/tail/replay/export` reads these rows without hand-written
+  SQL in CLI code.
+* groups: `GroupUpsert`, `GroupRecord`, `GroupMemberUpsert`, group rename, and
+  membership methods with rank uniqueness enforced by SQLite
 * gateway jobs: `GatewayJobUpsert`, `GatewayJobRecord`, `GatewayJobId`, and CRUD
   methods for background job state; the gateway currently uses kind
   `task_subscription` to persist/resume A2A task subscription state and bounded
@@ -126,15 +126,16 @@ should use for multi-row state changes.
 ## Current limitations
 
 Typed repository APIs exist for the core store tables needed by upcoming tickets,
-and the CLI now uses the auth-ref, agent, context, task, artifact, message,
-event, and push-config repositories for `missive agent` registry commands,
-public Agent Card cache updates, non-streaming `missive send` persistence,
-streaming `missive stream` request/event/artifact persistence, task
+and the CLI now uses the auth-ref, agent, context, group, task, artifact,
+message, event, and push-config repositories for `missive agent` registry
+commands, public Agent Card cache updates, non-streaming `missive send`
+persistence, streaming `missive stream` request/event/artifact persistence, task
 get/list/wait/cancel state updates, `missive task artifact` local export
-commands, context create/list/show/fork/close/export state management, push
-notification config create/get/list/delete state, gateway daemon lifecycle event
-persistence, gateway task subscription/resume job state and event persistence,
-webhook callback event persistence, and event journal list/tail/replay/export.
+commands, context create/list/show/fork/close/export state management, group
+create/list/show/add/remove/rename/delete state management, push notification
+config create/get/list/delete state, gateway daemon lifecycle event persistence,
+gateway task subscription/resume job state and event persistence, webhook
+callback event persistence, and event journal list/tail/replay/export.
 Adapter-binding repositories, retention enforcement, compaction, and durable
-event producers for future group workers, background jobs, and adapter callbacks
-are implemented by later tickets.
+event producers for future collective workers, background jobs, and adapter
+callbacks are implemented by later tickets.

@@ -1410,6 +1410,12 @@ impl Store {
         list_groups(&self.connection)
     }
 
+    /// Renames a group primary key and cascades the update to related rows.
+    /// Returns `true` when a row was updated.
+    pub fn rename_group(&self, old_name: &GroupName, new_name: &GroupName) -> Result<bool> {
+        rename_group(&self.connection, old_name, new_name)
+    }
+
     /// Deletes a group by name. Returns `true` when a row was removed.
     pub fn delete_group(&self, group_name: &GroupName) -> Result<bool> {
         delete_group(&self.connection, group_name)
@@ -1654,6 +1660,12 @@ impl StoreTransaction<'_> {
     /// Lists groups in deterministic name order.
     pub fn list_groups(&self) -> Result<Vec<GroupRecord>> {
         list_groups(&self.transaction)
+    }
+
+    /// Renames a group primary key and cascades the update to related rows.
+    /// Returns `true` when a row was updated.
+    pub fn rename_group(&self, old_name: &GroupName, new_name: &GroupName) -> Result<bool> {
+        rename_group(&self.transaction, old_name, new_name)
     }
 
     /// Deletes a group by name. Returns `true` when a row was removed.
@@ -2365,6 +2377,23 @@ fn list_groups(connection: &Connection) -> Result<Vec<GroupRecord>> {
         )
         .map_err(|error| storage_error("preparing group list", error))?;
     collect_rows(statement.query_map([], read_group_row), "listing groups")
+}
+
+fn rename_group(
+    connection: &Connection,
+    old_name: &GroupName,
+    new_name: &GroupName,
+) -> Result<bool> {
+    connection
+        .execute(
+            "UPDATE \"groups\"
+             SET group_name = ?2,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE group_name = ?1",
+            params![old_name.as_str(), new_name.as_str()],
+        )
+        .map(|affected| affected > 0)
+        .map_err(|error| storage_error("renaming group", error))
 }
 
 fn delete_group(connection: &Connection, group_name: &GroupName) -> Result<bool> {
@@ -3374,10 +3403,10 @@ mod tests {
         let echo = seed_agent(&store, "echo");
         let plan = seed_agent(&store, "plan");
         let group_name = group("team");
-        let mut group = GroupUpsert::new(group_name.clone());
-        group.notes = Some("test group".to_owned());
+        let mut group_input = GroupUpsert::new(group_name.clone());
+        group_input.notes = Some("test group".to_owned());
 
-        let stored_group = store.upsert_group(&group).expect("group upsert");
+        let stored_group = store.upsert_group(&group_input).expect("group upsert");
         assert_eq!(stored_group.notes.as_deref(), Some("test group"));
 
         let mut first = GroupMemberUpsert::new(group_name.clone(), echo.clone(), rank("rank-0"));
@@ -3413,10 +3442,25 @@ mod tests {
                 .len(),
             1
         );
-        assert!(store.delete_group(&group_name).expect("delete group"));
+        let renamed = group("team-renamed");
         assert!(
             store
-                .list_group_members(&group_name)
+                .rename_group(&group_name, &renamed)
+                .expect("rename group")
+        );
+        assert!(store.get_group(&group_name).expect("old group").is_none());
+        assert_eq!(
+            store
+                .list_group_members(&renamed)
+                .expect("renamed members")
+                .len(),
+            1
+        );
+
+        assert!(store.delete_group(&renamed).expect("delete group"));
+        assert!(
+            store
+                .list_group_members(&renamed)
                 .expect("members")
                 .is_empty()
         );

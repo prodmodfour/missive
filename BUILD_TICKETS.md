@@ -999,7 +999,7 @@ Validation:
 
 ## 033 — Implement group model and commands
 
-Status: TODO
+Status: DONE
 
 Phase: Groups
 
