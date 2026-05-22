@@ -8,7 +8,7 @@ This repository is at early workspace stage. It contains:
 
 * a Cargo workspace with the target crate layout under `crates/`
 * a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI skeleton with stable top-level commands and global flags
+* a clap-based CLI skeleton with stable top-level commands, global flags, and human/JSON/NDJSON/quiet output renderers
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
 * starter documentation directories, including `docs/adr/`
@@ -26,14 +26,16 @@ crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
 crates/missive-observe    tracing, logs, diagnostics, event export helpers
 ```
 
-The current binary exposes help for the top-level command tree and accepts global flags:
+The current binary exposes help for the top-level command tree, accepts global flags, and renders skeletal command status in human, JSON, NDJSON, or quiet modes:
 
 ```bash
 cargo run -p missive-cli --bin missive -- --help
 cargo run -p missive-cli --bin missive -- agent --help
+cargo run -p missive-cli --bin missive -- agent --json
+cargo run -p missive-cli --bin missive -- events --ndjson
 ```
 
-See [`docs/cli.md`](docs/cli.md) for the current skeleton. Future tickets add command behaviour, output rendering, configuration, A2A integration, persistence, gateway, adapters, collectives, tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for the current skeleton and output envelope. Future tickets add command behaviour, configuration, A2A integration, persistence, gateway, adapters, collectives, tests, and packaging.
 
 ## Build and validation
 

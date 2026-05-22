@@ -402,6 +402,8 @@ dependencies = [
  "missive-observe",
  "missive-router",
  "missive-store",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

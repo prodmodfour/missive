@@ -33,9 +33,18 @@ Human-facing rendering uses normal `Display` text plus `miette::Diagnostic` code
 
 `crates/missive-cli` owns the clap-derived `Cli`, `GlobalArgs`, and `Commands` types. The skeleton currently exposes top-level commands for `agent`, `send`, `stream`, `task`, `context`, `group`, `gateway`, `webhook`, `push`, `doctor`, `logs`, `events`, `completion`, and `manpage`.
 
-Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`. The flags establish a stable invocation contract before later tickets implement rendering, configuration discovery, timeout enforcement, and tracing.
+Global flags are parsed at every command level: `--json`, `--ndjson`, `--quiet`, `--no-color`, `--config`, `--profile`, `--timeout`, `--trace`, and `--verbose`. The flags establish a stable invocation contract before later tickets implement configuration discovery, timeout enforcement, and tracing.
 
-Help output for the top-level CLI and key commands is covered by snapshot tests under `crates/missive-cli/tests/snapshots/`.
+`crates/missive-cli` also owns the initial output rendering contract:
+
+* human mode writes redacted terminal status text
+* `--json` writes one pretty-printed JSON envelope with stable fields `schema_version`, `ok`, `kind`, and `data`
+* `--ndjson` writes one compact JSON envelope per line and adds `sequence`
+* `--quiet` suppresses non-error output
+
+The current envelope schema marker is `missive.output.v1`. Successful skeletal commands emit `kind: "command_status"`; structured errors emit `kind: "error"` with `missive-core`'s `ErrorReport` under `data`. The renderer recursively redacts secret-like JSON fields and HTTP-style auth headers before writing machine output.
+
+Help output for the top-level CLI and key commands is covered by snapshot tests under `crates/missive-cli/tests/snapshots/`. JSON, NDJSON, quiet-mode, error-shape, and redaction behavior is covered by output contract tests under `crates/missive-cli/tests/output_contract.rs`.
 
 ## Core primitive contract
 

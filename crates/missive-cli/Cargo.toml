@@ -23,3 +23,5 @@ missive-gateway.workspace = true
 missive-observe.workspace = true
 missive-router.workspace = true
 missive-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true

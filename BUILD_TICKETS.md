@@ -249,7 +249,7 @@ Validation:
 
 ## 008 — Implement output rendering contract
 
-Status: TODO
+Status: DONE
 
 Phase: CLI
 

@@ -17,8 +17,9 @@ The repository includes lightweight guardrails for:
 * obvious secret patterns
 * generated/private/runtime files
 * avoiding committed local state such as databases, logs, sockets, and PID files
+* CLI output redaction helpers for secret-like JSON fields and HTTP authorization headers
 
-These guardrails are not a substitute for full security review. Later tickets add authentication handling, redaction, storage hardening, webhook validation, adapter trust boundaries, and supply-chain checks.
+These guardrails are not a substitute for full security review. Later tickets add authentication input handling, storage hardening, webhook validation, adapter trust boundaries, tracing/log redaction, and supply-chain checks.
 
 ## Local development expectations
 

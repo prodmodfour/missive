@@ -7,6 +7,13 @@ use std::path::PathBuf;
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use missive_core::{MissiveError, MissiveExitCode, Result};
 
+pub mod output;
+
+pub use output::{
+    CommandStatus, OUTPUT_SCHEMA_VERSION, OutputMode, REDACTED, redact_header, redact_headers,
+    redact_json, redact_text, render_error, render_success,
+};
+
 /// Cargo package name for this crate.
 pub const CRATE_NAME: &str = "missive-cli";
 
@@ -253,23 +260,23 @@ pub fn execute<W>(cli: &Cli, writer: &mut W) -> Result<()>
 where
     W: Write,
 {
-    if cli.globals.quiet {
-        return Ok(());
-    }
+    let mode = OutputMode::from_globals(&cli.globals)?;
 
     match &cli.command {
-        Some(command) => writeln!(
-            writer,
-            "missive: '{}' command parsed; implementation lands in a later ticket",
-            command.name()
-        )
-        .map_err(|error| MissiveError::io("writing command status", error)),
-        None => {
+        Some(command) => {
+            let status = CommandStatus::parsed(command.name());
+            render_success(writer, mode, "command_status", &status, &status.message)
+        }
+        None if matches!(mode, OutputMode::Human) => {
             let mut command = Cli::command();
             command
                 .write_long_help(writer)
                 .map_err(|error| MissiveError::io("writing help output", error))?;
             writeln!(writer).map_err(|error| MissiveError::io("writing help output", error))
+        }
+        None => {
+            let status = CommandStatus::root_help_available();
+            render_success(writer, mode, "command_status", &status, &status.message)
         }
     }
 }
@@ -297,8 +304,12 @@ where
         Ok(cli) => match execute(&cli, stdout) {
             Ok(()) => MissiveExitCode::Success.as_i32(),
             Err(error) => {
-                let _ = writeln!(stderr, "{error}");
-                error.exit_code().as_i32()
+                let exit_code = error.exit_code().as_i32();
+                if render_error(stderr, &cli.globals, &error).is_err() {
+                    MissiveExitCode::Io.as_i32()
+                } else {
+                    exit_code
+                }
             }
         },
         Err(error) => {
