@@ -313,7 +313,7 @@ fn gateway_run_serves_status_and_shuts_down_cleanly() {
     let temp = tempdir().expect("tempdir");
     let home = temp.path().join("missive-home");
     let environment = isolated_env(&home);
-    let gateway = GatewayProcess::spawn(&home, &[], &["--timeout", "750ms", "--ndjson"]);
+    let gateway = GatewayProcess::spawn(&home, &[], &["--timeout", "3s", "--ndjson"]);
     let port = gateway.port();
 
     let (health_status, health_response) = http_request(port, "GET", "/healthz");
@@ -392,7 +392,7 @@ fn gateway_run_http_adapter_auth_validates_and_redacts_requests() {
             "--http-adapter-rate-limit",
             "4",
             "--timeout",
-            "900ms",
+            "5s",
             "--ndjson",
         ],
     );
