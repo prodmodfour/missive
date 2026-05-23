@@ -148,6 +148,8 @@ Included:
 
 ## Latest maintenance notes
 
+Recovery maintenance update requested by the user: oversized ticket 051 was split after a prior token/context-length failure into ticket 051 for the `missive doctor` check model and local health checks, and ticket 052 for A2A endpoint reachability plus gateway health/status checks. Later pending tickets were renumbered to 053 through 068. No product code was changed. Lightweight validation run: `bash -n scripts/build-loop.sh scripts/run-agent.sh`, `bash -n scripts/build-loop.sh && bash -n scripts/run-agent.sh`, plus a heading-sequence check confirming tickets 000 through 068 are unique and ordered.
+
 Recovery maintenance update requested by the user: oversized ticket 050 was split after a prior token/context-length failure into ticket 050 for `missive logs` and `missive events tail` diagnostics, and ticket 051 for `missive doctor` health checks. Later pending tickets were renumbered to 052 through 067. No product code was changed. Lightweight validation run: `bash -n scripts/build-loop.sh && bash -n scripts/run-agent.sh`, plus a heading-sequence check confirming tickets 000 through 067 are unique and ordered.
 
 Out-of-band automation update requested by the user: `scripts/build-loop.sh` now retries failed agent attempts after cleaning the checkout. A failed attempt is an agent command failure, a dirty tree after the agent returns, or a run that produces no new commit. Cleanup runs `git reset --hard <pre-attempt HEAD>` and `git clean -fd`; retry waits 600 seconds by default, can be tuned with `--failure-retry-sleep`/`MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP`, and can be disabled with `--no-failure-retry`.
@@ -164,7 +166,7 @@ None known.
 
 ## Limitations
 
-The A2A conformance fixture suite is a static, local compatibility suite based on A2A 1.0 specification examples and the current official Rust SDK wire shape. It is not an external certification program and does not prove interoperability with every independent A2A implementation; ticket 064 remains responsible for running against an upstream/example A2A agent.
+The A2A conformance fixture suite is a static, local compatibility suite based on A2A 1.0 specification examples and the current official Rust SDK wire shape. It is not an external certification program and does not prove interoperability with every independent A2A implementation; ticket 066 remains responsible for running against an upstream/example A2A agent.
 
 `missive-test-support` remains a deterministic local fixture server rather than a formal external conformance service. It intentionally serves the endpoint shapes needed by current and near-future missive tests.
 
@@ -254,4 +256,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 051 — Implement doctor health checks.
+Ticket 051 — Implement doctor check model and local health checks.
