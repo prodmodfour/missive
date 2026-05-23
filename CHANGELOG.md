@@ -8,8 +8,9 @@ This project follows an autonomous ticket queue. Each completed ticket should ad
 
 ### Added
 
-* Cargo-deny supply-chain policy, duplicate-dependency exception tracking, dependency update documentation, and metadata-derived CycloneDX SBOM generation script.
-* Release packaging dry-run workflow, local archive/checksum scripts, and install/update documentation for `missive` release artifacts.
-* Bootstrap Rust workspace root with a placeholder `missive` binary.
-* Repository hygiene files, licensing, contribution, security, and changelog scaffolding.
-* Initial documentation directory for future architecture decision records.
+* Completed the autonomous build queue for the current `missive` scope: CLI, A2A protocol integration, SQLite local state, routing, collectives, gateway, adapters, observability, tests, CI, release packaging, and documentation are now represented in the workspace.
+* A `missive` binary with human, JSON, NDJSON, and quiet output modes plus implemented agent registry, Agent Card discovery, send, stream, task, artifact, context, group, route, collective, push, webhook, gateway, job, doctor, logs, events, completion, manpage, stdio adapter, file-drop adapter, and HTTP-adapter surfaces.
+* Workspace crates for core types/config/errors, A2A client/protocol compatibility, store migrations/repositories, routing, gateway, adapters, observability, CLI, and reusable local A2A test fixtures.
+* Local mock A2A fixtures, A2A conformance fixtures, CLI smoke examples, property tests, fuzz smoke targets, mutation/failure-injection smoke, Criterion benchmarks, and multi-agent demos.
+* GitHub Actions CI/release dry-run workflows, Docker/devcontainer support, cargo-deny supply-chain policy, metadata-derived CycloneDX SBOM generation, and local release archive/checksum/install scripts.
+* Repository hygiene files, licensing, contribution, security, changelog, architecture decision records, user guides, operations runbook, troubleshooting, and autonomous build documentation.

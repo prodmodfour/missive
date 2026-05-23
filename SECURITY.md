@@ -1,31 +1,35 @@
 # Security policy
 
-`missive` is at bootstrap stage and is not yet production-ready. Treat all protocol inputs, adapter inputs, webhooks, configuration files, and persisted state as untrusted until the relevant tickets add hardened implementations.
+`missive` has completed the autonomous build queue for its current scope, but it is still an early-stage communication control plane rather than a hardened production service. Treat protocol inputs, adapter inputs, webhook payloads, configuration files, generated diagnostics, and local SQLite state as sensitive and untrusted unless a deployment-specific review says otherwise.
 
 ## Supported versions
 
-No released versions are supported yet. Security posture will be updated when release packaging is added.
+No public stable release is supported yet. The repository contains release-packaging dry-run scripts and CI artifacts, but maintainers should publish a support policy when the first supported release is cut.
 
 ## Reporting issues
 
-Do not include real secrets, credentials, tokens, private keys, private URLs, or private data in public reports. Use the repository's configured private advisory process when available; otherwise, share only a minimal redacted reproduction with maintainers.
+Do not include real secrets, credentials, tokens, private keys, private URLs, internal hostnames, or private data in public reports. Use the repository's configured private advisory process when available; otherwise, share only a minimal redacted reproduction with maintainers.
 
 ## Current safeguards
 
-The repository includes lightweight guardrails for:
+The repository includes guardrails and implementation boundaries for:
 
-* obvious secret patterns
-* generated/private/runtime files
-* avoiding committed local state such as databases, logs, sockets, and PID files
-* CLI output redaction helpers for secret-like JSON fields and HTTP authorization headers
-* configuration schema validation that rejects raw secret fields and supports redacted config rendering
+* obvious secret-pattern scans and generated/private/runtime file scans in `scripts/quality-gate.sh`;
+* keeping default runtime state outside the source tree through XDG/MISSIVE_HOME state paths;
+* non-secret auth refs for environment variables and platform keyrings instead of raw-token SQLite storage;
+* CLI, log, event, doctor, context-export, and diagnostic output redaction for authorization headers, cookies, tokens, API keys, passwords, and secret-like fields;
+* A2A service-parameter validation, protocol-version handling, interface negotiation, and local mock/conformance tests;
+* webhook and HTTP-adapter optional header-token validation, local bind defaults, body/rate limits where implemented, and clear trust-boundary documentation;
+* SQLite migrations and typed repository APIs for local communication state;
+* cargo-deny advisory/license/source policy plus metadata-derived SBOM generation.
 
-These guardrails are not a substitute for full security review. Later tickets add authentication input handling, storage hardening, webhook validation, adapter trust boundaries, tracing/log redaction, and supply-chain checks.
+These safeguards do not replace a deployment security review, transport/TLS review, operating-system hardening, retention policy, or external adapter platform review. Current limitations and trust boundaries are documented in [`docs/security.md`](docs/security.md), [`docs/gateway.md`](docs/gateway.md), [`docs/adapters.md`](docs/adapters.md), and [`docs/runbook.md`](docs/runbook.md).
 
 ## Local development expectations
 
-* Keep runtime state outside the repository by default.
-* Keep real local `missive.toml` and `.missive.toml` files out of version control; this repository ignores those filenames by default.
-* Use local mock services for protocol tests.
+* Keep runtime state, local configs, logs, databases, release artifacts, coverage, fuzz artifacts, and generated reports out of version control.
+* Keep real `missive.toml`, `.missive.toml`, `.env*`, tokens, keys, and private endpoint details out of commits.
+* Use local mock services for protocol tests by default.
 * Do not attack, scan, fuzz, or load-test third-party services.
-* Redact authentication material in logs, traces, fixtures, and documentation.
+* Redact authentication material in logs, traces, fixtures, documentation, issue reports, and escalation bundles.
+* Run `scripts/quality-gate.sh` before commits; use `MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh` when a deeper local validation pass is feasible.

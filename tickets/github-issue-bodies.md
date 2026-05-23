@@ -18,9 +18,9 @@ Phase: Foundation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -42,9 +42,9 @@ Phase: Foundation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -66,9 +66,9 @@ Phase: Foundation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -89,9 +89,10 @@ Phase: Foundation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -112,9 +113,9 @@ Phase: Foundation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -136,9 +137,9 @@ Phase: Core
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -160,9 +161,9 @@ Phase: Core
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -183,9 +184,9 @@ Phase: CLI
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -207,9 +208,9 @@ Phase: CLI
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -231,9 +232,9 @@ Phase: Core
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -255,9 +256,9 @@ Phase: Store
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -279,9 +280,9 @@ Phase: Store
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -303,9 +304,9 @@ Phase: Store
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -327,9 +328,9 @@ Phase: Agent Registry
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -351,9 +352,9 @@ Phase: A2A
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -375,9 +376,9 @@ Phase: A2A
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -399,9 +400,9 @@ Phase: A2A
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -423,9 +424,9 @@ Phase: A2A
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -447,9 +448,9 @@ Phase: Security
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -471,9 +472,9 @@ Phase: Messaging
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -495,9 +496,9 @@ Phase: Messaging
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -519,9 +520,9 @@ Phase: Tasks
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -543,9 +544,9 @@ Phase: Contexts
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -567,9 +568,9 @@ Phase: Messaging
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -591,9 +592,9 @@ Phase: Artifacts
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -615,9 +616,9 @@ Phase: Events
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -638,9 +639,10 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -662,9 +664,10 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -686,9 +689,9 @@ Phase: Push
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -710,9 +713,9 @@ Phase: Gateway
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -733,9 +736,9 @@ Phase: Gateway
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -757,9 +760,9 @@ Phase: Gateway
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -781,9 +784,9 @@ Phase: Gateway
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -805,9 +808,9 @@ Phase: Groups
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -829,9 +832,9 @@ Phase: Collectives
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -852,9 +855,9 @@ Phase: Collectives
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -876,9 +879,9 @@ Phase: Collectives
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -900,9 +903,9 @@ Phase: Collectives
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -923,9 +926,9 @@ Phase: Router
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -946,9 +949,9 @@ Phase: Router
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -970,9 +973,9 @@ Phase: Sessions
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -994,9 +997,9 @@ Phase: Sessions
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -1017,9 +1020,9 @@ Phase: Gateway
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -1041,9 +1044,9 @@ Phase: Adapters
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -1065,9 +1068,9 @@ Phase: Adapters
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -1089,9 +1092,9 @@ Phase: Adapters
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -1112,9 +1115,9 @@ Phase: Adapters
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
@@ -1136,60 +1139,139 @@ Phase: Adapters
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 048 — Implement observability and tracing
+## 048 — Implement tracing/logging foundation
 
 Phase: Observability
 
 ### Required
 
-* Add tracing spans for CLI commands, A2A requests, store operations, gateway jobs, adapter events, and collectives.
-* Support RUST_LOG/env filters and optional JSON logs.
-* Redact secrets in traces.
+* Add a reusable `missive-observe` initialization API for tracing subscribers that can be shared by the CLI, gateway, adapters, and tests.
+* Wire CLI/global diagnostics handling for `RUST_LOG`/env filters, `--trace`, `--verbose`, and optional JSON log formatting without changing command semantics beyond diagnostics.
+* Ensure log/tracing rendering uses existing redaction helpers or equivalent so authorization headers, tokens, cookies, and secret-like fields are never emitted raw.
+* Document log levels, JSON log mode, default destinations, and redaction boundaries.
 
 ### Acceptance criteria
 
-* Tests or snapshots confirm redaction.
-* Debug logs help diagnose failed protocol calls.
-* Docs explain log levels and destinations.
+* Tests or snapshots confirm env-filter/JSON-log configuration and logging-layer secret redaction.
+* `RUST_LOG`, `--trace`, and `--verbose` produce deterministic diagnostic behavior in smoke or unit tests where feasible.
+* Docs explain how to enable human and JSON logs and where logs are written.
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 049 — Implement logs and diagnostics commands
+## 049 — Add observability spans across missive operations
 
 Phase: Observability
 
 ### Required
 
-* Add missive logs, missive events tail, and missive doctor.
-* doctor should check Rust binary version, config validity, database migrations, tool availability, A2A endpoint reachability, and gateway status.
+* Add tracing spans and structured fields for CLI commands, A2A requests, store operations, gateway jobs, adapter events, and collectives.
+* Include protocol/transport debug context needed to diagnose failed A2A calls while preserving redaction and avoiding raw message or secret payloads.
+* Add tests or snapshots for representative CLI, A2A client, store, gateway/adapter, and collective instrumentation.
+* Update docs with span/field conventions and troubleshooting examples.
 
 ### Acceptance criteria
 
-* doctor works with no config and with a populated config.
-* doctor --json emits actionable status objects.
-* logs/events commands do not expose secrets.
+* Debug logs show selected command, agent/binding/protocol version, request/task/job identifiers, state transitions, and errors where applicable.
+* Spans do not expose raw tokens, auth headers, or secret-like values.
+* Representative tests cover CLI, A2A client, store, and at least one gateway/adapter or collective instrumentation path.
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 050 — Implement shell completions and manpages
+## 050 — Implement logs and event-tail diagnostics commands
+
+Phase: Observability
+
+### Required
+
+* Add or complete `missive logs` for inspecting local missive diagnostic output sources that are available in the selected profile, including clear human output and stable JSON/NDJSON output.
+* Harden or finish `missive events tail` as the event-stream diagnostics surface, including bounded tailing through `--limit` and/or global `--timeout`, useful filters, and stable machine-readable event envelopes.
+* Reuse existing output rendering and redaction helpers so logs and event-tail output never expose authorization headers, tokens, cookies, secret-like fields, or raw private runtime paths beyond documented local-state paths.
+* Document the logs/events diagnostic workflow and how it differs from the later `doctor` health-check command.
+
+### Acceptance criteria
+
+* `missive logs` works with no config and with a populated profile, either showing available local diagnostics or returning actionable empty/unavailable status without exposing secrets.
+* `missive logs --json` and `missive events tail --ndjson` emit parseable, stable machine-readable records.
+* Tests cover log rendering, bounded event tailing/follow behavior, filters where implemented, and redaction of secret-like values.
+
+### Validation
+
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
+
+---
+
+## 051 — Implement doctor check model and local health checks
+
+Phase: Observability
+
+### Required
+
+* Add or complete `missive doctor` with a reusable check model, human summary output, stable JSON output, overall status, severity/status fields, check ids, messages, and remediation hints where useful.
+* Check Rust binary version/build info, config discovery and validation, selected profile state paths, SQLite database migration state, and useful local tool availability.
+* Return deterministic overall success/failure behavior suitable for automation for local checks only.
+* Redact auth refs, headers, tokens, private config values, and secret-like fields in every doctor output mode while showing only documented local-state paths where needed.
+
+### Acceptance criteria
+
+* `missive doctor` works with no config and with a populated temporary config/profile store for local checks.
+* `missive doctor --json` emits parseable local status objects with actionable check identifiers, severity/status, messages, hints, and an overall summary.
+* Tests cover no-config, valid populated config, invalid config, migrated/unmigrated database state, useful local tool availability where deterministic, and redaction.
+
+### Validation
+
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
+
+---
+
+## 052 — Extend doctor with A2A endpoint and gateway checks
+
+Phase: Observability
+
+### Required
+
+* Check configured A2A endpoint reachability using safe, non-mutating discovery/status requests and existing auth/redaction handling.
+* Check local gateway health/status when configured or running, including unavailable/stopped cases.
+* Integrate endpoint and gateway results into the existing doctor human and JSON output model without changing local-check semantics from ticket 051.
+* Return actionable status objects with severity, check id, message, remediation hint where useful, and deterministic overall success/failure behavior suitable for automation.
+* Redact auth refs, headers, tokens, endpoint credentials, private config values, and secret-like fields in every doctor output mode.
+
+### Acceptance criteria
+
+* `missive doctor --json` includes parseable status objects for configured A2A endpoint reachability and gateway health/status when applicable.
+* Tests cover mock reachable/unreachable A2A endpoint checks, gateway running/unavailable status handling, and endpoint/auth redaction.
+* When no endpoints or gateway are configured, remote/gateway checks report skipped or not-applicable status without failing otherwise healthy local doctor runs.
+
+### Validation
+
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
+
+---
+
+## 053 — Implement shell completions and manpages
 
 Phase: CLI Polish
 
@@ -1206,13 +1288,13 @@ Phase: CLI Polish
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 051 — Implement command examples and smoke tests
+## 054 — Implement command examples and smoke tests
 
 Phase: Testing
 
@@ -1230,13 +1312,13 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 052 — Add property tests for parsers and routing
+## 055 — Add property tests for parsers and routing
 
 Phase: Testing
 
@@ -1253,13 +1335,14 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 053 — Add fuzzing smoke tests
+## 056 — Add fuzzing smoke tests
 
 Phase: Testing
 
@@ -1276,13 +1359,14 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 054 — Add mutation and failure-injection tests
+## 057 — Add mutation and failure-injection tests
 
 Phase: Testing
 
@@ -1299,13 +1383,14 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 055 — Add benchmarks and performance budgets
+## 058 — Add benchmarks and performance budgets
 
 Phase: Testing
 
@@ -1322,13 +1407,14 @@ Phase: Testing
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 056 — Add CI workflow
+## 059 — Add CI workflow
 
 Phase: CI/CD
 
@@ -1345,13 +1431,13 @@ Phase: CI/CD
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 057 — Add cross-platform build matrix
+## 060 — Add cross-platform build matrix
 
 Phase: CI/CD
 
@@ -1368,13 +1454,13 @@ Phase: CI/CD
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 058 — Add Docker and devcontainer support
+## 061 — Add Docker and devcontainer support
 
 Phase: Developer Experience
 
@@ -1392,13 +1478,13 @@ Phase: Developer Experience
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 059 — Add release packaging
+## 062 — Add release packaging
 
 Phase: Release
 
@@ -1415,13 +1501,13 @@ Phase: Release
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 060 — Add supply-chain checks
+## 063 — Add supply-chain checks
 
 Phase: Security
 
@@ -1438,13 +1524,13 @@ Phase: Security
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 061 — Write user documentation
+## 064 — Write user documentation
 
 Phase: Documentation
 
@@ -1461,13 +1547,13 @@ Phase: Documentation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 062 — Write architecture and operations documentation
+## 065 — Write architecture and operations documentation
 
 Phase: Documentation
 
@@ -1484,13 +1570,13 @@ Phase: Documentation
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 063 — Add compatibility tests against a2a-rs example agent
+## 066 — Add compatibility tests against a2a-rs example agent
 
 Phase: Interoperability
 
@@ -1508,13 +1594,14 @@ Phase: Interoperability
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 064 — Add end-to-end multi-agent demo
+## 067 — Add end-to-end multi-agent demo
 
 Phase: Interoperability
 
@@ -1531,13 +1618,14 @@ Phase: Interoperability
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
 
-## 065 — Final autonomous review and completion marker
+## 068 — Final autonomous review and completion marker
 
 Phase: Completion
 
@@ -1556,9 +1644,9 @@ Phase: Completion
 
 ### Validation
 
-* Run scripts/quality-gate.sh
-* Update BUILD_TICKETS.md and BUILD_NOTES.md
-* Commit with conventional commit message
+* Run `scripts/quality-gate.sh`
+* Also run aggressive or targeted checks relevant to this ticket when feasible
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`
+* Commit the completed ticket with a conventional commit message
 
 ---
-

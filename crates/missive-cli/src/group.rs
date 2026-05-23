@@ -2,8 +2,8 @@
 //!
 //! Groups are profile-scoped local control-plane rows that bind registered
 //! agent aliases to stable rank names plus routing hints. Collective operations
-//! consume this state in later tickets; this module intentionally stops at
-//! group and membership CRUD.
+//! consume this state through the broadcast, barrier, gather, and reduce command
+//! modules; this module owns group and membership CRUD.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;

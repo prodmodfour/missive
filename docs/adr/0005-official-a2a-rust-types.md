@@ -61,8 +61,8 @@ If `missive` ever switches to an unreleased Git dependency, the dependency must 
 ### Negative
 
 * `missive-a2a` still needs a small normalization layer for legacy card shapes and fixture aliases.
-* Optional Agent Card security fields are preserved in raw JSON but are not yet interpreted by missive; authentication handling remains a later ticket.
-* The official client/server crates are not integrated yet, so outbound protocol operations are still future work.
+* Optional Agent Card security fields are preserved in raw JSON but are not yet interpreted automatically by missive; implemented outbound authentication is supplied through missive auth refs, environment variables, keyrings, or CLI headers.
+* The official client/server crates are still not integrated; missive implements the currently supported Agent Card, send, stream, task, push, subscription, gateway, and webhook HTTP behavior behind `crates/missive-a2a` and local gateway crates.
 
 ## References
 

@@ -47,8 +47,8 @@ pub enum StatePlatform {
     Linux,
     /// macOS fallback directories under `~/Library`.
     MacOs,
-    /// Other platforms use the Linux/XDG fallback unless a later ticket adds
-    /// a platform-specific service/runtime policy.
+    /// Other platforms use the Linux/XDG fallback unless future work adds a
+    /// platform-specific service/runtime policy.
     Other,
 }
 

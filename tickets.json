@@ -4,7 +4,7 @@
     "id": "000",
     "title": "Bootstrap repository skeleton",
     "phase": "Foundation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:foundation"
@@ -20,9 +20,9 @@
       "scripts/quality-gate.sh passes from a clean checkout."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -30,7 +30,7 @@
     "id": "001",
     "title": "Define Cargo workspace and crate layout",
     "phase": "Foundation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:foundation"
@@ -46,9 +46,9 @@
       "The binary name missive is present in the CLI crate manifest."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -56,7 +56,7 @@
     "id": "002",
     "title": "Install and document autonomous build tooling",
     "phase": "Foundation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:foundation"
@@ -72,9 +72,9 @@
       "quality gate passes even when optional tools are absent, while using them when present."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -82,7 +82,7 @@
     "id": "003",
     "title": "Harden Rust quality gate",
     "phase": "Foundation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:foundation"
@@ -97,9 +97,10 @@
       "MISSIVE_AGGRESSIVE_TESTS=1 enables deeper checks without changing script source."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -107,7 +108,7 @@
     "id": "004",
     "title": "Create architecture decision records scaffold",
     "phase": "Foundation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:foundation"
@@ -122,9 +123,9 @@
       "docs validation passes."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -132,7 +133,7 @@
     "id": "005",
     "title": "Implement core error and result types",
     "phase": "Core",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:core"
@@ -148,9 +149,9 @@
       "CLI can map errors to deterministic exit codes in later tickets."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -158,7 +159,7 @@
     "id": "006",
     "title": "Implement IDs, timestamps, metadata, and envelope primitives",
     "phase": "Core",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:core"
@@ -174,9 +175,9 @@
       "Property tests cover valid/invalid identifier round trips where useful."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -184,7 +185,7 @@
     "id": "007",
     "title": "Implement CLI skeleton and global flags",
     "phase": "CLI",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:cli"
@@ -199,9 +200,9 @@
       "Snapshot tests cover help output for key commands."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -209,7 +210,7 @@
     "id": "008",
     "title": "Implement output rendering contract",
     "phase": "CLI",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:cli"
@@ -225,9 +226,9 @@
       "No secret-like values are printed in normal logs."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -235,7 +236,7 @@
     "id": "009",
     "title": "Implement configuration discovery and profiles",
     "phase": "Core",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:core"
@@ -251,9 +252,9 @@
       "Config secrets are never displayed raw."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -261,7 +262,7 @@
     "id": "010",
     "title": "Implement local state paths and lock handling",
     "phase": "Store",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:store"
@@ -277,9 +278,9 @@
       "No runtime state is written into source tree by default."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -287,7 +288,7 @@
     "id": "011",
     "title": "Design SQLite schema and migrations",
     "phase": "Store",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:store"
@@ -303,9 +304,9 @@
       "Schema docs include table purpose and retention notes."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -313,7 +314,7 @@
     "id": "012",
     "title": "Implement store repository APIs",
     "phase": "Store",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:store"
@@ -329,9 +330,9 @@
       "Store APIs do not leak SQL strings into CLI code."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -339,7 +340,7 @@
     "id": "013",
     "title": "Implement agent registry commands",
     "phase": "Agent Registry",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:agent-registry"
@@ -355,9 +356,9 @@
       "Tests cover duplicate aliases and missing agents."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -365,7 +366,7 @@
     "id": "014",
     "title": "Implement public Agent Card discovery",
     "phase": "A2A",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:a2a"
@@ -381,9 +382,9 @@
       "Card cache can be bypassed with --refresh."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -391,7 +392,7 @@
     "id": "015",
     "title": "Implement A2A interface negotiation",
     "phase": "A2A",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:a2a"
@@ -407,9 +408,9 @@
       "Errors explain which bindings are supported locally."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -417,7 +418,7 @@
     "id": "016",
     "title": "Integrate official or vendored A2A Rust types",
     "phase": "A2A",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:a2a"
@@ -433,9 +434,9 @@
       "A2A fixtures round-trip through serde."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -443,7 +444,7 @@
     "id": "017",
     "title": "Implement A2A service parameter handling",
     "phase": "A2A",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:a2a"
@@ -459,9 +460,9 @@
       "Version used is recorded in event/task metadata."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -469,7 +470,7 @@
     "id": "018",
     "title": "Implement authentication inputs and redaction",
     "phase": "Security",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:security"
@@ -485,9 +486,9 @@
       "Security docs explain auth storage tradeoffs."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -495,7 +496,7 @@
     "id": "019",
     "title": "Implement send message command",
     "phase": "Messaging",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:messaging"
@@ -511,9 +512,9 @@
       "Output includes task id/context id when provided by server."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -521,7 +522,7 @@
     "id": "020",
     "title": "Implement streaming message command",
     "phase": "Messaging",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:messaging"
@@ -537,9 +538,9 @@
       "NDJSON stream is machine readable."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -547,7 +548,7 @@
     "id": "021",
     "title": "Implement task get/list/wait/cancel",
     "phase": "Tasks",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:tasks"
@@ -563,9 +564,9 @@
       "Task output is available in human and JSON modes."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -573,7 +574,7 @@
     "id": "022",
     "title": "Implement context/session commands",
     "phase": "Contexts",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:contexts"
@@ -589,9 +590,9 @@
       "Forking records parent context metadata."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -599,7 +600,7 @@
     "id": "023",
     "title": "Implement message parts for text, files, and structured data",
     "phase": "Messaging",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:messaging"
@@ -615,9 +616,9 @@
       "MIME metadata is preserved."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -625,7 +626,7 @@
     "id": "024",
     "title": "Implement artifact handling and export",
     "phase": "Artifacts",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:artifacts"
@@ -641,9 +642,9 @@
       "Tests cover multiple artifacts and incremental artifact updates."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -651,7 +652,7 @@
     "id": "025",
     "title": "Implement event journal and replay",
     "phase": "Events",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:events"
@@ -667,9 +668,9 @@
       "Replay reconstructs task/context summaries in tests."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -677,7 +678,7 @@
     "id": "026",
     "title": "Build local mock A2A server fixtures",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -692,9 +693,10 @@
       "Test docs explain how to run and extend fixtures."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -702,7 +704,7 @@
     "id": "027",
     "title": "Add A2A conformance fixture suite",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -718,9 +720,10 @@
       "Future protocol updates have a documented fixture update process."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -728,7 +731,7 @@
     "id": "028",
     "title": "Implement push notification config commands",
     "phase": "Push",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:push"
@@ -744,9 +747,9 @@
       "Auth info is redacted in output."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -754,7 +757,7 @@
     "id": "029",
     "title": "Implement webhook receiver",
     "phase": "Gateway",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:gateway"
@@ -770,9 +773,9 @@
       "Docs include local tunneling examples without requiring a specific vendor."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -780,7 +783,7 @@
     "id": "030",
     "title": "Implement gateway daemon skeleton",
     "phase": "Gateway",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:gateway"
@@ -795,9 +798,9 @@
       "No orphan processes remain after tests."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -805,7 +808,7 @@
     "id": "031",
     "title": "Implement gateway subscriptions and resume",
     "phase": "Gateway",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:gateway"
@@ -821,9 +824,9 @@
       "Terminal task subscriptions are cleaned up."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -831,7 +834,7 @@
     "id": "032",
     "title": "Implement gateway service installation",
     "phase": "Gateway",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:gateway"
@@ -847,9 +850,9 @@
       "Docs include journal/log inspection commands."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -857,7 +860,7 @@
     "id": "033",
     "title": "Implement group model and commands",
     "phase": "Groups",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:groups"
@@ -873,9 +876,9 @@
       "group show displays members and routing policy."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -883,7 +886,7 @@
     "id": "034",
     "title": "Implement broadcast collective",
     "phase": "Collectives",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:collectives"
@@ -899,9 +902,9 @@
       "Output includes per-agent task ids and states."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -909,7 +912,7 @@
     "id": "035",
     "title": "Implement barrier collective",
     "phase": "Collectives",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:collectives"
@@ -924,9 +927,9 @@
       "Tests cover terminal-state detection."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -934,7 +937,7 @@
     "id": "036",
     "title": "Implement gather collective",
     "phase": "Collectives",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:collectives"
@@ -950,9 +953,9 @@
       "Artifacts can be exported without overwriting unsafe paths."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -960,7 +963,7 @@
     "id": "037",
     "title": "Implement reduce collective",
     "phase": "Collectives",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:collectives"
@@ -976,9 +979,9 @@
       "Failure modes are documented."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -986,7 +989,7 @@
     "id": "038",
     "title": "Implement routing policies",
     "phase": "Router",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:router"
@@ -1001,9 +1004,9 @@
       "Invalid policies fail config validation."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1011,7 +1014,7 @@
     "id": "039",
     "title": "Implement capability-aware agent selection",
     "phase": "Router",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:router"
@@ -1026,9 +1029,9 @@
       "Capabilities are refreshed/cached correctly."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1036,7 +1039,7 @@
     "id": "040",
     "title": "Implement gateway session store inspired by Hermes",
     "phase": "Sessions",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:sessions"
@@ -1052,9 +1055,9 @@
       "Docs distinguish sessions from long-term memory."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1062,7 +1065,7 @@
     "id": "041",
     "title": "Implement busy input modes",
     "phase": "Sessions",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:sessions"
@@ -1078,9 +1081,9 @@
       "Behaviour is configurable per profile/source."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1088,7 +1091,7 @@
     "id": "042",
     "title": "Implement background communication jobs",
     "phase": "Gateway",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:gateway"
@@ -1103,9 +1106,9 @@
       "Docs include examples for agents invoking jobs non-interactively."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1113,7 +1116,7 @@
     "id": "043",
     "title": "Define adapter trait and registry",
     "phase": "Adapters",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:adapters"
@@ -1129,9 +1132,9 @@
       "Docs explain adapter lifecycle."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1139,7 +1142,7 @@
     "id": "044",
     "title": "Implement stdin/stdout adapter",
     "phase": "Adapters",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:adapters"
@@ -1155,9 +1158,9 @@
       "Docs include shell examples."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1165,7 +1168,7 @@
     "id": "045",
     "title": "Implement file drop adapter",
     "phase": "Adapters",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:adapters"
@@ -1181,9 +1184,9 @@
       "Docs explain file naming and schemas."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1191,7 +1194,7 @@
     "id": "046",
     "title": "Implement HTTP inbound adapter",
     "phase": "Adapters",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:adapters"
@@ -1206,9 +1209,9 @@
       "Docs include curl examples."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
@@ -1216,7 +1219,7 @@
     "id": "047",
     "title": "Add external chat adapter stubs and roadmap",
     "phase": "Adapters",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:adapters"
@@ -1232,68 +1235,153 @@
       "No real platform tokens are included."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
     "number": 48,
     "id": "048",
-    "title": "Implement observability and tracing",
+    "title": "Implement tracing/logging foundation",
     "phase": "Observability",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:observability"
     ],
     "required": [
-      "Add tracing spans for CLI commands, A2A requests, store operations, gateway jobs, adapter events, and collectives.",
-      "Support RUST_LOG/env filters and optional JSON logs.",
-      "Redact secrets in traces."
+      "Add a reusable `missive-observe` initialization API for tracing subscribers that can be shared by the CLI, gateway, adapters, and tests.",
+      "Wire CLI/global diagnostics handling for `RUST_LOG`/env filters, `--trace`, `--verbose`, and optional JSON log formatting without changing command semantics beyond diagnostics.",
+      "Ensure log/tracing rendering uses existing redaction helpers or equivalent so authorization headers, tokens, cookies, and secret-like fields are never emitted raw.",
+      "Document log levels, JSON log mode, default destinations, and redaction boundaries."
     ],
     "acceptance_criteria": [
-      "Tests or snapshots confirm redaction.",
-      "Debug logs help diagnose failed protocol calls.",
-      "Docs explain log levels and destinations."
+      "Tests or snapshots confirm env-filter/JSON-log configuration and logging-layer secret redaction.",
+      "`RUST_LOG`, `--trace`, and `--verbose` produce deterministic diagnostic behavior in smoke or unit tests where feasible.",
+      "Docs explain how to enable human and JSON logs and where logs are written."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
     "number": 49,
     "id": "049",
-    "title": "Implement logs and diagnostics commands",
+    "title": "Add observability spans across missive operations",
     "phase": "Observability",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:observability"
     ],
     "required": [
-      "Add missive logs, missive events tail, and missive doctor.",
-      "doctor should check Rust binary version, config validity, database migrations, tool availability, A2A endpoint reachability, and gateway status."
+      "Add tracing spans and structured fields for CLI commands, A2A requests, store operations, gateway jobs, adapter events, and collectives.",
+      "Include protocol/transport debug context needed to diagnose failed A2A calls while preserving redaction and avoiding raw message or secret payloads.",
+      "Add tests or snapshots for representative CLI, A2A client, store, gateway/adapter, and collective instrumentation.",
+      "Update docs with span/field conventions and troubleshooting examples."
     ],
     "acceptance_criteria": [
-      "doctor works with no config and with a populated config.",
-      "doctor --json emits actionable status objects.",
-      "logs/events commands do not expose secrets."
+      "Debug logs show selected command, agent/binding/protocol version, request/task/job identifiers, state transitions, and errors where applicable.",
+      "Spans do not expose raw tokens, auth headers, or secret-like values.",
+      "Representative tests cover CLI, A2A client, store, and at least one gateway/adapter or collective instrumentation path."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
     "number": 50,
     "id": "050",
+    "title": "Implement logs and event-tail diagnostics commands",
+    "phase": "Observability",
+    "status": "DONE",
+    "labels": [
+      "autonomous-build",
+      "phase:observability"
+    ],
+    "required": [
+      "Add or complete `missive logs` for inspecting local missive diagnostic output sources that are available in the selected profile, including clear human output and stable JSON/NDJSON output.",
+      "Harden or finish `missive events tail` as the event-stream diagnostics surface, including bounded tailing through `--limit` and/or global `--timeout`, useful filters, and stable machine-readable event envelopes.",
+      "Reuse existing output rendering and redaction helpers so logs and event-tail output never expose authorization headers, tokens, cookies, secret-like fields, or raw private runtime paths beyond documented local-state paths.",
+      "Document the logs/events diagnostic workflow and how it differs from the later `doctor` health-check command."
+    ],
+    "acceptance_criteria": [
+      "`missive logs` works with no config and with a populated profile, either showing available local diagnostics or returning actionable empty/unavailable status without exposing secrets.",
+      "`missive logs --json` and `missive events tail --ndjson` emit parseable, stable machine-readable records.",
+      "Tests cover log rendering, bounded event tailing/follow behavior, filters where implemented, and redaction of secret-like values."
+    ],
+    "validation": [
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
+    ]
+  },
+  {
+    "number": 51,
+    "id": "051",
+    "title": "Implement doctor check model and local health checks",
+    "phase": "Observability",
+    "status": "DONE",
+    "labels": [
+      "autonomous-build",
+      "phase:observability"
+    ],
+    "required": [
+      "Add or complete `missive doctor` with a reusable check model, human summary output, stable JSON output, overall status, severity/status fields, check ids, messages, and remediation hints where useful.",
+      "Check Rust binary version/build info, config discovery and validation, selected profile state paths, SQLite database migration state, and useful local tool availability.",
+      "Return deterministic overall success/failure behavior suitable for automation for local checks only.",
+      "Redact auth refs, headers, tokens, private config values, and secret-like fields in every doctor output mode while showing only documented local-state paths where needed."
+    ],
+    "acceptance_criteria": [
+      "`missive doctor` works with no config and with a populated temporary config/profile store for local checks.",
+      "`missive doctor --json` emits parseable local status objects with actionable check identifiers, severity/status, messages, hints, and an overall summary.",
+      "Tests cover no-config, valid populated config, invalid config, migrated/unmigrated database state, useful local tool availability where deterministic, and redaction."
+    ],
+    "validation": [
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
+    ]
+  },
+  {
+    "number": 52,
+    "id": "052",
+    "title": "Extend doctor with A2A endpoint and gateway checks",
+    "phase": "Observability",
+    "status": "DONE",
+    "labels": [
+      "autonomous-build",
+      "phase:observability"
+    ],
+    "required": [
+      "Check configured A2A endpoint reachability using safe, non-mutating discovery/status requests and existing auth/redaction handling.",
+      "Check local gateway health/status when configured or running, including unavailable/stopped cases.",
+      "Integrate endpoint and gateway results into the existing doctor human and JSON output model without changing local-check semantics from ticket 051.",
+      "Return actionable status objects with severity, check id, message, remediation hint where useful, and deterministic overall success/failure behavior suitable for automation.",
+      "Redact auth refs, headers, tokens, endpoint credentials, private config values, and secret-like fields in every doctor output mode."
+    ],
+    "acceptance_criteria": [
+      "`missive doctor --json` includes parseable status objects for configured A2A endpoint reachability and gateway health/status when applicable.",
+      "Tests cover mock reachable/unreachable A2A endpoint checks, gateway running/unavailable status handling, and endpoint/auth redaction.",
+      "When no endpoints or gateway are configured, remote/gateway checks report skipped or not-applicable status without failing otherwise healthy local doctor runs."
+    ],
+    "validation": [
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
+    ]
+  },
+  {
+    "number": 53,
+    "id": "053",
     "title": "Implement shell completions and manpages",
     "phase": "CLI Polish",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:cli-polish"
@@ -1308,17 +1396,17 @@
       "README links to completion docs."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 51,
-    "id": "051",
+    "number": 54,
+    "id": "054",
     "title": "Implement command examples and smoke tests",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -1334,17 +1422,17 @@
       "Smoke tests are part of quality gate or CI."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 52,
-    "id": "052",
+    "number": 55,
+    "id": "055",
     "title": "Add property tests for parsers and routing",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -1359,17 +1447,18 @@
       "Failing seeds are documented by test output."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 53,
-    "id": "053",
+    "number": 56,
+    "id": "056",
     "title": "Add fuzzing smoke tests",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -1384,17 +1473,18 @@
       "Corpus and artifacts are not accidentally committed unless intentional seed corpus."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 54,
-    "id": "054",
+    "number": 57,
+    "id": "057",
     "title": "Add mutation and failure-injection tests",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -1409,17 +1499,18 @@
       "Results are documented in BUILD_NOTES.md when run."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 55,
-    "id": "055",
+    "number": 58,
+    "id": "058",
     "title": "Add benchmarks and performance budgets",
     "phase": "Testing",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:testing"
@@ -1434,20 +1525,21 @@
       "Performance regressions can be inspected locally."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 56,
-    "id": "056",
+    "number": 59,
+    "id": "059",
     "title": "Add CI workflow",
     "phase": "CI/CD",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
-      "phase:ci/cd"
+      "phase:ci-cd"
     ],
     "required": [
       "Add GitHub Actions workflow for fmt, clippy, tests, doc tests, build, secret scan, generated-file guardrail, and optional coverage.",
@@ -1459,20 +1551,20 @@
       "Local quality gate mirrors CI as closely as possible."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 57,
-    "id": "057",
+    "number": 60,
+    "id": "060",
     "title": "Add cross-platform build matrix",
     "phase": "CI/CD",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
-      "phase:ci/cd"
+      "phase:ci-cd"
     ],
     "required": [
       "Extend CI to Linux, macOS, and Windows where Rust CLI functionality should work.",
@@ -1484,17 +1576,17 @@
       "Docs are honest about unsupported functionality."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 58,
-    "id": "058",
+    "number": 61,
+    "id": "061",
     "title": "Add Docker and devcontainer support",
     "phase": "Developer Experience",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:developer-experience"
@@ -1510,17 +1602,17 @@
       "Docs include local and container workflows."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 59,
-    "id": "059",
+    "number": 62,
+    "id": "062",
     "title": "Add release packaging",
     "phase": "Release",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:release"
@@ -1535,17 +1627,17 @@
       "README includes install/update instructions."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 60,
-    "id": "060",
+    "number": 63,
+    "id": "063",
     "title": "Add supply-chain checks",
     "phase": "Security",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:security"
@@ -1560,17 +1652,17 @@
       "SBOM generation is available or consciously deferred."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 61,
-    "id": "061",
+    "number": 64,
+    "id": "064",
     "title": "Write user documentation",
     "phase": "Documentation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:documentation"
@@ -1585,17 +1677,17 @@
       "Docs avoid unsupported claims."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 62,
-    "id": "062",
+    "number": 65,
+    "id": "065",
     "title": "Write architecture and operations documentation",
     "phase": "Documentation",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:documentation"
@@ -1610,17 +1702,17 @@
       "Security docs cover auth, redaction, webhooks, and adapter trust boundaries."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 63,
-    "id": "063",
+    "number": 66,
+    "id": "066",
     "title": "Add compatibility tests against a2a-rs example agent",
     "phase": "Interoperability",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:interoperability"
@@ -1636,17 +1728,18 @@
       "Failures distinguish missive bugs from upstream/example limitations."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 64,
-    "id": "064",
+    "number": 67,
+    "id": "067",
     "title": "Add end-to-end multi-agent demo",
     "phase": "Interoperability",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:interoperability"
@@ -1661,17 +1754,18 @@
       "Collective operation events are visible via missive events."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   },
   {
-    "number": 65,
-    "id": "065",
+    "number": 68,
+    "id": "068",
     "title": "Final autonomous review and completion marker",
     "phase": "Completion",
-    "status": "TODO",
+    "status": "DONE",
     "labels": [
       "autonomous-build",
       "phase:completion"
@@ -1688,9 +1782,10 @@
       "Repository is ready for intended open-source/internal audience."
     ],
     "validation": [
-      "Run scripts/quality-gate.sh",
-      "Update BUILD_TICKETS.md and BUILD_NOTES.md",
-      "Commit with conventional commit message"
+      "Run `scripts/quality-gate.sh`",
+      "Also run aggressive or targeted checks relevant to this ticket when feasible",
+      "Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`",
+      "Commit the completed ticket with a conventional commit message"
     ]
   }
 ]

@@ -214,7 +214,7 @@ pub fn init_global(config: ObserveConfig) -> Result<()> {
 /// Emits a redacted bootstrap diagnostic after the subscriber is installed.
 ///
 /// This gives `RUST_LOG`, `--verbose`, and `--trace` deterministic behavior
-/// before later tickets add operation-level spans and events.
+/// before command-specific operation spans and events are emitted.
 pub fn emit_bootstrap_diagnostic(config: &ObserveConfig) {
     let summary = config.redacted_summary();
     let filter = summary

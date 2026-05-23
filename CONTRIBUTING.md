@@ -21,7 +21,7 @@ Run before every commit:
 scripts/quality-gate.sh
 ```
 
-The gate checks shell script syntax, repository hygiene, Rust formatting, Clippy, tests, and builds when a Cargo workspace is present. Optional aggressive checks are controlled by later tickets and the `MISSIVE_AGGRESSIVE_TESTS=1` environment variable.
+The gate checks shell script syntax, CI workflow syntax where applicable, repository hygiene, Rust feature combinations, formatting, Clippy, workspace tests, doc tests, documentation builds, debug/release builds, and installed dependency-policy tools. Optional aggressive checks are enabled with the `MISSIVE_AGGRESSIVE_TESTS=1` environment variable.
 
 ## Repository hygiene
 

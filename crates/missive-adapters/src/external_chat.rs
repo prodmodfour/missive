@@ -56,7 +56,7 @@ const TELEGRAM_SECRETS: &[&str] = &["bot_token_auth_ref", "webhook_secret_auth_r
 const TELEGRAM_PERMISSIONS: &[&str] = &[
     "bot command/message receipt for selected chats",
     "sendMessage or equivalent outbound update permissions",
-    "optional webhook management outside missive unless a later ticket adds it",
+    "optional webhook management outside missive unless future adapter work adds it",
 ];
 const TELEGRAM_BEHAVIORS: &[&str] = &[
     "privacy mode changes whether group messages are visible",

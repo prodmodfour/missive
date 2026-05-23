@@ -422,7 +422,7 @@ payloads over loopback HTTP, verifies graceful `--max-events` shutdown, checks
 NDJSON output, and inspects the persisted event journal. Neither test contacts
 external tunnel providers or third-party services.
 
-When later tickets add adapters, additional collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the ticket:
+When future work adds more adapter workers, additional collectives, or compatibility suites, prefer extending `crates/missive-test-support` instead of adding another one-off TCP mock inside a test file. Keep fixture changes focused on protocol surfaces needed by the change:
 
 1. add a helper or route to `MockA2aServer`/`MockA2aHandle`
 2. cover it with a local test in `crates/missive-test-support`

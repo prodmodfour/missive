@@ -113,8 +113,8 @@ Supported sections in the current implementation:
   inbox/outbox loop, and opt-in `missive gateway run --http-adapter` control
   endpoint are implemented. Discord, Slack, Telegram, Matrix, and Email have
   feature-gated registry/identity stubs in `missive-adapters`, but daemon-started
-  stdio/file-drop/external platform workers and live platform clients arrive in
-  later tickets.
+  stdio/file-drop/external platform workers and live platform clients remain
+  future work.
 * `qos` — timeout, connect timeout, retry attempts/backoff, maximum request
   bytes, and concurrency defaults. `qos.max_request_bytes` is currently enforced
   by `missive send` and `missive stream` while parsing local text, file-reference,

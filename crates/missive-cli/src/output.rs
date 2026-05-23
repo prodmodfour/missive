@@ -142,8 +142,8 @@ pub struct CommandStatus {
 }
 
 impl CommandStatus {
-    /// Creates the placeholder status for a parsed command whose real behavior is
-    /// intentionally implemented by a later ticket.
+    /// Creates the status for a parsed command group when no concrete operation
+    /// was selected.
     #[must_use]
     pub fn parsed(command: &str) -> Self {
         Self {
@@ -152,7 +152,7 @@ impl CommandStatus {
             implemented: false,
             config: None,
             message: format!(
-                "missive: '{command}' command parsed; implementation lands in a later ticket"
+                "missive: '{command}' command parsed; choose a subcommand or operation to run"
             ),
         }
     }

@@ -1327,7 +1327,7 @@ is secret-free and reports only discovery/source metadata and counts:
       "agent_count": 0,
       "auth_ref_count": 0
     },
-    "message": "missive: 'agent' command parsed; implementation lands in a later ticket"
+    "message": "missive: 'agent' command parsed; choose a subcommand or operation to run"
   }
 }
 ```

@@ -788,8 +788,8 @@ pub async fn run_gateway_daemon(
         config.state_paths.clone(),
         bus_tx.clone(),
     ));
-    // Keep the adapter event bridge type-checked in the daemon; concrete
-    // adapter workers in later tickets will retain sink clones while running.
+    // Keep the adapter event bridge type-checked in the daemon; future concrete
+    // adapter workers will retain sink clones while running.
     drop(GatewayAdapterEventSink::new(bus_tx.clone()));
     let supervisor_handle = tokio::spawn(supervisor_loop(state.clone(), bus_rx, event_tx.clone()));
 
@@ -1408,7 +1408,7 @@ fn initial_components(
     let adapter_detail = if http_adapter_enabled {
         "HTTP inbound adapter will be mounted after the gateway socket binds"
     } else {
-        "adapter tasks are reserved for later adapter tickets"
+        "configured adapter workers are not started by this gateway yet"
     };
     vec![
         GatewayComponentStatus::running(COMPONENT_SUPERVISOR, "supervising gateway tasks"),
@@ -1435,7 +1435,7 @@ fn initial_components(
         ),
         GatewayComponentStatus::idle(
             COMPONENT_WEBHOOK_RECEIVER,
-            "embedded webhook receiver is reserved for a later ticket; use missive webhook run today",
+            "embedded webhook receiver is not part of gateway run yet; use missive webhook run today",
         ),
         GatewayComponentStatus::idle(
             COMPONENT_BACKGROUND_JOBS,

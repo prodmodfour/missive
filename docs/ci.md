@@ -39,7 +39,7 @@ Platform-specific features are handled as follows:
 | `missive gateway install/start/stop/status/uninstall` service files | systemd user/system plans are supported and tested | launchd plans are supported and tested in platform-independent unit coverage | Unsupported; commands return a clear diagnostic and operators should run `missive gateway run` under an external supervisor |
 | Gateway daemon, HTTP adapter, webhook receiver | Portable Rust code is built/tested | Portable Rust code is built/tested | Portable Rust code is built/tested |
 
-Windows support currently means the Rust CLI, library crates, local SQLite state, HTTP clients/servers, output formats, and non-service gateway operation should compile and pass tests. Windows service installation is intentionally unsupported until a later ticket explicitly adds a Windows service manager integration.
+Windows support currently means the Rust CLI, library crates, local SQLite state, HTTP clients/servers, output formats, and non-service gateway operation should compile and pass tests. Windows service installation remains future work; commands return a clear unsupported-platform diagnostic today.
 
 ## Cache and secret posture
 

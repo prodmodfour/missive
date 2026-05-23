@@ -3,8 +3,8 @@
 //! Migrations are versioned SQL files embedded from `crates/missive-store/migrations`.
 //! The runner bootstraps a small `schema_migrations` ledger, verifies checksums
 //! for already-applied migrations, and applies pending migrations in version
-//! order inside SQLite transactions. Repository APIs in later tickets should call
-//! this module before reading or mutating profile state.
+//! order inside SQLite transactions. Repository APIs call this module before
+//! reading or mutating profile state.
 
 use std::collections::BTreeMap;
 use std::path::Path;
