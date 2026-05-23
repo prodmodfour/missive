@@ -1,31 +1,54 @@
 # missive
 
+[![CI](https://github.com/prodmodfour/missive/actions/workflows/ci.yml/badge.svg)](https://github.com/prodmodfour/missive/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 `missive` is an early-stage Rust command-line tool and local control plane for A2A-native agent communication. The long-term goal is to make agent messaging feel like `curl`, agent communication state feel like `kubectl`, and multi-agent coordination feel like MPI-style collective operations.
 
-## Current status
+Use `missive` to register A2A agents, discover Agent Cards, send and stream rich messages, inspect tasks and artifacts, route work across groups, run local gateway/adapters, and replay a redacted event journal from a terminal-first workflow.
 
-This repository is still early-stage, but it now contains:
+## Why missive
 
-* a Cargo workspace with the target crate layout under `crates/`, plus a dev-support crate for local A2A integration fixtures and protocol-versioned A2A conformance fixtures under `tests/fixtures/a2a/1.0/`
-* a `missive-cli` package that exposes the binary named `missive`
-* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, shell completion and manpage generation, the foreground `missive adapter stdio` JSON/NDJSON subprocess frame loop, the foreground `missive adapter file-drop` inbox/outbox loop, an opt-in authenticated HTTP inbound adapter mounted by `missive gateway run`, feature-gated external chat adapter stubs in the adapter crate, agent registry commands, A2A Agent Card discovery/cache inspection and capability summaries, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, context `create/list/show/fork/close/export`, group `create/list/show/add/remove/rename/delete/capabilities`, dry-run route explanation with built-in and Agent Card-aware capability routing policies, broadcast collective `bcast`, barrier collective `barrier`, gather collective `gather`, reduce collective `reduce`, push notification config `create/get/list/delete`, local webhook receiver `run`, gateway daemon `run`, gateway service `install/start/stop/status/uninstall`, gateway-managed background jobs `job start/list/show/cancel`, and event journal `list/tail/replay/export`
-* store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
-* repository hygiene files and guardrails
-* user, developer, and maintenance documentation under `docs/`, including `docs/adr/`
+Agent-to-agent systems need boring, scriptable operational tools: stable command output, local state that can be inspected, auth that does not require committing secrets, adapter boundaries that are explicit, and enough routing primitives to coordinate more than one agent. `missive` is the place where those pieces are being assembled for local development and future production hardening.
 
-Current crates:
+## Project status
+
+This repository is still early-stage and is not a hardened production service yet. It currently includes:
+
+* a Cargo workspace with the target crate layout under `crates/`, reusable local A2A integration fixtures, and protocol-versioned A2A conformance fixtures under `tests/fixtures/a2a/1.0/`;
+* a `missive-cli` package that exposes the binary named `missive`;
+* a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, shell completion, and manpage generation;
+* agent registry commands, A2A Agent Card discovery/cache inspection, capability summaries, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts, non-streaming `send`, streaming `stream`, task/artifact/context/group management, route explanation, broadcast/barrier/gather/reduce collectives, push webhook helpers, gateway jobs, and event journal commands;
+* foreground stdio and file-drop adapters, an opt-in authenticated HTTP inbound adapter mounted by `missive gateway run`, a local webhook receiver, gateway daemon/service helpers, and feature-gated external chat adapter stubs;
+* store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree;
+* repository hygiene guardrails plus user, developer, and maintenance documentation under `docs/`, including ADRs.
+
+## Workspace layout
 
 ```text
-crates/missive-cli        command parsing, output rendering, exit codes
-crates/missive-core       domain types, errors, config, IDs, envelopes
-crates/missive-a2a        A2A protocol/client integration and compatibility fixtures
-crates/missive-store      state paths, process locks, SQLite migrations and repository APIs
-crates/missive-router     agent selection, policies, groups, collectives
-crates/missive-gateway    daemon, subscriptions, webhooks, jobs, sessions
-crates/missive-adapters   stdin/stdout, file, HTTP, future chat adapters
-crates/missive-observe    tracing, logs, diagnostics, event export helpers
+crates/missive-cli          command parsing, output rendering, exit codes
+crates/missive-core         domain types, errors, config, IDs, envelopes
+crates/missive-a2a          A2A protocol/client integration and compatibility fixtures
+crates/missive-store        state paths, process locks, SQLite migrations and repository APIs
+crates/missive-router       agent selection, policies, groups, collectives
+crates/missive-gateway      daemon, subscriptions, webhooks, jobs, sessions
+crates/missive-adapters     stdin/stdout, file, HTTP, future chat adapters
+crates/missive-observe      tracing, logs, diagnostics, event export helpers
 crates/missive-test-support reusable local A2A integration fixtures for tests
 ```
+
+## Quick start
+
+```bash
+git clone https://github.com/prodmodfour/missive.git
+cd missive
+cargo run -p missive-cli --bin missive -- --help
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- doctor
+```
+
+For a complete local mock-agent walkthrough, start with [`docs/quickstart.md`](docs/quickstart.md). For a command reference, see [`docs/cli.md`](docs/cli.md).
+
+## Command surface
 
 The current binary exposes help for the top-level command tree, accepts global flags, implements `missive completion <shell>`, `missive manpage`, `missive adapter stdio`, `missive adapter file-drop`, the `missive gateway run --http-adapter` inbound HTTP endpoint, `missive agent add/list/show/inspect/refresh/capabilities/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, `missive group create/list/show/capabilities/add/remove/rename/delete`, Agent Card-aware `missive route explain`, `missive bcast`, `missive barrier`, `missive gather`, `missive reduce`, `missive push create/get/list/delete`, `missive webhook run`, `missive gateway run`, Linux systemd/macOS launchd `missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel`, `missive doctor`, `missive logs`, and `missive events list/tail/replay/export`:
 
@@ -203,6 +226,12 @@ scripts/generate-sbom.sh --output dist/missive-sbom.cdx.json
 ```
 
 Runtime state, credentials, logs, database files, generated artifacts, and other machine-local files must stay out of the repository.
+
+## Contributing and security
+
+Contributions are welcome while the project is evolving. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request, keep changes focused, update tests/docs with behavior changes, and run the quality gate when feasible.
+
+Security reports should follow [`SECURITY.md`](SECURITY.md). Do not include real credentials, private endpoints, internal hostnames, or sensitive payloads in public issues, examples, fixtures, logs, or diagnostics.
 
 ## License
 
