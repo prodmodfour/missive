@@ -1,15 +1,19 @@
-//! Local health checks for `missive doctor`.
+//! Health checks for `missive doctor`.
 //!
-//! This module deliberately checks only local binary, configuration, state-path,
-//! SQLite migration, and tool-availability concerns. Remote A2A endpoint and
-//! gateway liveness checks belong to the follow-up doctor ticket.
+//! This module checks local binary/configuration/storage/tooling concerns plus
+//! safe, non-mutating configured A2A endpoint discovery and local gateway status.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use missive_a2a::{AgentCardClient, AgentCardExt, AgentCardFetchOutcome, ServiceParameters};
+use missive_core::config::AgentConfig;
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
+use missive_gateway::daemon::DEFAULT_GATEWAY_STATUS_PATH;
 use missive_store::{
     CURRENT_SCHEMA_VERSION, StatePathResolver, StatePathSource, StatePaths, applied_migrations,
     embedded_migrations, open_sqlite_database, schema_version,
@@ -17,8 +21,9 @@ use missive_store::{
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::output::{OutputMode, redact_text, render_success};
-use crate::{BINARY_NAME, CRATE_NAME, GlobalArgs};
+use crate::auth::auth_headers_for_config_agent;
+use crate::output::{OutputMode, REDACTED, redact_text, render_success};
+use crate::{BINARY_NAME, CRATE_NAME, GlobalArgs, service_parameters_from_config_and_globals};
 
 /// Result metadata returned to the command dispatcher after rendering a doctor report.
 #[derive(Debug, Clone)]
@@ -258,13 +263,27 @@ fn collect_doctor_report(
         checks.push(sqlite_migration_skipped_check());
     }
 
+    if let Some(loaded_config) = &loaded_config {
+        let probe_timeout = doctor_probe_timeout(globals, loaded_config)?;
+        checks.extend(a2a_endpoint_checks(
+            globals,
+            loaded_config,
+            environment,
+            probe_timeout,
+        ));
+        checks.push(gateway_status_check(loaded_config, probe_timeout));
+    } else {
+        checks.push(a2a_endpoints_config_skipped_check());
+        checks.push(gateway_status_config_skipped_check());
+    }
+
     checks.extend(tool_availability_checks(environment));
 
     let overall = summarize_checks(&checks);
     let message = doctor_message(&selected_profile, &overall);
     let output = DoctorOutput {
         profile: selected_profile,
-        scope: "local".to_owned(),
+        scope: "local_remote_gateway".to_owned(),
         overall,
         checks,
         message,
@@ -332,9 +351,32 @@ fn config_success_check(loaded_config: &LoadedConfig) -> DoctorCheck {
             "profile_count": loaded_config.config.profiles.len(),
             "agent_count": loaded_config.config.agents.len(),
             "auth_ref_count": loaded_config.config.auth_refs.len(),
-            "redacted_config": loaded_config.to_redacted_json().ok(),
+            "redacted_config": loaded_config.to_redacted_json().ok().map(|value| redact_doctor_config_refs(&value)),
         }),
     )
+}
+
+fn redact_doctor_config_refs(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => {
+            let mut redacted = serde_json::Map::new();
+            for (key, value) in object {
+                let normalized: String = key
+                    .chars()
+                    .filter(|character| character.is_ascii_alphanumeric())
+                    .flat_map(char::to_lowercase)
+                    .collect();
+                if matches!(normalized.as_str(), "authref" | "authrefname" | "authrefs") {
+                    redacted.insert(key.clone(), Value::String(REDACTED.to_owned()));
+                } else {
+                    redacted.insert(key.clone(), redact_doctor_config_refs(value));
+                }
+            }
+            Value::Object(redacted)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(redact_doctor_config_refs).collect()),
+        other => other.clone(),
+    }
 }
 
 fn config_failure_check(error: &MissiveError, globals: &GlobalArgs) -> DoctorCheck {
@@ -541,6 +583,534 @@ fn sqlite_migration_skipped_check() -> DoctorCheck {
         vec!["Fix state path resolution first.".to_owned()],
         json!({ "expected_version": CURRENT_SCHEMA_VERSION }),
     )
+}
+
+fn doctor_probe_timeout(globals: &GlobalArgs, loaded_config: &LoadedConfig) -> Result<Duration> {
+    if let Some(value) = globals.timeout.as_deref() {
+        return parse_duration_arg("--timeout", value);
+    }
+
+    let profile = loaded_config.selected_profile_config()?;
+    let connect_timeout = profile
+        .qos
+        .as_ref()
+        .map_or(loaded_config.config.qos.connect_timeout.as_str(), |qos| {
+            qos.connect_timeout.as_str()
+        });
+    parse_duration_arg("qos.connect_timeout", connect_timeout)
+}
+
+fn a2a_endpoint_checks(
+    globals: &GlobalArgs,
+    loaded_config: &LoadedConfig,
+    environment: &BTreeMap<String, String>,
+    probe_timeout: Duration,
+) -> Vec<DoctorCheck> {
+    if loaded_config.config.agents.is_empty() {
+        return vec![DoctorCheck::skipped(
+            "a2a.endpoints",
+            "a2a",
+            "No config-seeded A2A agents are configured; endpoint reachability is not applicable",
+            vec!["Add [agents.<alias>] entries when this profile should monitor remote A2A endpoint reachability.".to_owned()],
+            json!({
+                "configured_agent_count": 0,
+                "probe": "public_agent_card_discovery",
+            }),
+        )];
+    }
+
+    let service_parameters = match service_parameters_from_config_and_globals(
+        loaded_config,
+        globals,
+    ) {
+        Ok(parameters) => parameters,
+        Err(error) => {
+            return vec![DoctorCheck::fail(
+                "a2a.service_parameters",
+                "a2a",
+                "A2A service parameters could not be prepared for endpoint checks",
+                error.exit_code(),
+                vec!["Fix [protocol] service parameters or --protocol-version/--a2a-extension/--service-param values.".to_owned()],
+                json!({ "error": error.to_report() }),
+            )];
+        }
+    };
+
+    let client = match AgentCardClient::with_timeout(probe_timeout) {
+        Ok(client) => client,
+        Err(error) => {
+            return vec![DoctorCheck::fail(
+                "a2a.endpoints.client",
+                "a2a",
+                "A2A endpoint probe client could not be constructed",
+                error.exit_code(),
+                vec![
+                    "Check local TLS/HTTP client configuration before retrying doctor.".to_owned(),
+                ],
+                json!({ "error": error.to_report() }),
+            )];
+        }
+    };
+
+    loaded_config
+        .config
+        .agents
+        .iter()
+        .map(|(alias, agent)| {
+            a2a_endpoint_check(
+                alias,
+                agent,
+                loaded_config,
+                globals,
+                environment,
+                &service_parameters,
+                &client,
+            )
+        })
+        .collect()
+}
+
+fn a2a_endpoint_check(
+    alias: &str,
+    agent: &AgentConfig,
+    loaded_config: &LoadedConfig,
+    globals: &GlobalArgs,
+    environment: &BTreeMap<String, String>,
+    service_parameters: &ServiceParameters,
+    client: &AgentCardClient,
+) -> DoctorCheck {
+    let auth_configured = config_agent_auth_configured(agent, globals);
+    let auth_headers = match auth_headers_for_config_agent(
+        loaded_config,
+        alias,
+        globals,
+        environment,
+    ) {
+        Ok(headers) => headers,
+        Err(error) => {
+            return DoctorCheck::fail(
+                format!("a2a.endpoint.{alias}"),
+                "a2a",
+                format!("A2A endpoint auth could not be resolved for configured agent '{alias}'"),
+                error.exit_code(),
+                vec!["Set the required auth environment variable, provision the configured keyring entry, or remove the auth_ref for this diagnostic run.".to_owned()],
+                json!({
+                    "agent": alias,
+                    "base_url": agent.base_url.as_str(),
+                    "probe": "public_agent_card_discovery",
+                    "auth_configured": auth_configured,
+                    "error": error.to_report(),
+                }),
+            );
+        }
+    };
+
+    let outcome = client.fetch_public_agent_card_with_service_parameters_and_auth(
+        &agent.base_url,
+        None,
+        service_parameters,
+        &auth_headers,
+    );
+
+    match outcome {
+        Ok(AgentCardFetchOutcome::Fetched(fetch)) => {
+            let summary = fetch.card.summary();
+            DoctorCheck::pass(
+                format!("a2a.endpoint.{alias}"),
+                "a2a",
+                format!("A2A Agent Card discovery succeeded for configured agent '{alias}'"),
+                json!({
+                    "agent": alias,
+                    "base_url": agent.base_url.as_str(),
+                    "probe": "public_agent_card_discovery",
+                    "agent_card_url": fetch.url,
+                    "http_status": fetch.status,
+                    "protocol_version_sent": service_parameters.protocol_version,
+                    "auth_configured": auth_configured,
+                    "agent_name": summary.name,
+                    "agent_version": summary.agent_version,
+                    "protocol_versions": summary.protocol_versions,
+                    "supported_interface_count": summary.supported_interfaces.len(),
+                    "default_input_modes": summary.default_input_modes,
+                    "default_output_modes": summary.default_output_modes,
+                    "streaming": summary.capabilities.streaming,
+                    "push_notifications": summary.capabilities.push_notifications,
+                }),
+            )
+        }
+        Ok(AgentCardFetchOutcome::NotModified(not_modified)) => DoctorCheck::pass(
+            format!("a2a.endpoint.{alias}"),
+            "a2a",
+            format!("A2A Agent Card discovery reached configured agent '{alias}'"),
+            json!({
+                "agent": alias,
+                "base_url": agent.base_url.as_str(),
+                "probe": "public_agent_card_discovery",
+                "agent_card_url": not_modified.url,
+                "http_status": not_modified.status,
+                "protocol_version_sent": service_parameters.protocol_version,
+                "auth_configured": auth_configured,
+                "cache_status": "not_modified",
+            }),
+        ),
+        Err(error) => DoctorCheck::fail(
+            format!("a2a.endpoint.{alias}"),
+            "a2a",
+            format!("A2A Agent Card discovery failed for configured agent '{alias}'"),
+            error.exit_code(),
+            vec![
+                "Verify the agent base URL serves /.well-known/agent-card.json and accepts the configured A2A-Version.".to_owned(),
+                "Check local network/TLS access and any configured auth ref without putting token values in config.".to_owned(),
+            ],
+            json!({
+                "agent": alias,
+                "base_url": agent.base_url.as_str(),
+                "probe": "public_agent_card_discovery",
+                "protocol_version_sent": service_parameters.protocol_version,
+                "auth_configured": auth_configured,
+                "error": error.to_report(),
+            }),
+        ),
+    }
+}
+
+fn a2a_endpoints_config_skipped_check() -> DoctorCheck {
+    DoctorCheck::skipped(
+        "a2a.endpoints",
+        "a2a",
+        "A2A endpoint reachability checks were skipped because configuration did not load",
+        vec!["Fix configuration discovery/validation first.".to_owned()],
+        json!({ "probe": "public_agent_card_discovery" }),
+    )
+}
+
+fn config_agent_auth_configured(agent: &AgentConfig, globals: &GlobalArgs) -> bool {
+    agent.auth_ref.is_some() || globals.bearer_token_env.is_some() || !globals.headers.is_empty()
+}
+
+fn gateway_status_check(loaded_config: &LoadedConfig, probe_timeout: Duration) -> DoctorCheck {
+    let gateway = match loaded_config.gateway_config() {
+        Ok(gateway) => gateway,
+        Err(error) => {
+            return DoctorCheck::fail(
+                "gateway.status",
+                "gateway",
+                "Gateway configuration could not be resolved",
+                error.exit_code(),
+                vec!["Fix [gateway] or [profiles.<name>.gateway] configuration.".to_owned()],
+                json!({ "error": error.to_report() }),
+            );
+        }
+    };
+    let (bind_addr, status_url) = match gateway_status_url(&gateway.bind_address) {
+        Ok(values) => values,
+        Err(error) => {
+            return DoctorCheck::fail(
+                "gateway.status",
+                "gateway",
+                "Gateway bind address could not be converted into a local status URL",
+                error.exit_code(),
+                vec![
+                    "Use an IP socket address such as 127.0.0.1:7347 for gateway.bind_address."
+                        .to_owned(),
+                ],
+                json!({
+                    "configured_enabled": gateway.enabled,
+                    "bind_address": gateway.bind_address,
+                    "error": error.to_report(),
+                }),
+            );
+        }
+    };
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(probe_timeout)
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            return DoctorCheck::fail(
+                "gateway.status",
+                "gateway",
+                "Gateway status HTTP client could not be constructed",
+                MissiveExitCode::Unavailable,
+                vec![
+                    "Check local TLS/HTTP client configuration before retrying doctor.".to_owned(),
+                ],
+                json!({
+                    "configured_enabled": gateway.enabled,
+                    "bind_address": bind_addr.to_string(),
+                    "status_url": status_url,
+                    "error": error.to_string(),
+                }),
+            );
+        }
+    };
+
+    let response = match client
+        .get(&status_url)
+        .header("Accept", "application/json")
+        .send()
+    {
+        Ok(response) => response,
+        Err(error) if !gateway.enabled => {
+            return DoctorCheck::skipped(
+                "gateway.status",
+                "gateway",
+                "Gateway is not enabled for this profile and no local status endpoint is reachable",
+                vec!["Set gateway.enabled = true or run `missive gateway run` when this profile should have a live gateway.".to_owned()],
+                json!({
+                    "configured_enabled": false,
+                    "bind_address": bind_addr.to_string(),
+                    "status_url": status_url,
+                    "reachable": false,
+                    "error": error.to_string(),
+                }),
+            );
+        }
+        Err(error) => {
+            return DoctorCheck::fail(
+                "gateway.status",
+                "gateway",
+                "Configured gateway status endpoint is unavailable",
+                MissiveExitCode::Unavailable,
+                vec!["Start the gateway with `missive gateway run` or update gateway.bind_address for this profile.".to_owned()],
+                json!({
+                    "configured_enabled": true,
+                    "bind_address": bind_addr.to_string(),
+                    "status_url": status_url,
+                    "reachable": false,
+                    "error": error.to_string(),
+                }),
+            );
+        }
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        return gateway_unhealthy_response_check(
+            gateway.enabled,
+            bind_addr,
+            status_url,
+            status.as_u16(),
+            "Gateway status endpoint returned a non-success HTTP status",
+        );
+    }
+
+    let body = match response.json::<Value>() {
+        Ok(body) => body,
+        Err(error) => {
+            return gateway_unparseable_response_check(
+                gateway.enabled,
+                bind_addr,
+                status_url,
+                error.to_string(),
+            );
+        }
+    };
+
+    if body.get("ok").and_then(Value::as_bool) != Some(true)
+        || body.get("status").and_then(Value::as_str) != Some("ok")
+    {
+        return gateway_unhealthy_response_check(
+            gateway.enabled,
+            bind_addr,
+            status_url,
+            status.as_u16(),
+            "Gateway status endpoint responded but did not report ok status",
+        );
+    }
+
+    DoctorCheck::pass(
+        "gateway.status",
+        "gateway",
+        "Local gateway status endpoint is reachable and healthy",
+        gateway_status_data(
+            gateway.enabled,
+            bind_addr,
+            status_url,
+            status.as_u16(),
+            &body,
+        ),
+    )
+}
+
+fn gateway_status_config_skipped_check() -> DoctorCheck {
+    DoctorCheck::skipped(
+        "gateway.status",
+        "gateway",
+        "Gateway status check was skipped because configuration did not load",
+        vec!["Fix configuration discovery/validation first.".to_owned()],
+        Value::Null,
+    )
+}
+
+fn gateway_unhealthy_response_check(
+    configured_enabled: bool,
+    bind_addr: SocketAddr,
+    status_url: String,
+    http_status: u16,
+    message: &'static str,
+) -> DoctorCheck {
+    let data = json!({
+        "configured_enabled": configured_enabled,
+        "bind_address": bind_addr.to_string(),
+        "status_url": status_url,
+        "reachable": true,
+        "http_status": http_status,
+    });
+    if configured_enabled {
+        DoctorCheck::fail(
+            "gateway.status",
+            "gateway",
+            message,
+            MissiveExitCode::Unavailable,
+            vec![
+                "Inspect `missive gateway run` logs or restart the configured gateway service."
+                    .to_owned(),
+            ],
+            data,
+        )
+    } else {
+        DoctorCheck::warning(
+            "gateway.status",
+            "gateway",
+            "A local endpoint responded on the gateway bind address but was not a healthy missive gateway",
+            vec!["If this is an unrelated local service, choose another gateway.bind_address before enabling the gateway.".to_owned()],
+            data,
+        )
+    }
+}
+
+fn gateway_unparseable_response_check(
+    configured_enabled: bool,
+    bind_addr: SocketAddr,
+    status_url: String,
+    error: String,
+) -> DoctorCheck {
+    let data = json!({
+        "configured_enabled": configured_enabled,
+        "bind_address": bind_addr.to_string(),
+        "status_url": status_url,
+        "reachable": true,
+        "error": error,
+    });
+    if configured_enabled {
+        DoctorCheck::fail(
+            "gateway.status",
+            "gateway",
+            "Configured gateway status endpoint did not return parseable JSON",
+            MissiveExitCode::Unavailable,
+            vec!["Ensure the configured address is running `missive gateway run` and not another local service.".to_owned()],
+            data,
+        )
+    } else {
+        DoctorCheck::warning(
+            "gateway.status",
+            "gateway",
+            "A local endpoint responded on the gateway bind address but did not look like missive gateway JSON",
+            vec!["If this is an unrelated local service, choose another gateway.bind_address before enabling the gateway.".to_owned()],
+            data,
+        )
+    }
+}
+
+fn gateway_status_data(
+    configured_enabled: bool,
+    bind_addr: SocketAddr,
+    status_url: String,
+    http_status: u16,
+    body: &Value,
+) -> Value {
+    let components = body
+        .get("components")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    Some(json!({
+                        "name": item.get("name")?.as_str()?,
+                        "status": item.get("status")?.as_str()?,
+                    }))
+                })
+                .collect::<Vec<Value>>()
+        })
+        .unwrap_or_default();
+
+    json!({
+        "configured_enabled": configured_enabled,
+        "bind_address": bind_addr.to_string(),
+        "status_url": status_url,
+        "reachable": true,
+        "http_status": http_status,
+        "remote_status": body.get("status").and_then(Value::as_str),
+        "remote_profile": body.get("profile").and_then(Value::as_str),
+        "remote_bind_address": body.get("bind_address").and_then(Value::as_str),
+        "uptime_ms": body.get("uptime_ms").and_then(Value::as_u64),
+        "job_concurrency": body.get("job_concurrency").and_then(Value::as_u64),
+        "event_bus_events": body.get("event_bus_events").and_then(Value::as_u64),
+        "component_count": components.len(),
+        "components": components,
+    })
+}
+
+fn gateway_status_url(bind_address: &str) -> Result<(SocketAddr, String)> {
+    let bind_addr = bind_address.parse::<SocketAddr>().map_err(|_| {
+        MissiveError::config(format!(
+            "gateway.bind_address must be an IP socket address, got {bind_address:?}"
+        ))
+    })?;
+    let host = local_probe_host(bind_addr.ip());
+    Ok((
+        bind_addr,
+        format!(
+            "http://{host}:{}{}",
+            bind_addr.port(),
+            DEFAULT_GATEWAY_STATUS_PATH
+        ),
+    ))
+}
+
+fn local_probe_host(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(address) if address.is_unspecified() => "127.0.0.1".to_owned(),
+        IpAddr::V4(address) => address.to_string(),
+        IpAddr::V6(address) if address.is_unspecified() => "[::1]".to_owned(),
+        IpAddr::V6(address) => format!("[{address}]"),
+    }
+}
+
+fn parse_duration_arg(flag: &str, value: &str) -> Result<Duration> {
+    let value = value.trim();
+    let (number, multiplier) = if let Some(number) = value.strip_suffix("ms") {
+        (number, 1_u64)
+    } else if let Some(number) = value.strip_suffix('s') {
+        (number, 1_000_u64)
+    } else if let Some(number) = value.strip_suffix('m') {
+        (number, 60_000_u64)
+    } else if let Some(number) = value.strip_suffix('h') {
+        (number, 3_600_000_u64)
+    } else {
+        return Err(MissiveError::validation(format!(
+            "{flag} value {value:?} must use a duration suffix: ms, s, m, or h"
+        ))
+        .with_help("Use values such as 500ms, 2s, 5m, or 1h."));
+    };
+    let number = number.parse::<u64>().map_err(|error| {
+        MissiveError::validation(format!("{flag} value {value:?} has an invalid number"))
+            .with_source(error)
+            .with_help("Use a positive whole number followed by ms, s, m, or h.")
+    })?;
+    if number == 0 {
+        return Err(MissiveError::validation(format!(
+            "{flag} value {value:?} must be greater than zero"
+        )));
+    }
+    let millis = number
+        .checked_mul(multiplier)
+        .ok_or_else(|| MissiveError::validation(format!("{flag} value {value:?} is too large")))?;
+    Ok(Duration::from_millis(millis))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -784,20 +1354,18 @@ fn summarize_checks(checks: &[DoctorCheck]) -> DoctorOverall {
 fn doctor_message(profile: &str, overall: &DoctorOverall) -> String {
     match overall.status {
         DoctorStatus::Pass => format!(
-            "missive doctor: local checks passed for profile '{profile}' ({} passed, {} skipped)",
+            "missive doctor: checks passed for profile '{profile}' ({} passed, {} skipped)",
             overall.passed, overall.skipped
         ),
         DoctorStatus::Warning => format!(
-            "missive doctor: local checks completed with warnings for profile '{profile}' ({} passed, {} warnings, {} skipped)",
+            "missive doctor: checks completed with warnings for profile '{profile}' ({} passed, {} warnings, {} skipped)",
             overall.passed, overall.warnings, overall.skipped
         ),
         DoctorStatus::Fail => format!(
-            "missive doctor: local checks failed for profile '{profile}' ({} failed, {} warnings, {} passed)",
+            "missive doctor: checks failed for profile '{profile}' ({} failed, {} warnings, {} passed)",
             overall.failed, overall.warnings, overall.passed
         ),
-        DoctorStatus::Skipped => {
-            format!("missive doctor: local checks skipped for profile '{profile}'")
-        }
+        DoctorStatus::Skipped => format!("missive doctor: checks skipped for profile '{profile}'"),
     }
 }
 

@@ -110,7 +110,7 @@ gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
 job         Enqueue, inspect, and cancel gateway-managed background communication jobs
-doctor      Diagnose local configuration, storage, migrations, and tool availability
+doctor      Diagnose local config, storage, tools, A2A endpoints, and gateway status
 logs        Inspect local missive logs
 events      Inspect, tail, replay, or export the local event journal
 completion  Generate shell completion scripts
@@ -120,7 +120,7 @@ manpage     Generate manual pages
 Each top-level command has a help page. Running an unimplemented command other
 than help currently loads and validates configuration, then emits a
 command-status record through the selected renderer. `missive doctor` is now an
-implemented local health-check command; implemented command groups with no
+implemented health-check command; implemented command groups with no
 selected subcommand, such as `missive context --json`, `missive gateway --json`,
 or `missive webhook --json`, still emit that parsed command-status record so
 automation can distinguish parser support from a specific operation.
@@ -1131,12 +1131,10 @@ Machine-readable stream output uses `webhook_started`, `webhook_event`,
 final `webhook_stopped` summary after the receiver shuts down; use `--ndjson` for
 one object per runtime event.
 
-## Doctor local checks
+## Doctor checks
 
-`missive doctor` runs local-only health checks for the selected profile. It does
-not contact configured A2A agents and it does not probe the gateway HTTP status
-endpoint yet; those remote/gateway checks are intentionally reserved for the next
-observability ticket. The current check set covers:
+`missive doctor` runs health checks for the selected profile. The current check
+set covers:
 
 * binary build metadata, including the package version, build profile, target,
   and rustc version captured at build time;
@@ -1144,7 +1142,13 @@ observability ticket. The current check set covers:
   config-seeded agent count, and auth-ref count;
 * selected-profile state paths for data, state, cache, locks, and SQLite;
 * existing SQLite database migration state without creating or migrating a
-  missing database; and
+  missing database;
+* config-seeded A2A agents by sending a safe `GET
+  /.well-known/agent-card.json` discovery request with the effective A2A service
+  parameters and resolved auth headers;
+* local gateway status by probing the selected profile's configured
+  `gateway.bind_address` at `/status`; if the gateway is disabled and no local
+  status endpoint responds, the check is skipped rather than failing; and
 * useful local tools such as `rustc`, `cargo`, `rustfmt`, `cargo-clippy`,
   `shellcheck`, and `sqlite3` when they are available on `PATH`.
 
@@ -1157,22 +1161,26 @@ MISSIVE_HOME=/tmp/missive-demo missive --config ./missive.toml --profile dev doc
 ```
 
 Human output is a concise summary followed by one line per check. JSON and
-NDJSON output use `kind: "doctor"` with `profile`, `scope: "local"`, an
-overall summary, and stable check objects containing `id`, `category`, `status`,
-`severity`, `message`, optional `exit_code`, `hints`, and redacted `data`.
-Statuses are `pass`, `warning`, `fail`, and `skipped`. Warnings, such as missing
-optional local tools, do not make the process fail; failed local checks return a
-deterministic non-zero exit code such as `78` for invalid config or `75` for an
-unmigrated/stale SQLite database. When a failed report is emitted with `--json`,
-the report is written to stdout and the usual structured error envelope is
-written to stderr so automation can use either the report or the process status.
+NDJSON output use `kind: "doctor"` with `profile`,
+`scope: "local_remote_gateway"`, an overall summary, and stable check objects
+containing `id`, `category`, `status`, `severity`, `message`, optional
+`exit_code`, `hints`, and redacted `data`. Statuses are `pass`, `warning`,
+`fail`, and `skipped`. Warnings, such as missing optional local tools, do not
+make the process fail; failed checks return deterministic non-zero exit codes
+such as `78` for invalid config, `75` for an unmigrated/stale SQLite database,
+`69` for unreachable configured endpoints/gateway status, `76` for protocol
+incompatibility, or `77` for unresolved endpoint auth. When a failed report is
+emitted with `--json`, the report is written to stdout and the usual structured
+error envelope is written to stderr so automation can use either the report or
+the process status.
 
 Doctor output uses the same redaction helpers as other CLI output. Config values
-with token/password/API-key/cookie/secret-like names, headers, auth schemes, and
-free-text secret assignments are redacted before rendering. The command shows
-only documented local state paths needed for diagnosis and treats remote
-endpoint and gateway liveness as not applicable until the later remote doctor
-checks are implemented.
+with token/password/API-key/cookie/secret-like names, headers, auth schemes,
+auth-ref names, and free-text secret assignments are redacted before rendering.
+The A2A endpoint check sends configured auth headers but only reports whether
+auth was configured, never the resolved header value. Gateway status output is
+summarized from known secret-free fields instead of echoing arbitrary HTTP
+response bodies.
 
 ## Logs and event diagnostics
 
@@ -1207,9 +1215,9 @@ envelope per returned profile log line. The event-journal and gateway-service
 sources are reported as actionable source records with commands/hints; use
 `missive events` for structured event payloads and the platform supervisor tools
 for service-manager logs. `missive logs` is intentionally not the `missive
-doctor` health-check surface: it does not validate endpoint reachability,
-SQLite migration health, gateway liveness, or external tool installation beyond
-reporting where diagnostics would be read.
+doctor` health-check surface: it does not validate A2A reachability, SQLite
+migration health, gateway status, or external tool availability beyond reporting
+where diagnostics would be read.
 
 `missive events` exposes the selected profile's append-only SQLite event
 journal. The current producers record local agent registry changes, group

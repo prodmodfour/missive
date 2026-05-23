@@ -336,9 +336,9 @@ pub enum Commands {
         command: Option<job::JobCommands>,
     },
 
-    /// Diagnose local configuration, storage, migrations, and tool availability.
+    /// Diagnose configuration, storage, endpoints, gateway status, and tools.
     #[command(
-        long_about = "Run local missive doctor checks for binary build metadata, configuration discovery and validation, selected-profile state paths, SQLite migration state, and useful local tool availability. Remote A2A endpoint and gateway liveness checks are added by a later observability ticket."
+        long_about = "Run missive doctor checks for binary build metadata, configuration discovery and validation, selected-profile state paths, SQLite migration state, config-seeded A2A Agent Card reachability, local gateway status, and useful local tool availability."
     )]
     Doctor,
 

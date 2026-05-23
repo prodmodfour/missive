@@ -110,7 +110,10 @@ marked sensitive, and their debug representation is redacted. `missive doctor`,
 `missive logs`, `missive context export`, and `missive events
 list/tail/replay/export` apply the same output redaction and also redact raw
 local diagnostic, log, message, task, and event payload JSON before including
-those records in stdout. Event producers created in current CLI
+those records in stdout. Doctor endpoint checks send resolved auth headers for
+safe Agent Card discovery but render only `auth_configured` booleans, redact
+auth-ref names in embedded config summaries, and summarize gateway status from
+known fields rather than echoing arbitrary response bodies. Event producers created in current CLI
 paths store redacted event payloads for agent registry changes, send/stream/bcast
 requests, send responses, streaming updates, changed remote task records,
 broadcast, barrier, gather, and reduce lifecycle/member/provenance results, and

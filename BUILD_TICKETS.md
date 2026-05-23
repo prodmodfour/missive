@@ -1568,7 +1568,7 @@ Validation:
 
 ## 052 — Extend doctor with A2A endpoint and gateway checks
 
-Status: TODO
+Status: DONE
 
 Phase: Observability
 

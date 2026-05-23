@@ -1070,6 +1070,7 @@ dependencies = [
  "missive-router",
  "missive-store",
  "missive-test-support",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
