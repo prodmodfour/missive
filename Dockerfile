@@ -9,6 +9,7 @@ ARG MISSIVE_GID=1000
 ARG RUST_TOOLCHAIN=stable
 ARG MISSIVE_INSTALL_OPTIONAL_CARGO_TOOLS=1
 ARG CARGO_AUDIT_VERSION=0.22.1
+ARG CARGO_DENY_VERSION=0.19.6
 ARG CARGO_MACHETE_VERSION=0.9.2
 
 ENV CARGO_TERM_COLOR=always \
@@ -39,6 +40,7 @@ RUN rustup toolchain install "${RUST_TOOLCHAIN}" --profile default --component r
 
 RUN if [ "${MISSIVE_INSTALL_OPTIONAL_CARGO_TOOLS}" = "1" ]; then \
         cargo install --locked cargo-audit --version "${CARGO_AUDIT_VERSION}"; \
+        cargo install --locked cargo-deny --version "${CARGO_DENY_VERSION}"; \
         cargo install --locked cargo-machete --version "${CARGO_MACHETE_VERSION}"; \
     fi
 

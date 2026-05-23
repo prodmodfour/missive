@@ -20,10 +20,13 @@
 *.pid
 *.sock
 
-# Coverage, release, and generated reports
+# Coverage, release, SBOM, and generated reports
 /coverage/
 /dist/
+/sbom/
 /mutants.out/
+*.cdx.json
+*.spdx.json
 *.profraw
 
 # Fuzz crash/artifact output and generated local corpora

@@ -165,7 +165,7 @@ run_dependency_checks() {
 
   if [[ -f deny.toml || -f cargo-deny.toml ]]; then
     if have cargo-deny; then
-      run_cmd cargo deny check
+      run_cmd cargo deny --locked check
     else
       warn "cargo-deny config exists but cargo-deny is not installed"
     fi

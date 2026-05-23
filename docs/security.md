@@ -2,8 +2,25 @@
 
 `missive` is still early-stage. The current security implementation focuses on
 safe authentication inputs for implemented outbound Agent Card, send, stream,
-broadcast, barrier polling, reduce reducer-agent, task, and push requests, redaction at output
-boundaries, and keeping runtime state out of the repository.
+broadcast, barrier polling, reduce reducer-agent, task, and push requests,
+redaction at output boundaries, keeping runtime state out of the repository, and
+reviewed Rust dependency policy through `cargo-deny`.
+
+## Dependency and supply-chain hygiene
+
+The Rust dependency policy lives in [`supply-chain.md`](supply-chain.md) and
+[`../deny.toml`](../deny.toml). It covers RustSec advisories/yanked crates,
+approved licenses, crates.io-only sources by default, duplicate-version
+exceptions, and the dependency update workflow. Generate a local CycloneDX JSON
+SBOM with:
+
+```bash
+scripts/generate-sbom.sh --output dist/missive-sbom.cdx.json
+```
+
+Generated SBOMs, dependency reports, release archives, and provenance artifacts
+are build outputs. Keep them under ignored paths such as `dist/` or `/tmp` unless
+a future release process explicitly asks for reviewed artifacts.
 
 ## Authentication inputs
 

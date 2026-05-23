@@ -62,6 +62,17 @@ Each archive contains:
 * `README.md`, `LICENSE`, and `CHANGELOG.md`;
 * a generated `INSTALL.md` reminder with checksum and PATH guidance.
 
+Generate a metadata-derived CycloneDX JSON SBOM next to the archives when a
+release review needs one:
+
+```bash
+scripts/generate-sbom.sh --output dist/missive-sbom.cdx.json
+```
+
+The SBOM is a generated release artifact and is not committed to the source tree.
+See [`supply-chain.md`](supply-chain.md) for the dependency policy, SBOM scope,
+and current provenance limitations.
+
 ## Checksum verification
 
 Verify an archive with its adjacent checksum file:
@@ -123,5 +134,6 @@ Publishing a public release remains a manual maintainer step for now:
 
 This is packaging, not a production deployment system. It does not yet create
 Homebrew formulas, Debian/RPM packages, MSIs, signed/notarized macOS artifacts,
-Windows code-signed binaries, SBOMs, or provenance attestations. Supply-chain
-policy and SBOM work are tracked by the next ticket.
+Windows code-signed binaries, bundled SBOMs, or provenance attestations. A local
+metadata-derived SBOM generator and cargo-deny policy exist, but release archives
+are not signed, attested, or automatically published with SBOM artifacts yet.

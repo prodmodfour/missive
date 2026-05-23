@@ -22,7 +22,7 @@ already exist and warns, rather than failing the whole run, when optional tools
 cannot be installed.
 
 To let the script install supported operating-system packages such as `jq`,
-`shellcheck`, `protoc`, `sqlite3`, and `pkg-config`, opt in explicitly:
+`shellcheck`, `protoc`, `sqlite3`, `python3`, and `pkg-config`, opt in explicitly:
 
 ```bash
 scripts/bootstrap-tools.sh --system-deps
@@ -65,7 +65,7 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `shellcheck` | No | Yes | Optional shell-script linting in addition to `bash -n`. |
 | `cargo-machete` | No | Yes | Optional unused-dependency check. |
 | `cargo-audit` | No | Yes | Optional RustSec advisory check. |
-| `cargo-deny` | No | When deny config exists | Future license/advisory/duplicate policy checks. |
+| `cargo-deny` | No | When deny config exists | License, advisory, source, and duplicate-dependency policy checks from `deny.toml`. |
 | `cargo-dist` | No | Optional reference tool | Release archive/install-script generation; missive currently uses local equivalent scripts. |
 | `tar` plus `sha256sum` or `shasum` | Yes for release dry runs | Yes | Local release archive creation and checksum verification through `scripts/release-package.sh` and `scripts/install-release.sh`. |
 | `cargo-nextest` | No | Aggressive gate | Faster workspace test runner. |
@@ -78,6 +78,7 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `sqlx` (`sqlx-cli`) | No | Future store tickets | SQLite migration and query tooling if sqlx is selected. |
 | `just` | No | If a `justfile` with `ci` exists | Optional command runner. |
 | `jq` | No | Helper scripts | JSON processing for repository automation. |
+| `python3` | No | SBOM and CI helper scripts | Metadata-derived CycloneDX SBOM generation and YAML validation fallback. |
 | `gh` | No | Helper scripts | Optional GitHub issue creation. |
 | `protoc` | No | Future protocol work | Protocol buffer generation if needed. |
 | `sqlite3` | No | Future store/debug work | Inspect local SQLite databases in tests. |
@@ -105,7 +106,8 @@ Default checks include:
 * `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --all-features --no-deps`;
 * debug and release workspace builds, including the release `missive` binary;
 * optional `cargo-machete`, `cargo-audit`, and `cargo-deny` when the relevant
-  tools/configuration are present.
+  tools/configuration are present. `cargo-deny` uses `deny.toml` for the reviewed
+  license, advisory, source, and duplicate-version policy.
 
 Optional tools are handled as follows:
 
@@ -113,8 +115,9 @@ Optional tools are handled as follows:
 * if an optional tool is present, the gate runs the matching check;
 * `scripts/validate-ci.sh` uses `actionlint` when available, otherwise it falls
   back to basic YAML syntax validation with Ruby or PyYAML when present;
-* `cargo-deny` is skipped until a deny configuration exists, because the policy
-  itself is introduced by a later ticket.
+* `cargo-deny` runs `cargo deny --locked check` when both the tool and
+  `deny.toml` are present; CI installs a pinned version so the policy is enforced
+  there.
 
 Run the default gate for every ticket:
 
@@ -130,6 +133,17 @@ scripts/docker-integration.sh
 ```
 
 The container workflow is documented in [`container.md`](container.md). It keeps `MISSIVE_HOME`, Cargo caches, and build output out of tracked repository files.
+
+Generate a local metadata-derived CycloneDX SBOM when release or audit work needs
+one:
+
+```bash
+scripts/generate-sbom.sh --output dist/missive-sbom.cdx.json
+```
+
+Generated SBOM files are build artifacts and must remain under ignored paths such
+as `dist/` or `/tmp`. See [`supply-chain.md`](supply-chain.md) for the dependency
+policy, update workflow, and duplicate-version exceptions.
 
 Run deeper validation when feasible:
 
@@ -164,10 +178,11 @@ allowed when a ticket needs it. Examples:
 ```bash
 rustup toolchain install stable --profile default --component rustfmt --component clippy
 cargo install --locked cargo-audit
+cargo install --locked cargo-deny
 cargo install --locked cargo-machete
 go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 sudo apt-get update
-sudo apt-get install -y jq shellcheck protobuf-compiler sqlite3 pkg-config
+sudo apt-get install -y jq shellcheck protobuf-compiler sqlite3 python3 pkg-config
 ```
 
 Keep runtime state, generated reports, credentials, database files, and local

@@ -1,0 +1,75 @@
+# missive supply-chain policy for cargo-deny.
+#
+# The policy is intentionally conservative for advisories, crate sources, and
+# duplicate versions while allowing the permissive licenses currently present in
+# the workspace dependency graph. Duplicate skips are reviewed exceptions, not a
+# blanket waiver; remove them when upstream dependency lines converge.
+
+[graph]
+# Check the complete workspace dependency graph with all features enabled.
+# Target-specific crates are included so Linux, macOS, and Windows release paths
+# stay covered by one policy file.
+all-features = true
+
+[advisories]
+# Use the default RustSec advisory database and fail on known vulnerable or
+# yanked crates unless a future exception is explicitly justified here.
+ignore = []
+yanked = "deny"
+
+[licenses]
+# Allowed SPDX license identifiers for direct and transitive Rust dependencies.
+# Additions require review in docs/supply-chain.md and should prefer permissive,
+# OSI/FSF-free-compatible licenses for code shipped with missive.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+# Workspace crates are licensed through workspace.package. Keep them checked so
+# accidental license removal or drift is visible.
+ignore = false
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+skip = [
+    { crate = "getrandom@0.2.17", reason = "transitive rustls/ring dependency while tempfile/a2a-lf use getrandom 0.4; remove when upstreams converge" },
+    { crate = "hashbrown@0.14.5", reason = "transitive rusqlite/hashlink dependency while toml/indexmap use newer hashbrown" },
+    { crate = "unicode-width@0.1.14", reason = "transitive miette/textwrap split until the graph converges on unicode-width 0.2" },
+    { crate = "windows-sys@0.52.0", reason = "transitive rustls/ring Windows support while keyring/clap/tokio depend on newer windows-sys lines" },
+    { crate = "windows-sys@0.60.2", reason = "transitive keyring Windows support while clap/tokio use windows-sys 0.61" },
+    { crate = "windows-targets@0.52.6", reason = "paired with older windows-sys 0.52 from ring" },
+    { crate = "windows_aarch64_gnullvm@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_aarch64_msvc@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_i686_gnu@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_i686_gnullvm@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_i686_msvc@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_x86_64_gnu@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_x86_64_gnullvm@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "windows_x86_64_msvc@0.52.6", reason = "paired with older windows-targets 0.52 from ring" },
+    { crate = "wit-bindgen@0.46.0", reason = "transitive WASI support through getrandom/proptest while newer getrandom also carries wit-bindgen 0.51" },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

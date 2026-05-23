@@ -1896,7 +1896,7 @@ Validation:
 
 ## 063 — Add supply-chain checks
 
-Status: TODO
+Status: DONE
 
 Phase: Security
 

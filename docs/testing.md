@@ -4,7 +4,7 @@
 
 ## CI validation
 
-GitHub Actions runs the Linux default quality gate on `push` and `pull_request` through `.github/workflows/ci.yml`, then runs a Rust workspace matrix on Linux, macOS, and Windows. The workflow first validates GitHub Actions YAML with `actionlint`; the Linux quality-gate job runs `scripts/quality-gate.sh` so CI covers the same shell checks, guardrails, Rust formatting, clippy, tests, doc tests, docs, and builds as local ticket validation. The cross-platform matrix runs workspace `cargo check`, `cargo test`, and debug builds on `ubuntu-latest`, `macos-latest`, and `windows-latest` so portable CLI/library functionality stays buildable beyond Linux. Platform-specific shell/service tests are gated: Bash example smoke scripts are not treated as Windows-native tests, Linux systemd and macOS launchd service planning are documented as host-specific, and Windows service installation remains unsupported with a clear diagnostic. Optional coverage smoke is available through manual workflow dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable. See [`ci.md`](ci.md) for the workflow, cache, platform matrix, and secret posture.
+GitHub Actions runs the Linux default quality gate on `push` and `pull_request` through `.github/workflows/ci.yml`, then runs a Rust workspace matrix on Linux, macOS, and Windows. The workflow first validates GitHub Actions YAML with `actionlint`; the Linux quality-gate job runs `scripts/quality-gate.sh` so CI covers the same shell checks, guardrails, Rust formatting, clippy, tests, doc tests, docs, builds, and `cargo-deny` supply-chain policy as local ticket validation. The cross-platform matrix runs workspace `cargo check`, `cargo test`, and debug builds on `ubuntu-latest`, `macos-latest`, and `windows-latest` so portable CLI/library functionality stays buildable beyond Linux. Platform-specific shell/service tests are gated: Bash example smoke scripts are not treated as Windows-native tests, Linux systemd and macOS launchd service planning are documented as host-specific, and Windows service installation remains unsupported with a clear diagnostic. Optional coverage smoke is available through manual workflow dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable. See [`ci.md`](ci.md) for the workflow, cache, platform matrix, and secret posture.
 
 ## Container validation
 
@@ -114,6 +114,34 @@ cargo mutants --workspace --all-features --output mutants.out --timeout 120
 ```
 
 `mutants.out/` and temporary `missive-mutants.*` directories are generated runtime artifacts; do not commit them.
+
+## Supply-chain checks and SBOM smoke
+
+The reviewed dependency policy lives in [`../deny.toml`](../deny.toml). Run it
+locally with:
+
+```bash
+cargo deny --locked check
+```
+
+Useful companion checks are:
+
+```bash
+cargo audit
+cargo machete
+cargo tree -d --all-features
+```
+
+A local CycloneDX JSON SBOM can be generated and smoke-validated with JSON tools:
+
+```bash
+scripts/generate-sbom.sh --output /tmp/missive-sbom.cdx.json
+python3 -m json.tool /tmp/missive-sbom.cdx.json >/dev/null
+```
+
+Generated SBOMs and reports are ignored/guarded artifacts. See
+[`supply-chain.md`](supply-chain.md) for allowed licenses, duplicate-version
+exceptions, advisory handling, and the dependency update workflow.
 
 ## Benchmarks and performance budgets
 

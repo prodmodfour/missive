@@ -237,6 +237,7 @@ install_system_deps() {
   install_system_package shellcheck shellcheck shellcheck
   install_system_package protoc protobuf-compiler protobuf
   install_system_package sqlite3 sqlite3 sqlite
+  install_system_package python3 python3 python
   install_system_package pkg-config pkg-config pkg-config
   install_system_package gh "" gh
 

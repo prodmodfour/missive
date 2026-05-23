@@ -13,7 +13,7 @@ The workflow lives at `.github/workflows/ci.yml` and runs on:
 The default CI path has three validation jobs plus optional coverage:
 
 1. `workflow-lint` installs a pinned `actionlint` release and validates GitHub Actions workflow syntax.
-2. `quality-gate` runs on Linux, installs the stable Rust toolchain with `rustfmt` and `clippy`, installs small Linux system tools used by the local gate, restores a Cargo cache, and runs `scripts/quality-gate.sh`.
+2. `quality-gate` runs on Linux, installs the stable Rust toolchain with `rustfmt` and `clippy`, installs small Linux system tools used by the local gate plus pinned `cargo-deny`, restores a Cargo cache, and runs `scripts/quality-gate.sh`.
 3. `workspace-matrix` runs on `ubuntu-latest`, `macos-latest`, and `windows-latest` with `fail-fast: false`. Each matrix leg runs:
 
    ```bash
@@ -23,7 +23,7 @@ The default CI path has three validation jobs plus optional coverage:
    cargo build -p missive-cli --bin missive --all-features
    ```
 
-Because CI invokes the same quality gate used by autonomous local tickets on Linux, it covers shell syntax checks, workflow validation, secret scanning, generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and the release `missive` binary build. The matrix job keeps the core Rust CLI/library workspace compiling and testing on macOS and Windows without requiring platform-specific service managers or Bash-based repository scripts there.
+Because CI invokes the same quality gate used by autonomous local tickets on Linux, it covers shell syntax checks, workflow validation, secret scanning, generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, the release `missive` binary build, and the `cargo-deny` supply-chain policy in `deny.toml`. The matrix job keeps the core Rust CLI/library workspace compiling and testing on macOS and Windows without requiring platform-specific service managers or Bash-based repository scripts there.
 
 ## Platform-specific coverage
 
@@ -46,6 +46,23 @@ Windows support currently means the Rust CLI, library crates, local SQLite state
 The workflow uses `permissions: contents: read` and checks out with `persist-credentials: false`. It does not require repository secrets for the default gate or matrix.
 
 The cache is limited to Cargo registry/git data and `target/` build outputs keyed by the operating system, stable Rust toolchain, lockfile, and Cargo manifests. Runtime state, credentials, local config, coverage reports, databases, logs, and other generated private files must remain outside version control and should not be uploaded as artifacts.
+
+## Supply-chain policy
+
+The Linux quality-gate job installs pinned `cargo-deny` and runs
+`cargo deny --locked check` through `scripts/quality-gate.sh`. The policy checks
+RustSec advisories/yanked crates, approved licenses, allowed crate sources, and
+reviewed duplicate-version exceptions. See [`supply-chain.md`](supply-chain.md)
+for the policy and dependency-update workflow.
+
+SBOM generation is available locally through:
+
+```bash
+scripts/generate-sbom.sh --output dist/missive-sbom.cdx.json
+```
+
+Generated SBOMs are release artifacts and are not uploaded by the default CI
+workflow.
 
 ## Optional coverage
 

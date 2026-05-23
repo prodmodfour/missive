@@ -6,7 +6,14 @@
 target/
 coverage/
 dist/
+sbom/
 mutants.out/
+*.cdx.json
+*.spdx.json
+bom.json
+bom.xml
+bom.cdx.json
+bom.cdx.xml
 *.profraw
 
 # Local missive/runtime state and credentials.

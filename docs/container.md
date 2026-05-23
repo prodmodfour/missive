@@ -10,7 +10,7 @@ The root [`Dockerfile`](../Dockerfile) builds from the official Rust Debian imag
 * build essentials, `pkg-config`, Git, curl, jq, ShellCheck, Python/YAML tooling, and sudo;
 * protobuf tooling through `protobuf-compiler`;
 * SQLite tooling through `sqlite3` and `libsqlite3-dev`;
-* default quality-gate cargo helpers `cargo-audit` and `cargo-machete`.
+* default quality-gate cargo helpers `cargo-audit`, `cargo-deny`, and `cargo-machete`.
 
 No credentials, `.env` files, local missive state, databases, logs, or Git metadata are baked into the image. The accompanying [`.dockerignore`](../.dockerignore) keeps generated/private runtime files out of the build context.
 
@@ -40,7 +40,7 @@ Useful build arguments:
 | `RUST_IMAGE` | `rust:bookworm` | Base image used for the development environment. |
 | `RUST_TOOLCHAIN` | `stable` | Toolchain selected through `RUSTUP_TOOLCHAIN`. |
 | `MISSIVE_UID` / `MISSIVE_GID` | `1000` / `1000` | UID/GID for the interactive `missive` user. |
-| `MISSIVE_INSTALL_OPTIONAL_CARGO_TOOLS` | `1` | Set to `0` to skip installing `cargo-audit` and `cargo-machete`. |
+| `MISSIVE_INSTALL_OPTIONAL_CARGO_TOOLS` | `1` | Set to `0` to skip installing `cargo-audit`, `cargo-deny`, and `cargo-machete`. |
 
 ## Run the quality gate in a container
 
