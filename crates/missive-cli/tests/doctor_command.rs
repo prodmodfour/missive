@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use missive_cli::{OUTPUT_SCHEMA_VERSION, REDACTED, run_from_with_environment};
 use missive_core::MissiveExitCode;
@@ -322,7 +324,8 @@ fn doctor_json_reports_running_gateway_status_when_reachable() {
     let temp = tempdir().expect("tempdir");
     let home = temp.path().join("missive-home");
     let config_path = temp.path().join("missive.toml");
-    let (gateway_addr, gateway_thread) = start_gateway_status_server("dev");
+    let gateway_server = start_gateway_status_server("dev");
+    let gateway_addr = gateway_server.addr();
     fs::write(
         &config_path,
         format!(
@@ -348,7 +351,7 @@ job_concurrency = 2
     );
 
     let (code, stdout, stderr) = run(&["missive", "doctor", "--json"], &environment, temp.path());
-    gateway_thread.join().expect("gateway fixture thread");
+    gateway_server.stop();
 
     assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
     let value = doctor_json(&stdout);
@@ -410,54 +413,118 @@ fn unused_local_addr() -> SocketAddr {
     listener.local_addr().expect("local addr")
 }
 
-fn start_gateway_status_server(profile: &'static str) -> (SocketAddr, JoinHandle<()>) {
+#[derive(Debug)]
+struct GatewayStatusServer {
+    addr: SocketAddr,
+    shutdown: Arc<AtomicBool>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl GatewayStatusServer {
+    fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    fn stop(mut self) {
+        self.shutdown_and_join();
+    }
+
+    fn shutdown_and_join(&mut self) {
+        if self.join.is_none() {
+            return;
+        }
+        self.shutdown.store(true, Ordering::SeqCst);
+        let _ = TcpStream::connect(self.addr);
+        if let Some(join) = self.join.take() {
+            join.join().expect("gateway fixture thread");
+        }
+    }
+}
+
+impl Drop for GatewayStatusServer {
+    fn drop(&mut self) {
+        self.shutdown_and_join();
+    }
+}
+
+fn start_gateway_status_server(profile: &'static str) -> GatewayStatusServer {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind gateway fixture");
-    listener
-        .set_nonblocking(true)
-        .expect("gateway fixture nonblocking");
     let addr = listener.local_addr().expect("gateway fixture address");
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let thread_shutdown = Arc::clone(&shutdown);
     let join = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match listener.accept() {
-                Ok((mut stream, _peer)) => {
-                    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-                    let mut buffer = [0_u8; 1024];
-                    let _ = stream.read(&mut buffer);
-                    let body = serde_json::json!({
-                        "ok": true,
-                        "status": "ok",
-                        "endpoint": "status",
-                        "profile": profile,
-                        "bind_address": addr.to_string(),
-                        "uptime_ms": 12_u64,
-                        "job_concurrency": 2_u64,
-                        "event_bus_events": 1_u64,
-                        "components": [
-                            {"name": "supervisor", "status": "running"},
-                            {"name": "health_http", "status": "running"}
-                        ]
-                    })
-                    .to_string();
-                    let response = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                        body.len(),
-                        body
-                    );
-                    let _ = stream.write_all(response.as_bytes());
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else {
+                if thread_shutdown.load(Ordering::SeqCst) {
                     break;
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    if Instant::now() >= deadline {
-                        break;
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(_) => break,
+                continue;
+            };
+            if thread_shutdown.load(Ordering::SeqCst) {
+                break;
             }
+            if !read_gateway_fixture_request(&mut stream) {
+                continue;
+            }
+
+            let body = serde_json::json!({
+                "ok": true,
+                "status": "ok",
+                "endpoint": "status",
+                "profile": profile,
+                "bind_address": addr.to_string(),
+                "uptime_ms": 12_u64,
+                "job_concurrency": 2_u64,
+                "event_bus_events": 1_u64,
+                "components": [
+                    {"name": "supervisor", "status": "running"},
+                    {"name": "health_http", "status": "running"}
+                ]
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
         }
     });
-    (addr, join)
+
+    GatewayStatusServer {
+        addr,
+        shutdown,
+        join: Some(join),
+    }
+}
+
+fn read_gateway_fixture_request(stream: &mut TcpStream) -> bool {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let mut data = Vec::new();
+    let mut buffer = [0_u8; 1024];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => return !data.is_empty(),
+            Ok(read) => {
+                data.extend_from_slice(&buffer[..read]);
+                if data.windows(4).any(|window| window == b"\r\n\r\n") {
+                    return true;
+                }
+                if data.len() >= 16 * 1024 {
+                    return true;
+                }
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                return !data.is_empty();
+            }
+            Err(_) => return false,
+        }
+    }
 }
 
 fn write_fake_executable(directory: &Path, stem: &str) {
