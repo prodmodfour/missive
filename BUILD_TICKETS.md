@@ -1954,7 +1954,7 @@ Validation:
 
 ## 065 — Write architecture and operations documentation
 
-Status: TODO
+Status: DONE
 
 Phase: Documentation
 

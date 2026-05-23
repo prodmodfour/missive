@@ -1,7 +1,9 @@
 # Troubleshooting
 
 Start with local diagnostics and then narrow the problem to config, state, the
-remote A2A endpoint, or the gateway/adapters.
+remote A2A endpoint, or the gateway/adapters. For operator-facing recovery
+procedures, backups, lock handling, service restarts, and escalation bundles, see
+the [runbook](runbook.md).
 
 ## Run doctor first
 

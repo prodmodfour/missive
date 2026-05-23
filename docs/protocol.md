@@ -10,6 +10,34 @@ member tasks, local gather output/artifact collection from persisted A2A task
 state, reduce prompts sent through A2A `SendMessage` when `--reducer-agent` is
 used, and local A2A `contextId` continuity management through `missive context`.
 
+## Operational protocol diagnostics
+
+When an A2A workflow fails, start with the non-mutating discovery path before
+retrying mutating sends or task changes:
+
+```bash
+missive doctor --json
+missive agent inspect echo --refresh --json
+missive agent inspect echo --binding http+json --json
+missive agent capabilities echo --refresh --json
+```
+
+Useful signals:
+
+* `agent inspect --json` shows the selected binding, interface URL, advertised
+  protocol versions, capabilities, skills, and cache validators.
+* Exit code `76` is reserved for protocol failures such as unsupported A2A
+  version responses or malformed protocol payloads.
+* Exit code `77` indicates auth material could not be resolved before the A2A
+  request was sent.
+* Exit code `69` usually indicates transport reachability or local gateway
+  status failure rather than an A2A payload failure.
+* `missive events list --limit 50 --json` shows recent redacted request/update
+  history that reached local persistence; add an exact `--type` such as
+  `a2a.task.updated` or `a2a.push.status_update` when the event type is known.
+
+For incident handling and recovery steps, see the [runbook](runbook.md#a2a-endpoint-recovery).
+
 ## Public Agent Card discovery
 
 `missive agent inspect <alias>` and `missive agent refresh <alias>` resolve the

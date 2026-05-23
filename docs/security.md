@@ -4,7 +4,9 @@
 safe authentication inputs for implemented outbound Agent Card, send, stream,
 broadcast, barrier polling, reduce reducer-agent, task, and push requests,
 redaction at output boundaries, keeping runtime state out of the repository, and
-reviewed Rust dependency policy through `cargo-deny`.
+reviewed Rust dependency policy through `cargo-deny`. Incident response should
+follow the [runbook](runbook.md) so diagnostics are gathered with redaction and
+runtime state is backed up before manual recovery.
 
 ## Dependency and supply-chain hygiene
 

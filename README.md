@@ -4,7 +4,7 @@
 
 ## Current status
 
-This repository is at early workspace stage. It contains:
+This repository is still early-stage, but it now contains:
 
 * a Cargo workspace with the target crate layout under `crates/`, plus a dev-support crate for local A2A integration fixtures and protocol-versioned A2A conformance fixtures under `tests/fixtures/a2a/1.0/`
 * a `missive-cli` package that exposes the binary named `missive`
@@ -105,9 +105,11 @@ User-facing docs:
 
 Reference and maintainer docs:
 
+* [`docs/architecture.md`](docs/architecture.md) — crate boundaries, data flow, output/config/store/protocol contracts, and ADR links.
+* [`docs/runbook.md`](docs/runbook.md) — operational diagnosis, recovery, backups, gateway/service checks, and escalation steps.
 * [`docs/completions.md`](docs/completions.md) — shell completion and manpage installation paths.
 * [`docs/protocol.md`](docs/protocol.md) — current A2A type boundary and protocol mapping.
-* [`docs/storage.md`](docs/storage.md) — SQLite migration/schema contract.
+* [`docs/storage.md`](docs/storage.md) — SQLite migration/schema contract and backup/recovery notes.
 * [`docs/observability.md`](docs/observability.md) — tracing/log initialization, `RUST_LOG`, JSON log mode, span fields, and redaction boundaries.
 * [`docs/adapter-roadmap.md`](docs/adapter-roadmap.md) — Discord/Slack/Telegram/Matrix/Email placeholder boundaries and future secret/permission requirements.
 * [`docs/security.md`](docs/security.md) — auth storage tradeoffs, redaction, adapter/webhook trust boundaries, and current limitations.

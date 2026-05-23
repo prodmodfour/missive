@@ -59,7 +59,8 @@ Accepted callbacks are journaled as redacted `a2a.push.*` events; rejected
 callbacks are journaled as `a2a.push.rejected` when they reach the handler:
 
 ```bash
-missive events list --type a2a.push.received --json
+missive events list --type a2a.push.status_update --json
+missive events list --type a2a.push.rejected --json
 missive events tail --limit 10 --ndjson
 ```
 

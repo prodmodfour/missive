@@ -21,6 +21,34 @@ The current schema version is `2`, created by `0001_initial_schema.sql` plus
 source tree by the state path contract documented in
 [`docs/configuration.md`](configuration.md#local-state-paths).
 
+## Operational backup and recovery
+
+Use `missive doctor --json` to discover the selected profile's `state.paths`
+check, including `database_path`, `state_dir`, and `locks_dir`. Stop the gateway
+or standalone webhook before taking manual backups or investigating lock
+contention so no long-running writer is active for the same profile.
+
+Recommended safe sequence for local recovery:
+
+1. Run `missive doctor --json` and record the selected profile, config source,
+   and database path.
+2. Stop `missive gateway run`, `missive webhook run`, or the service manager for
+   that profile if they are active.
+3. Copy the SQLite file to a temporary backup location, or use `sqlite3
+   "$DB" ".backup '/tmp/missive.sqlite3.backup'"` when the `sqlite3` CLI is
+   available.
+4. Run `sqlite3 "$DB" 'PRAGMA integrity_check;'` when available before attempting
+   manual inspection.
+5. Rerun `missive doctor --json` after recovery and then a read-only command such
+   as `missive events list --limit 5 --json`.
+
+Lock files are ordinary files under `locks_dir`, but the actual mutual exclusion
+uses OS-level file locking. A lock file can remain after a crash while the lock
+itself has already been released. Do not delete a lock file simply because it is
+present; first confirm no `missive` process still owns the profile and prefer a
+fresh `MISSIVE_HOME` or `--profile` for experiments. The step-by-step incident
+procedures live in [`runbook.md`](runbook.md#storage-and-lock-recovery).
+
 ## Tables
 
 | Table | Purpose | Retention notes |
@@ -152,6 +180,7 @@ gateway session storage and reset-policy metadata, webhook callback event
 persistence, and event journal list/tail/replay/export. Sessions are local
 communication continuity records only; missive does not store long-term agent
 memory, learned facts, or cognition state in `gateway_sessions`.
-Adapter-binding repositories, retention enforcement, compaction, and durable
-event producers for future background jobs and adapter callbacks are implemented
-by later tickets.
+Adapter-binding repository coverage remains limited, and retention enforcement
+plus compaction are not implemented yet. Gateway jobs, the standalone webhook,
+and the current HTTP adapter ingress persist redacted event rows today; future
+daemon-started adapters may add additional durable event producers.

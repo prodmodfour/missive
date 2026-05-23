@@ -1,6 +1,6 @@
 # Architecture
 
-`missive` is currently in its foundation phase. The high-level architecture follows the project brief and is being built ticket by ticket; this document links the initial architecture decisions that constrain later implementation.
+`missive` is a Rust CLI, protocol abstraction library, local gateway daemon, adapter surface, and SQLite-backed control plane for A2A-native agent communication. The architecture keeps agent communication concerns separate from agent cognition: missive discovers agents, negotiates protocol interfaces, sends/streams messages, tracks tasks and contexts, coordinates groups, supervises local gateway work, and records local operational state.
 
 ## Current workspace boundaries
 
@@ -16,12 +16,56 @@ crates/missive-observe    -> tracing, logs, diagnostics, event export helpers
 crates/missive-test-support -> reusable local A2A integration fixtures for tests
 ```
 
-Recommended flow from the project brief:
+## Data-flow overview
 
-```text
-CLI/adapters -> command model -> router/session/context -> A2A client -> remote agent
-                                           |              -> store/events/artifacts
-                                           |              -> gateway jobs/subscriptions/webhooks
+The main foreground and daemon paths share the same config, protocol, store, output, and redaction contracts.
+
+```mermaid
+flowchart LR
+    Human["human or automation"] --> CLI["missive CLI"]
+    Subprocess["subprocess agent"] --> Stdio["stdio adapter"]
+    Files["file handoff"] --> FileDrop["file-drop adapter"]
+    LocalHTTP["local HTTP client"] --> HTTPAdapter["HTTP adapter ingress"]
+
+    Stdio --> CLI
+    FileDrop --> CLI
+    HTTPAdapter --> Gateway["missive-gateway"]
+
+    CLI --> Core["missive-core\nconfig / ids / errors"]
+    CLI --> Router["missive-router\npolicies / collectives"]
+    CLI --> Store["missive-store\nSQLite repositories"]
+    CLI --> A2A["missive-a2a\nAgent Card / A2A calls"]
+    CLI --> Observe["missive-observe\nlogs / spans"]
+
+    Gateway --> Store
+    Gateway --> A2A
+    Gateway --> Adapters["missive-adapters\ntrait and registry"]
+    Gateway --> Observe
+    Router --> Store
+    A2A --> Remote["remote A2A agents"]
+    Store --> State[("profiles/{profile}\nagents / tasks / events / jobs")]
+```
+
+A typical command that sends work to an agent follows this shape:
+
+```mermaid
+sequenceDiagram
+    participant Caller as human/agent process
+    participant CLI as missive-cli
+    participant Core as missive-core
+    participant Store as missive-store
+    participant A2A as missive-a2a
+    participant Remote as remote A2A agent
+
+    Caller->>CLI: missive send/stream/task/... with global flags
+    CLI->>Core: discover config, validate profile, resolve output/auth parameters
+    CLI->>Store: resolve state paths, acquire mutation lock, load registry/cache
+    CLI->>A2A: fetch/refresh Agent Card when needed and negotiate interface
+    A2A->>Remote: A2A HTTP+JSON or JSON-RPC request with service parameters
+    Remote-->>A2A: Message, Task, StreamResponse, push config, or error
+    A2A-->>CLI: typed protocol result or categorized missive error
+    CLI->>Store: persist tasks/messages/artifacts/events with redaction boundaries
+    CLI-->>Caller: human, JSON, NDJSON, quiet output, or structured error
 ```
 
 ## Error handling contract
@@ -95,4 +139,4 @@ The ADR index lives in [`docs/adr/`](adr/README.md). Initial accepted records ar
 * [ADR 0004 — CLI-first UX](adr/0004-cli-first-ux.md)
 * [ADR 0005 — Official A2A Rust protocol types](adr/0005-official-a2a-rust-types.md)
 
-These records are intentionally scoped to project-defining decisions. Detailed protocol mappings, storage schema, gateway operation, adapters, collectives, security, and runbook documentation continue to expand with their own implementation tickets. The current gateway operation details live in [`docs/gateway.md`](gateway.md), and the current broadcast/barrier/gather/reduce collective behavior lives in [`docs/collectives.md`](collectives.md).
+These records are intentionally scoped to project-defining decisions. Detailed protocol mappings, storage schema, gateway operation, adapters, collectives, security, and operational recovery procedures live in the dedicated docs linked above. The current gateway operation details live in [`docs/gateway.md`](gateway.md), the broadcast/barrier/gather/reduce collective behavior lives in [`docs/collectives.md`](collectives.md), and operator recovery steps live in [`docs/runbook.md`](runbook.md).

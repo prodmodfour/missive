@@ -22,6 +22,40 @@ MISSIVE_HOME=/tmp/missive-demo missive gateway run \
 
 `--timeout <DURATION>` is the non-interactive graceful shutdown budget for `gateway run`; without it, the process runs until Ctrl-C or process supervision stops it.
 
+## Operational checklist
+
+For routine diagnosis, prefer read-only local checks before restarting services or
+editing state:
+
+```bash
+missive doctor --json
+missive gateway status --json
+curl -fsS http://127.0.0.1:7347/healthz
+curl -fsS http://127.0.0.1:7347/readyz
+curl -fsS http://127.0.0.1:7347/status
+missive events list --source gateway:daemon --limit 20 --json
+```
+
+If the service wrapper is involved, inspect generated service files with
+`missive gateway install --dry-run --json --bin "$(command -v missive)"` before
+modifying supervisor state. Step-by-step restart, log, lock, subscription, job,
+and adapter recovery procedures are in the [runbook](runbook.md#gateway-recovery).
+
+```mermaid
+flowchart LR
+    Supervisor["systemd / launchd / foreground shell"] --> Gateway["gateway run"]
+    Gateway --> Health["/healthz /readyz /status"]
+    Gateway --> Store["profile SQLite store"]
+    Gateway --> Subs["task subscriptions"]
+    Gateway --> Jobs["background jobs"]
+    Gateway --> HTTP["optional HTTP adapter"]
+    Gateway --> Bus["adapter event bus"]
+    Store --> Events["event journal"]
+    Subs --> Remote["remote A2A agents"]
+    Jobs --> Remote
+    HTTP --> Bus
+```
+
 ## HTTP inbound adapter
 
 Pass `--http-adapter` to mount a local HTTP endpoint for `missive.http.v1` control frames on the gateway listener. This endpoint is separate from the A2A push webhook receiver: it accepts local control messages for the gateway adapter bus, not remote A2A push callbacks.
