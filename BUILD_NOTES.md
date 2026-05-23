@@ -2,7 +2,7 @@
 
 ## Current state
 
-Tickets 000 through 053 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000 through 054 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
 * `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, A2A service-parameter CLI overrides, authentication input resolution for implemented Agent Card/doctor endpoint/send/bcast/barrier/gather/reduce/stream/task/push/job-cancel/route-capability requests, output rendering and redaction helpers, shared diagnostics initialization for `RUST_LOG`, `--trace`, `--verbose`, and JSON log formatting, `cli.command` plus collective operation tracing spans, help snapshots and A2A conformance CLI golden tests, implemented foreground subprocess `missive adapter stdio` JSON/NDJSON frame loop for send/stream/task commands, implemented foreground `missive adapter file-drop` inbox/outbox request-file loop for send/stream/task and job command files, implemented opt-in `missive gateway run --http-adapter` local HTTP inbound control endpoint, implemented `missive agent add/list/show/inspect/refresh/capabilities/remove/rename`, implemented non-streaming `missive send` with rich text/file-reference/file-bytes/JSON-data message parts, implemented streaming `missive stream` with the same rich input parser, implemented `missive task get/list/wait/cancel`, implemented `missive task artifact list/show/save/export`, implemented `missive context create/list/show/fork/close/export`, implemented `missive group create/list/show/capabilities/add/remove/rename/delete`, implemented Agent Card-aware dry-run `missive route explain`, implemented `missive bcast`, implemented `missive barrier`, implemented `missive gather`, implemented `missive reduce`, implemented `missive push create/get/list/delete`, implemented `missive webhook run`, implemented `missive gateway run`, implemented `missive gateway install/start/stop/status/uninstall` service management, implemented gateway-managed `missive job start/list/show/cancel` background communication jobs, implemented `missive doctor` local/A2A endpoint/gateway health checks, implemented `missive logs`, implemented `missive events list/tail/replay/export`, implemented `missive completion <shell>` for bash/zsh/fish/PowerShell, and implemented `missive manpage` roff generation
 * `crates/missive-core` — core domain primitive scaffolding, including shared error/result types, strongly typed IDs, timestamps, metadata maps and A2A metadata keys, envelopes, canonical routing policy names, configuration schema with profile/source busy-input policy, protocol service-parameter defaults, routing defaults, config auth-ref schema, config discovery, profile validation, redacted config rendering, and deterministic task-wait/barrier exit-code variants
@@ -12,7 +12,7 @@ Tickets 000 through 053 are complete. The repository uses the target Cargo works
 * `crates/missive-gateway` — gateway daemon with async supervisor, event bus, local health/readiness/status endpoints, opt-in authenticated HTTP inbound adapter endpoint for `missive.http.v1` control frames with JSON validation, body/rate limits, redacted event journaling, and adapter-bus emission, store lifecycle events, graceful shutdown, task subscription/resume worker for cached streaming-capable A2A agents, gateway background job manager for durable send/stream/wait/local-reduce jobs, bounded retry/backoff and lock-expiration restart pickup persistence, persistent gateway session reset-policy helpers with injectable clocks for daily/idle/both modes, deterministic busy-input queue/interrupt/steer policy evaluation for gateway/adapters, adapter event-bus bridge for `missive-adapters` runtime events, `gateway.daemon`/`gateway.job_manager`/`gateway.job`/HTTP adapter tracing spans, Linux systemd and macOS launchd service file/command planning, plus the standalone local A2A push webhook receiver used by `missive webhook run`
 * `crates/missive-adapters` — adapter trait and registry contract for inbound messages, outbound updates, identity mapping, sessions, acknowledgements, adapter event sinks, config-derived adapter definitions, plus tracing spans for adapter registry creation and adapter event emission, the built-in stdio adapter frame schema/parser/writer/factory for JSON/NDJSON subprocess use, the built-in file-drop adapter request/result schema, atomic directory handoff helpers, adapter factory, and inbound-message mapping, the built-in HTTP adapter `missive.http.v1` frame schema/parser/factory used by the gateway inbound endpoint, and feature-gated compileable external chat adapter stubs for Discord, Slack, Telegram, Matrix, and Email
 * `crates/missive-observe` — observability foundation with reusable tracing subscriber configuration, scoped/global initialization APIs, `RUST_LOG` EnvFilter handling, human/JSON stderr log rendering, bootstrap diagnostics, span context rendering, and secret redaction for log fields/text
-* `crates/missive-test-support` — reusable local A2A mock server fixtures for integration tests, including Agent Card discovery, HTTP+JSON and JSON-RPC endpoints, controllable task states, streaming and SubscribeToTask SSE events, push-config fixture routes, auth/version-error paths, malformed responses, delayed SendMessage responses for timeout tests, and request recording
+* `crates/missive-test-support` — reusable local A2A mock server fixtures for integration tests and top-level command demos, including Agent Card discovery, HTTP+JSON and JSON-RPC endpoints, controllable task states, streaming and SubscribeToTask SSE events, push-config fixture routes, auth/version-error paths, malformed responses, delayed SendMessage responses for timeout tests, request recording, and a `mock_a2a_server` example helper for shell demos
 
 The root `Cargo.toml` is a virtual workspace manifest with shared workspace package metadata and shared dependency versions for planned foundational Rust crates. The store layer depends on `rusqlite` with bundled SQLite plus `serde`/`serde_json` for typed JSON repository boundaries and now uses workspace `tracing` for repository spans. The router layer depends on `serde`/`serde_json` for serializable dry-run route plans and metadata capability extraction. The adapters layer depends on `serde`/`serde_json` for serializable adapter runtime events, config-derived definitions, stdio frames, file-drop request/result files, HTTP adapter control frames, and external chat stub roadmap metadata, plus workspace `tracing` for adapter registry/event spans; it uses workspace `tempfile`, `missive-observe`, and `tracing-subscriber` as dev-dependencies for atomic handoff and scoped span tests. The external chat adapter feature flags add no platform SDKs or new dependencies. The A2A layer depends on the official `a2a-lf` crate from `a2aproject/a2a-rs`, `reqwest` with blocking rustls-backed HTTP/TLS support, and workspace `tracing` for safe A2A request spans; it uses `missive-observe` and `tracing-subscriber` as dev-dependencies for scoped instrumentation tests. The gateway layer depends on `axum`/`tokio`, workspace `tracing`, plus `missive-a2a` and `missive-adapters` for the local gateway daemon, adapter event-bus bridge, opt-in HTTP inbound adapter route, A2A task subscription/resume, gateway-managed background send/stream/wait jobs, A2A push webhook receiver, and session reset-policy evaluation, and uses only existing std/process/filesystem APIs for service file generation and supervisor command execution; it uses `missive-test-support` plus `tempfile` as dev-dependencies for daemon/job tests. The observe layer depends on workspace `tracing`, `tracing-subscriber`, and `serde_json` for reusable subscriber construction, EnvFilter parsing, human/JSON log formatting, span rendering, and redaction tests. The versioned conformance fixtures live under `tests/fixtures/a2a/1.0/` and are consumed by `missive-a2a` round-trip tests plus `missive-cli` golden-output tests. The test-support crate depends on `missive-a2a` and `serde_json` so fixtures can use official A2A method/error constants while staying local and deterministic. The CLI directly depends on the workspace `url` crate for registry URL validation, `tracing` for command/collective spans, `clap_complete` for shell completion generation, and `clap_mangen` for roff manpage generation; it has a default `native-keyring` feature using the Rust `keyring` crate for platform keyring-backed auth refs where available, uses `tokio` to drive the gateway/webhook receiver runtimes, initializes `missive-observe` around parsed command execution, and uses `missive-test-support` as a dev-dependency for reusable local A2A integration coverage. No new platform SDK dependencies were added for observability spans.
 
@@ -122,30 +122,31 @@ Checks run by the default gate included:
 * optional `cargo machete` check because it is installed
 * optional `cargo audit` check because it is installed
 
-Additional targeted validation run during ticket 053:
+Additional targeted validation run during ticket 054:
 
 ```bash
-cargo check -p missive-cli --all-targets --all-features
-cargo test -p missive-cli --test completion_manpage_command --test help_snapshots --test output_contract --all-features
-cargo test -p missive-cli --lib --all-features
-cargo fmt --all && cargo clippy -p missive-cli --all-targets --all-features -- -D warnings
-cargo test -p missive-cli --all-targets --all-features
+cargo fmt --all
+cargo test -p missive-cli --test example_smoke --all-features
+cargo test -p missive-test-support --all-targets
+bash -n examples/*.sh examples/lib/demo-common.sh
+shellcheck examples/*.sh examples/lib/demo-common.sh
+cargo build -p missive-cli --bin missive >/dev/null && MISSIVE_BIN="$PWD/target/debug/missive" examples/run-smoke.sh >/tmp/missive-example-smoke.stdout 2>/tmp/missive-example-smoke.stderr
 scripts/quality-gate.sh
 ```
 
-The targeted checks covered bash/zsh/fish/PowerShell completion generation, completion prefix snapshots, completion/manpage JSON envelopes, config-bypass behavior for missing `MISSIVE_CONFIG`, manpage roff rendering, help snapshots, output-contract adjustments for implemented generator commands, formatting, clippy, the full missive-cli test suite, and the full quality gate.
+The targeted checks covered the new top-level shell demos, direct example script syntax/linting, the self-contained mock A2A helper path, the Rust smoke test that executes `examples/run-smoke.sh` with an in-process mock server and already-built `missive` binary, `missive-test-support` all-target coverage including the mock-server example binary, and the full quality gate.
 
-Environment/tooling notes: no new cargo subcommands, Rust components, or OS packages were installed. New Rust dependencies added for this ticket were `clap_complete`, `clap_mangen`, and transitive `roff` through normal Cargo resolution.
+Environment/tooling notes: no new cargo subcommands, Rust components, OS packages, or third-party services were installed or used.
 
 ## Latest cycle notes
 
-Implemented ticket 053 — Implement shell completions and manpages.
+Implemented ticket 054 — Implement command examples and smoke tests.
 
 Included:
 
-* added `missive completion <shell>` for `bash`, `zsh`, `fish`, and `powershell`, with raw stdout output plus JSON/NDJSON envelopes for automation
-* added `missive manpage` roff generation for `missive(1)`, with raw stdout output plus JSON/NDJSON envelopes and no config/network dependency
-* documented install locations in `docs/completions.md`, linked the doc from README, updated CLI/architecture/testing docs, and added completion/manpage snapshots and integration coverage
+* added runnable `examples/` shell demos for agent registry, send, stream/tasks, contexts/groups/routing, and gateway lifecycle commands
+* added a local `mock_a2a_server` helper example in `crates/missive-test-support` plus ListTasks fixture pagination fields needed by current A2A response parsing
+* added `crates/missive-cli/tests/example_smoke.rs` so the examples execute during the normal workspace test pass, and documented the workflow in `examples/README.md` plus `docs/examples.md`/`docs/testing.md`/README
 
 ## Latest maintenance notes
 
@@ -166,6 +167,8 @@ Recovery maintenance update requested by the user: oversized ticket 048 was spli
 None known.
 
 ## Limitations
+
+The command examples under `examples/` are local smoke demos, not an interoperability or production operations suite. By default they require Bash plus Cargo unless `MISSIVE_BIN` and/or `MISSIVE_EXAMPLE_A2A_BASE_URL` are provided, create temporary runtime state under `MISSIVE_HOME`, and exercise the local mock A2A fixture rather than an independent remote A2A implementation. They intentionally cover agent registry, send, stream/task, context/group/route, and gateway lifecycle commands only; broader push/webhook/collective/end-to-end demos remain for their later tickets.
 
 The A2A conformance fixture suite is a static, local compatibility suite based on A2A 1.0 specification examples and the current official Rust SDK wire shape. It is not an external certification program and does not prove interoperability with every independent A2A implementation; ticket 066 remains responsible for running against an upstream/example A2A agent.
 
@@ -261,4 +264,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 054 — Implement command examples and smoke tests.
+Ticket 055 — Add property tests for parsers and routing.

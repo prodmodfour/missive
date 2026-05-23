@@ -116,12 +116,35 @@ Only commit the normalized golden JSON, not local ports, generated message IDs,
 timestamps, runtime databases, or captured external traffic. The fixture README
 contains the update process for future A2A protocol versions.
 
+## Command example smoke tests
+
+Runnable shell examples live under [`examples/`](../examples/). The canonical
+entry point is:
+
+```bash
+examples/run-smoke.sh
+```
+
+The scripts create temporary `MISSIVE_HOME` state, start or reuse a local mock
+A2A server, and exercise agent registry, send, stream, task, context, group,
+route, and gateway commands. The default quality gate covers them through the
+CLI integration test:
+
+```bash
+cargo test -p missive-cli --test example_smoke --all-features
+```
+
+The test injects an already-built `missive` binary plus an in-process
+`MockA2aServer` so CI does not invoke nested Cargo builds or contact external
+services.
+
 ## Running the fixture tests
 
 Targeted checks for the reusable mock server and CLI integration are:
 
 ```bash
 cargo test -p missive-test-support --all-targets
+cargo test -p missive-cli --test example_smoke --all-features
 cargo test -p missive-cli --test mock_a2a_server_fixture --all-features
 cargo test -p missive-cli --test push_command --all-features
 cargo test -p missive-cli --test group_command --all-features

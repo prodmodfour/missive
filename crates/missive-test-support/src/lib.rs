@@ -728,7 +728,7 @@ fn json_rpc_response(inner: &mut MockStateInner, request: &RecordedRequest) -> H
             if inner.config.malformed_task_response {
                 json!({"unexpected": true})
             } else {
-                json!({"tasks": inner.current_tasks()})
+                list_tasks_json(inner.current_tasks())
             }
         }
         protocol::jsonrpc_methods::CANCEL_TASK => {
@@ -845,9 +845,19 @@ fn rest_list_tasks_response(inner: &MockStateInner) -> HttpResponse {
             200,
             "OK",
             "application/a2a+json",
-            json!({"tasks": inner.current_tasks()}),
+            list_tasks_json(inner.current_tasks()),
         )
     }
+}
+
+fn list_tasks_json(tasks: Vec<Value>) -> Value {
+    let total_size = i32::try_from(tasks.len()).unwrap_or(i32::MAX);
+    json!({
+        "tasks": tasks,
+        "nextPageToken": "",
+        "pageSize": total_size,
+        "totalSize": total_size,
+    })
 }
 
 fn stream_response(inner: &MockStateInner, json_rpc_id: Option<Value>) -> HttpResponse {
@@ -1309,6 +1319,17 @@ mod tests {
         assert_eq!(first_task["status"]["state"], "TASK_STATE_WORKING");
         assert_eq!(second_task["status"]["state"], "TASK_STATE_COMPLETED");
 
+        let listed_tasks: Value = client
+            .get(format!("{}/a2a/tasks", server.base_url()))
+            .send()
+            .expect("list tasks response")
+            .json()
+            .expect("list tasks json");
+        assert_eq!(listed_tasks["tasks"].as_array().expect("tasks").len(), 1);
+        assert_eq!(listed_tasks["nextPageToken"], "");
+        assert_eq!(listed_tasks["pageSize"], 1);
+        assert_eq!(listed_tasks["totalSize"], 1);
+
         let subscription = client
             .post(format!("{}/a2a/tasks/task-1:subscribe", server.base_url()))
             .send()
@@ -1351,13 +1372,13 @@ mod tests {
         assert_eq!(deleted["deleted"], true);
 
         let requests = server.requests();
-        assert_eq!(requests.len(), 7);
+        assert_eq!(requests.len(), 8);
         assert_eq!(requests[0].method, "GET");
         assert_eq!(requests[0].path, AGENT_CARD_PATH);
-        assert_eq!(requests[3].method, "POST");
-        assert_eq!(requests[3].path, "/a2a/tasks/task-1:subscribe");
         assert_eq!(requests[4].method, "POST");
-        assert_eq!(requests[4].json_body().expect("json body")["id"], "push-1");
+        assert_eq!(requests[4].path, "/a2a/tasks/task-1:subscribe");
+        assert_eq!(requests[5].method, "POST");
+        assert_eq!(requests[5].json_body().expect("json body")["id"], "push-1");
     }
 
     #[test]

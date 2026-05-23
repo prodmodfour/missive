@@ -1629,7 +1629,7 @@ Validation:
 
 ## 054 — Implement command examples and smoke tests
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 
