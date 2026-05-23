@@ -254,8 +254,9 @@ secret references.
 
 Webhook signature/JWT verification, broader daemon adapter trust-boundary
 enforcement, external trace/log sinks beyond stderr/service-manager capture,
-operation-wide tracing spans, production-grade rate limiting, gateway
-subscription/job auth resolution, user-facing session management commands, and
-insecure local token storage policy are not implemented yet. The current logging
-foundation redacts secret-like fields and auth-scheme text at render time, but
-callers should still avoid logging raw payloads or credentials.
+production-grade rate limiting, gateway subscription/job auth resolution,
+user-facing session management commands, and insecure local token storage policy
+are not implemented yet. The current logging foundation emits operation-level
+spans with safe identifiers and redacts secret-like fields plus auth-scheme text
+at render time, but callers should still avoid logging raw payloads or
+credentials.

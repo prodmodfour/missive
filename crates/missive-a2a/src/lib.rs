@@ -70,6 +70,79 @@ const TASKS_REST_PATH: &str = "tasks";
 const PUSH_CONFIGS_REST_PATH: &str = "pushNotificationConfigs";
 const MAX_SSE_EVENT_DATA_BYTES: usize = 16 * 1024 * 1024;
 
+fn observed_url(url: &Url) -> String {
+    let mut redacted = url.clone();
+    let _ = redacted.set_username("");
+    let _ = redacted.set_password(None);
+    redacted.set_query(None);
+    redacted.set_fragment(None);
+    redacted.to_string()
+}
+
+fn observed_url_text(value: &str) -> String {
+    Url::parse(value)
+        .map(|url| observed_url(&url))
+        .unwrap_or_else(|_| "<invalid-url>".to_owned())
+}
+
+fn optional_observed(value: Option<&str>) -> &str {
+    value.unwrap_or("-")
+}
+
+fn log_a2a_result<T>(result: &Result<T>) {
+    match result {
+        Ok(_) => tracing::debug!(
+            target: "missive_a2a",
+            result = "ok",
+            "A2A request completed"
+        ),
+        Err(error) => tracing::debug!(
+            target: "missive_a2a",
+            result = "error",
+            error_code = error.code(),
+            error_category = ?error.category(),
+            error_message = %observed_error_message(error.message()),
+            exit_code = error.exit_code().as_i32(),
+            "A2A request failed"
+        ),
+    }
+}
+
+fn observed_error_message(message: &str) -> String {
+    message
+        .split_whitespace()
+        .map(sanitize_error_token)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn sanitize_error_token(token: &str) -> String {
+    let trimmed = token.trim_matches(|character: char| matches!(character, '(' | ')' | ',' | ';'));
+    if !trimmed.contains("://") {
+        return token.to_owned();
+    }
+    match Url::parse(trimmed) {
+        Ok(url) => token.replacen(trimmed, &observed_url(&url), 1),
+        Err(_) => token.to_owned(),
+    }
+}
+
+fn send_response_shape(response: &protocol::SendMessageResponse) -> &'static str {
+    match response {
+        protocol::SendMessageResponse::Message(_) => "message",
+        protocol::SendMessageResponse::Task(_) => "task",
+    }
+}
+
+fn stream_response_kind(response: &protocol::StreamResponse) -> &'static str {
+    match response {
+        protocol::StreamResponse::Message(_) => "message",
+        protocol::StreamResponse::Task(_) => "task",
+        protocol::StreamResponse::StatusUpdate(_) => "status_update",
+        protocol::StreamResponse::ArtifactUpdate(_) => "artifact_update",
+    }
+}
+
 /// Canonical missive name for the A2A HTTP+JSON protocol binding.
 pub const HTTP_JSON_BINDING: &str = "http+json";
 
@@ -1171,89 +1244,139 @@ impl AgentCardClient {
         auth_headers: &AuthHeaders,
     ) -> Result<AgentCardFetchOutcome> {
         let discovery_url = public_agent_card_url(base_url)?;
-        let mut request = self
-            .client
-            .get(discovery_url.clone())
-            .header("Accept", "application/json");
-        request = service_parameters.apply_to_blocking_request(request)?;
-        request = auth_headers.apply_to_blocking_request(request)?;
+        let observed_endpoint = observed_url(&discovery_url);
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "AgentCardDiscovery",
+            binding = "http",
+            protocol_version = %service_parameters.protocol_version,
+            endpoint = %observed_endpoint,
+            cache_validators = validators.is_some(),
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(
+            target: "missive_a2a",
+            operation = "AgentCardDiscovery",
+            endpoint = %observed_endpoint,
+            "A2A request started"
+        );
+        let result = (|| {
+            let mut request = self
+                .client
+                .get(discovery_url.clone())
+                .header("Accept", "application/json");
+            request = service_parameters.apply_to_blocking_request(request)?;
+            request = auth_headers.apply_to_blocking_request(request)?;
 
-        if let Some(validators) = validators {
-            if let Some(etag) = &validators.etag {
-                request = request.header(IF_NONE_MATCH, etag);
+            if let Some(validators) = validators {
+                if let Some(etag) = &validators.etag {
+                    request = request.header(IF_NONE_MATCH, etag);
+                }
+                if let Some(last_modified) = &validators.last_modified {
+                    request = request.header(IF_MODIFIED_SINCE, last_modified);
+                }
             }
-            if let Some(last_modified) = &validators.last_modified {
-                request = request.header(IF_MODIFIED_SINCE, last_modified);
-            }
-        }
 
-        let response = request.send().map_err(|error| {
-            MissiveError::transport(format!(
-                "fetching A2A Agent Card from {discovery_url} failed"
-            ))
-            .with_source(error)
-            .with_help("Verify the agent base URL, local network access, and TLS configuration.")
-        })?;
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        if status == StatusCode::NOT_MODIFIED {
-            return Ok(AgentCardFetchOutcome::NotModified(AgentCardNotModified {
-                url: discovery_url.to_string(),
-                status: status.as_u16(),
-                validators: validators_from_headers(&headers),
-            }));
-        }
-        if !status.is_success() {
-            let body = response.text().map_err(|error| {
+            let response = request.send().map_err(|error| {
                 MissiveError::transport(format!(
-                    "reading A2A Agent Card error response from {discovery_url} failed"
+                    "fetching A2A Agent Card from {discovery_url} failed"
                 ))
                 .with_source(error)
+                .with_help(
+                    "Verify the agent base URL, local network access, and TLS configuration.",
+                )
             })?;
-            if response_reports_unsupported_version(&body) {
-                return Err(unsupported_protocol_version_error(
-                    &service_parameters.protocol_version,
-                    &discovery_url,
-                    status,
-                ));
+
+            let status = response.status();
+            let headers = response.headers().clone();
+            if status == StatusCode::NOT_MODIFIED {
+                return Ok(AgentCardFetchOutcome::NotModified(AgentCardNotModified {
+                    url: discovery_url.to_string(),
+                    status: status.as_u16(),
+                    validators: validators_from_headers(&headers),
+                }));
             }
-            return Err(MissiveError::transport(format!(
+            if !status.is_success() {
+                let body = response.text().map_err(|error| {
+                    MissiveError::transport(format!(
+                        "reading A2A Agent Card error response from {discovery_url} failed"
+                    ))
+                    .with_source(error)
+                })?;
+                if response_reports_unsupported_version(&body) {
+                    return Err(unsupported_protocol_version_error(
+                        &service_parameters.protocol_version,
+                        &discovery_url,
+                        status,
+                    ));
+                }
+                return Err(MissiveError::transport(format!(
                 "A2A Agent Card discovery returned HTTP {status} for {discovery_url}"
             ))
             .with_help(
                 "Ensure the agent serves /.well-known/agent-card.json and retry with --refresh after fixing the endpoint.",
             ));
-        }
+            }
 
-        let body = response.text().map_err(|error| {
-            MissiveError::transport(format!(
-                "reading A2A Agent Card response from {discovery_url} failed"
-            ))
-            .with_source(error)
-        })?;
-        let raw_json = serde_json::from_str::<Value>(&body).map_err(|error| {
-            MissiveError::protocol(format!(
-                "A2A Agent Card response from {discovery_url} is not valid JSON"
-            ))
-            .with_source(error)
-            .with_help("Verify that /.well-known/agent-card.json returns a JSON object.")
-        })?;
-        if !raw_json.is_object() {
-            return Err(MissiveError::protocol(format!(
-                "A2A Agent Card response from {discovery_url} must be a JSON object"
-            ))
-            .with_help("Verify that /.well-known/agent-card.json returns an AgentCard object."));
-        }
-        let card = AgentCard::from_json(raw_json.clone())?;
+            let body = response.text().map_err(|error| {
+                MissiveError::transport(format!(
+                    "reading A2A Agent Card response from {discovery_url} failed"
+                ))
+                .with_source(error)
+            })?;
+            let raw_json = serde_json::from_str::<Value>(&body).map_err(|error| {
+                MissiveError::protocol(format!(
+                    "A2A Agent Card response from {discovery_url} is not valid JSON"
+                ))
+                .with_source(error)
+                .with_help("Verify that /.well-known/agent-card.json returns a JSON object.")
+            })?;
+            if !raw_json.is_object() {
+                return Err(MissiveError::protocol(format!(
+                    "A2A Agent Card response from {discovery_url} must be a JSON object"
+                ))
+                .with_help(
+                    "Verify that /.well-known/agent-card.json returns an AgentCard object.",
+                ));
+            }
+            let card = AgentCard::from_json(raw_json.clone())?;
 
-        Ok(AgentCardFetchOutcome::Fetched(Box::new(AgentCardFetch {
-            url: discovery_url.to_string(),
-            status: status.as_u16(),
-            card,
-            raw_json,
-            validators: validators_from_headers(&headers),
-        })))
+            Ok(AgentCardFetchOutcome::Fetched(Box::new(AgentCardFetch {
+                url: discovery_url.to_string(),
+                status: status.as_u16(),
+                card,
+                raw_json,
+                validators: validators_from_headers(&headers),
+            })))
+        })();
+        match &result {
+            Ok(AgentCardFetchOutcome::Fetched(fetch)) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = fetch.status,
+                cache_status = "fetched",
+                "A2A request completed"
+            ),
+            Ok(AgentCardFetchOutcome::NotModified(not_modified)) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = not_modified.status,
+                cache_status = "not_modified",
+                "A2A request completed"
+            ),
+            Err(error) => tracing::debug!(
+                target: "missive_a2a",
+                result = "error",
+                error_code = error.code(),
+                error_category = ?error.category(),
+                error_message = %observed_error_message(error.message()),
+                exit_code = error.exit_code().as_i32(),
+                "A2A request failed"
+            ),
+        }
+        result
     }
 }
 
@@ -1313,7 +1436,28 @@ impl SendMessageClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<SendMessageOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "SendMessage",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            interface_protocol_version = %interface.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            message_id = %request.message.message_id,
+            context_id = %optional_observed(request.message.context_id.as_deref()),
+            task_id = %optional_observed(request.message.task_id.as_deref()),
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(
+            target: "missive_a2a",
+            operation = "SendMessage",
+            binding = %interface.binding,
+            message_id = %request.message.message_id,
+            "A2A request started"
+        );
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => self.send_http_json(
                 interface,
                 request,
@@ -1331,7 +1475,18 @@ impl SendMessageClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = outcome.status,
+                response_shape = %send_response_shape(&outcome.response),
+                "A2A request completed"
+            ),
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     fn send_http_json(
@@ -1570,7 +1725,28 @@ impl StreamMessageClient {
     where
         F: FnMut(StreamMessageEvent) -> Result<()>,
     {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "SendStreamingMessage",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            interface_protocol_version = %interface.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            message_id = %request.message.message_id,
+            context_id = %optional_observed(request.message.context_id.as_deref()),
+            task_id = %optional_observed(request.message.task_id.as_deref()),
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(
+            target: "missive_a2a",
+            operation = "SendStreamingMessage",
+            binding = %interface.binding,
+            message_id = %request.message.message_id,
+            "A2A request started"
+        );
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => self.stream_http_json(
                 interface,
                 request,
@@ -1590,7 +1766,18 @@ impl StreamMessageClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = outcome.status,
+                event_count = outcome.event_count,
+                "A2A request completed"
+            ),
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     fn stream_http_json<F>(
@@ -1854,7 +2041,20 @@ impl PushConfigClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<CreatePushConfigOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "CreateTaskPushNotificationConfig",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %config.task_id,
+            config_id = %optional_observed(config.id.as_deref()),
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "CreateTaskPushNotificationConfig", task_id = %config.task_id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.create_http_json(interface, config, service_parameters, auth_headers)
             }
@@ -1866,7 +2066,14 @@ impl PushConfigClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => {
+                tracing::debug!(target: "missive_a2a", result = "ok", http_status = outcome.status, "A2A request completed")
+            }
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     /// Gets one task push notification config using the negotiated interface.
@@ -1877,7 +2084,20 @@ impl PushConfigClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<GetPushConfigOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "GetTaskPushNotificationConfig",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %request.task_id,
+            config_id = %request.id,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "GetTaskPushNotificationConfig", task_id = %request.task_id, config_id = %request.id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.get_http_json(interface, request, service_parameters, auth_headers)
             }
@@ -1889,7 +2109,14 @@ impl PushConfigClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => {
+                tracing::debug!(target: "missive_a2a", result = "ok", http_status = outcome.status, "A2A request completed")
+            }
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     /// Lists task push notification configs using the negotiated interface.
@@ -1900,7 +2127,19 @@ impl PushConfigClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<ListPushConfigsOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "ListTaskPushNotificationConfigs",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %request.task_id,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "ListTaskPushNotificationConfigs", task_id = %request.task_id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.list_http_json(interface, request, service_parameters, auth_headers)
             }
@@ -1912,7 +2151,14 @@ impl PushConfigClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => {
+                tracing::debug!(target: "missive_a2a", result = "ok", http_status = outcome.status, config_count = outcome.response.configs.len(), "A2A request completed")
+            }
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     /// Deletes one task push notification config using the negotiated interface.
@@ -1923,7 +2169,20 @@ impl PushConfigClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<DeletePushConfigOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "DeleteTaskPushNotificationConfig",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %request.task_id,
+            config_id = %request.id,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "DeleteTaskPushNotificationConfig", task_id = %request.task_id, config_id = %request.id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.delete_http_json(interface, request, service_parameters, auth_headers)
             }
@@ -1935,7 +2194,14 @@ impl PushConfigClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => {
+                tracing::debug!(target: "missive_a2a", result = "ok", http_status = outcome.status, "A2A request completed")
+            }
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     fn create_http_json(
@@ -2258,7 +2524,20 @@ impl TaskClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<GetTaskOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "GetTask",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            interface_protocol_version = %interface.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %request.id,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "GetTask", task_id = %request.id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.get_http_json(interface, request, service_parameters, auth_headers)
             }
@@ -2268,7 +2547,18 @@ impl TaskClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = outcome.status,
+                task_state = ?outcome.task.status.state,
+                "A2A request completed"
+            ),
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     /// Lists tasks using the negotiated interface.
@@ -2279,7 +2569,21 @@ impl TaskClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<ListTasksOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "ListTasks",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            interface_protocol_version = %interface.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            context_id = %optional_observed(request.context_id.as_deref()),
+            status_filter = ?request.status,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "ListTasks", "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.list_http_json(interface, request, service_parameters, auth_headers)
             }
@@ -2289,7 +2593,18 @@ impl TaskClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = outcome.status,
+                task_count = outcome.response.tasks.len(),
+                "A2A request completed"
+            ),
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     /// Cancels one task using the negotiated interface.
@@ -2300,7 +2615,20 @@ impl TaskClient {
         service_parameters: &ServiceParameters,
         auth_headers: &AuthHeaders,
     ) -> Result<CancelTaskOutcome> {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "CancelTask",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            interface_protocol_version = %interface.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %request.id,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "CancelTask", task_id = %request.id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => {
                 self.cancel_http_json(interface, request, service_parameters, auth_headers)
             }
@@ -2312,7 +2640,18 @@ impl TaskClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = outcome.status,
+                task_state = ?outcome.task.status.state,
+                "A2A request completed"
+            ),
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     /// Subscribes to streaming updates for an existing task using the negotiated interface.
@@ -2327,7 +2666,20 @@ impl TaskClient {
     where
         F: FnMut(StreamMessageEvent) -> Result<()>,
     {
-        match interface.binding.as_str() {
+        let span = tracing::debug_span!(
+            target: "missive_a2a",
+            "a2a.request",
+            operation = "SubscribeToTask",
+            binding = %interface.binding,
+            protocol_version = %service_parameters.protocol_version,
+            interface_protocol_version = %interface.protocol_version,
+            endpoint = %observed_url_text(&interface.url),
+            task_id = %request.id,
+            auth_configured = !auth_headers.is_empty(),
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_a2a", operation = "SubscribeToTask", task_id = %request.id, "A2A request started");
+        let result = match interface.binding.as_str() {
             HTTP_JSON_BINDING => self.subscribe_http_json(
                 interface,
                 request,
@@ -2347,7 +2699,18 @@ impl TaskClient {
                 locally_supported_bindings_text()
             ))
             .with_help(local_support_help(Some(binding)))),
+        };
+        match &result {
+            Ok(outcome) => tracing::debug!(
+                target: "missive_a2a",
+                result = "ok",
+                http_status = outcome.status,
+                event_count = outcome.event_count,
+                "A2A request completed"
+            ),
+            Err(_) => log_a2a_result(&result),
         }
+        result
     }
 
     fn get_http_json(
@@ -3149,6 +3512,13 @@ where
             event,
             raw_json,
         };
+        tracing::debug!(
+            target: "missive_a2a",
+            sequence = item.sequence,
+            sse_event_type = %optional_observed(item.sse_event_type.as_deref()),
+            stream_event_kind = %stream_response_kind(&item.event),
+            "A2A stream event received"
+        );
         event_count += 1;
         on_event(item)
     })?;
@@ -3432,9 +3802,44 @@ fn validate_non_empty(label: impl AsRef<str>, value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    use missive_observe::{LogFormat, ObserveConfig, dispatch_with_writer};
     use serde_json::json;
+    use tracing_subscriber::fmt::writer::MakeWriter;
 
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl SharedBuffer {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().expect("buffer lock").clone()).expect("UTF-8 logs")
+        }
+    }
+
+    struct SharedBufferWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedBufferWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().expect("buffer lock").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> MakeWriter<'writer> for SharedBuffer {
+        type Writer = SharedBufferWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            SharedBufferWriter(Arc::clone(&self.0))
+        }
+    }
 
     fn valid_card() -> Value {
         json!({
@@ -3483,6 +3888,60 @@ mod tests {
 
         assert_eq!(info.name(), CRATE_NAME);
         assert!(info.purpose().contains("A2A"));
+    }
+
+    #[test]
+    fn a2a_client_debug_spans_include_protocol_context_without_auth_values() {
+        let buffer = SharedBuffer::default();
+        let dispatch = dispatch_with_writer(
+            ObserveConfig::new("debug", LogFormat::Human, false),
+            buffer.clone(),
+        )
+        .expect("dispatch");
+        let interface = NegotiatedInterface {
+            binding: "unsupported".to_owned(),
+            protocol_binding: "unsupported".to_owned(),
+            url: "http://user:raw-secret@127.0.0.1:8080/a2a?token=hidden".to_owned(),
+            tenant: None,
+            protocol_version: "1.0".to_owned(),
+            source: NegotiatedInterfaceSource::AgentCard,
+        };
+        let mut message =
+            protocol::Message::new(protocol::Role::User, vec![protocol::Part::text("hello")]);
+        message.context_id = Some("ctx-1".to_owned());
+        let request = protocol::SendMessageRequest {
+            message,
+            configuration: None,
+            metadata: None,
+            tenant: None,
+        };
+        let mut auth_headers = AuthHeaders::new();
+        auth_headers
+            .insert("Authorization", "Bearer raw-secret")
+            .expect("auth header");
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            SendMessageClient::new()
+                .expect("client")
+                .send_message(
+                    &interface,
+                    &request,
+                    &ServiceParameters::default(),
+                    &auth_headers,
+                )
+                .expect_err("unsupported binding");
+        });
+
+        let output = buffer.text();
+        assert!(output.contains("span.a2a.request"));
+        assert!(output.contains("operation=SendMessage"));
+        assert!(output.contains("binding=unsupported"));
+        assert!(output.contains("protocol_version=1.0"));
+        assert!(output.contains("message_id="));
+        assert!(output.contains("context_id=ctx-1"));
+        assert!(output.contains("auth_configured=true"));
+        assert!(!output.contains("raw-secret"));
+        assert!(!output.contains("token=hidden"));
     }
 
     #[test]

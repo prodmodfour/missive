@@ -252,7 +252,32 @@ where
     R: Read,
     W: Write,
 {
+    let span = tracing::debug_span!(
+        target: "missive_cli",
+        "collective.operation",
+        collective = "bcast",
+        group = %args.group,
+        execution = %args.execution.as_str(),
+        failure_policy = %args.failure_policy.as_str(),
+    );
+    let _span_guard = span.enter();
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "bcast",
+        group = %args.group,
+        execution = %args.execution.as_str(),
+        failure_policy = %args.failure_policy.as_str(),
+        "collective operation started"
+    );
     let mut operation = prepare_bcast_operation(args, globals, loaded_config, input)?;
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "bcast",
+        operation_id = %operation.operation_id,
+        context_id = %operation.context_id.as_str(),
+        protocol_version = %operation.service_parameters.protocol_version,
+        "broadcast operation prepared"
+    );
     let mut registry = open_agent_registry(loaded_config, environment)?;
     load_bcast_group(&mut operation, &mut registry.store)?;
     append_bcast_start_event(&registry.store, args, &operation)?;
@@ -287,6 +312,17 @@ where
         members,
     );
     append_bcast_completed_event(&registry.store, &output)?;
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "bcast",
+        operation_id = %output.operation_id,
+        status = %output.status,
+        member_count = output.member_count,
+        success_count = output.success_count,
+        failure_count = output.failure_count,
+        elapsed_ms = output.elapsed_ms,
+        "collective operation completed"
+    );
     render_success(writer, mode, "bcast_result", &output, &output.message)?;
 
     if output.status == "succeeded"
@@ -446,6 +482,15 @@ fn run_bcast_sequential(
             continue;
         }
 
+        tracing::debug!(
+            target: "missive_cli",
+            collective = "bcast",
+            operation_id = %operation.operation_id,
+            member_index = index,
+            agent = %member.agent_alias.as_str(),
+            rank = %member.rank_name.as_str(),
+            "broadcast member planning started"
+        );
         let plan = match plan_member_send(globals, environment, store, operation, member.clone()) {
             Ok(plan) => plan,
             Err(error) => {
@@ -465,6 +510,16 @@ fn run_bcast_sequential(
         };
 
         let started = Instant::now();
+        tracing::debug!(
+            target: "missive_cli",
+            collective = "bcast",
+            operation_id = %operation.operation_id,
+            member_index = index,
+            agent = %plan.agent.alias.as_str(),
+            binding = %plan.selected_interface.binding,
+            request_message_id = %plan.prepared.request_message_id.as_str(),
+            "broadcast member send started"
+        );
         let outcome = send_planned_member(&plan, remaining_or_default(operation.deadline));
         let duration = started.elapsed();
         let result = persist_member_result(
@@ -478,6 +533,18 @@ fn run_bcast_sequential(
                 .deadline
                 .is_some_and(|deadline| Instant::now() >= deadline),
         )?;
+        tracing::debug!(
+            target: "missive_cli",
+            collective = "bcast",
+            operation_id = %operation.operation_id,
+            member_index = index,
+            agent = %result.agent,
+            status = %result.status,
+            task_id = %result.task_id.as_deref().unwrap_or("-"),
+            state = %result.state.as_deref().unwrap_or("-"),
+            duration_ms = result.duration_ms,
+            "broadcast member completed"
+        );
         let succeeded = result.status == "succeeded";
         append_bcast_member_event(
             store,
@@ -622,7 +689,7 @@ fn persist_member_result(
     outcome: Result<SendMessageOutcome>,
     timed_out: bool,
 ) -> Result<BcastMemberView> {
-    match outcome {
+    let result = match outcome {
         Ok(outcome) => {
             let persisted = persist_send(
                 store,
@@ -631,18 +698,23 @@ fn persist_member_result(
                 &outcome,
                 &operation.service_parameters,
             )?;
-            Ok(success_member_view(
-                index, &plan, &outcome, &persisted, duration,
-            ))
+            success_member_view(index, &plan, &outcome, &persisted, duration)
         }
-        Err(error) => Ok(failed_member_view(
-            index,
-            &plan.member,
-            duration,
-            error,
-            timed_out,
-        )),
-    }
+        Err(error) => failed_member_view(index, &plan.member, duration, error, timed_out),
+    };
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "bcast",
+        operation_id = %operation.operation_id,
+        member_index = index,
+        agent = %result.agent,
+        status = %result.status,
+        task_id = %result.task_id.as_deref().unwrap_or("-"),
+        state = %result.state.as_deref().unwrap_or("-"),
+        duration_ms = result.duration_ms,
+        "broadcast member persisted"
+    );
+    Ok(result)
 }
 
 fn timeout_member_before_start(

@@ -409,6 +409,23 @@ where
     R: Read,
     W: Write,
 {
+    let span = tracing::debug_span!(
+        target: "missive_cli",
+        "collective.operation",
+        collective = "barrier",
+        group = %args.group,
+        context_id = %args.context.as_deref().unwrap_or("-"),
+        local = args.local,
+        required = args.required.unwrap_or_default(),
+    );
+    let _span_guard = span.enter();
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "barrier",
+        group = %args.group,
+        context_id = %args.context.as_deref().unwrap_or("-"),
+        "collective operation started"
+    );
     let reference = read_bcast_reference(args, input)?;
     let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
     let mut registry = open_agent_registry(loaded_config, environment)?;
@@ -441,6 +458,18 @@ where
             );
             append_barrier_member_events(&registry.store, &operation, &output)?;
             append_barrier_completed_event(&registry.store, &output)?;
+            tracing::debug!(
+                target: "missive_cli",
+                collective = "barrier",
+                operation_id = %output.operation_id,
+                status = %output.status,
+                attempts = output.attempts,
+                reached_count = output.reached_count,
+                failure_count = output.failure_count,
+                cancellation_count = output.cancellation_count,
+                pending_count = output.pending_count,
+                "collective operation completed"
+            );
             render_barrier_success(writer, mode, &output)?;
             return barrier_exit(&output);
         }

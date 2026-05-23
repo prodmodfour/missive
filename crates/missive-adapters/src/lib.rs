@@ -640,15 +640,48 @@ impl AdapterContext {
 
     /// Emits one event through the configured sink.
     pub fn emit(&self, event: AdapterEvent) -> Result<()> {
-        if event.adapter_name() != self.definition.name {
-            return Err(MissiveError::validation(format!(
+        let event_type = event.event_type();
+        let event_adapter_name = event.adapter_name().to_owned();
+        let span = tracing::debug_span!(
+            target: "missive_adapters",
+            "adapter.event",
+            adapter_name = %self.definition.name,
+            adapter_kind = %self.definition.kind,
+            event_type,
+            event_adapter_name = %event_adapter_name,
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(
+            target: "missive_adapters",
+            adapter_name = %self.definition.name,
+            adapter_kind = %self.definition.kind,
+            event_type,
+            "adapter event emit started"
+        );
+        let result = if event_adapter_name != self.definition.name {
+            Err(MissiveError::validation(format!(
                 "adapter context for {:?} cannot emit event from {:?}",
-                self.definition.name,
-                event.adapter_name()
+                self.definition.name, event_adapter_name
             ))
-            .with_help("Use the adapter definition name when building adapter events."));
+            .with_help("Use the adapter definition name when building adapter events."))
+        } else {
+            self.event_sink.emit(event)
+        };
+        match &result {
+            Ok(()) => tracing::debug!(
+                target: "missive_adapters",
+                result = "ok",
+                "adapter event emitted"
+            ),
+            Err(error) => tracing::debug!(
+                target: "missive_adapters",
+                result = "error",
+                error = %error,
+                exit_code = error.exit_code().as_i32(),
+                "adapter event emit failed"
+            ),
         }
-        self.event_sink.emit(event)
+        result
     }
 }
 
@@ -746,15 +779,34 @@ impl AdapterRegistry {
     /// Registers a factory. Duplicate kinds are rejected.
     pub fn register_factory(&mut self, factory: impl AdapterFactory + 'static) -> Result<()> {
         let kind = factory.kind().to_owned();
-        validate_adapter_identifier("adapter factory kind", &kind)?;
-        if self.factories.contains_key(&kind) {
-            return Err(MissiveError::config(format!(
-                "adapter factory for kind {kind:?} is already registered"
-            ))
-            .with_help("Register each adapter kind once per gateway process."));
+        let span = tracing::debug_span!(
+            target: "missive_adapters",
+            "adapter.registry",
+            operation = "register_factory",
+            adapter_kind = %kind,
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(target: "missive_adapters", adapter_kind = %kind, "adapter factory registration started");
+        let result = (|| {
+            validate_adapter_identifier("adapter factory kind", &kind)?;
+            if self.factories.contains_key(&kind) {
+                return Err(MissiveError::config(format!(
+                    "adapter factory for kind {kind:?} is already registered"
+                ))
+                .with_help("Register each adapter kind once per gateway process."));
+            }
+            self.factories.insert(kind.clone(), Box::new(factory));
+            Ok(())
+        })();
+        match &result {
+            Ok(()) => {
+                tracing::debug!(target: "missive_adapters", result = "ok", "adapter factory registered")
+            }
+            Err(error) => {
+                tracing::debug!(target: "missive_adapters", result = "error", error = %error, exit_code = error.exit_code().as_i32(), "adapter factory registration failed")
+            }
         }
-        self.factories.insert(kind, Box::new(factory));
-        Ok(())
+        result
     }
 
     /// Registers a function-backed factory.
@@ -779,21 +831,45 @@ impl AdapterRegistry {
 
     /// Creates an adapter for one enabled definition.
     pub fn create(&self, definition: &AdapterDefinition) -> Result<Box<dyn Adapter>> {
-        if !definition.enabled {
-            return Err(MissiveError::config(format!(
-                "adapter {:?} is disabled and should not be started",
-                definition.name
-            ))
-            .with_help("Filter definitions with enabled_adapter_definitions_from_config before starting adapters."));
+        let span = tracing::debug_span!(
+            target: "missive_adapters",
+            "adapter.operation",
+            operation = "create",
+            adapter_name = %definition.name,
+            adapter_kind = %definition.kind,
+            enabled = definition.enabled,
+        );
+        let _span_guard = span.enter();
+        tracing::debug!(
+            target: "missive_adapters",
+            adapter_name = %definition.name,
+            adapter_kind = %definition.kind,
+            "adapter creation started"
+        );
+        let result = (|| {
+            if !definition.enabled {
+                return Err(MissiveError::config(format!(
+                    "adapter {:?} is disabled and should not be started",
+                    definition.name
+                ))
+                .with_help("Filter definitions with enabled_adapter_definitions_from_config before starting adapters."));
+            }
+            let factory = self.factories.get(&definition.kind).ok_or_else(|| {
+                MissiveError::config(format!(
+                    "no adapter factory registered for kind {:?}",
+                    definition.kind
+                ))
+                .with_help("Install or enable the crate feature that provides this adapter kind.")
+            })?;
+            factory.create(definition.clone())
+        })();
+        match &result {
+            Ok(_) => tracing::debug!(target: "missive_adapters", result = "ok", "adapter created"),
+            Err(error) => {
+                tracing::debug!(target: "missive_adapters", result = "error", error = %error, exit_code = error.exit_code().as_i32(), "adapter creation failed")
+            }
         }
-        let factory = self.factories.get(&definition.kind).ok_or_else(|| {
-            MissiveError::config(format!(
-                "no adapter factory registered for kind {:?}",
-                definition.kind
-            ))
-            .with_help("Install or enable the crate feature that provides this adapter kind.")
-        })?;
-        factory.create(definition.clone())
+        result
     }
 
     /// Builds adapter definitions from a validated core config, including disabled entries.
@@ -938,12 +1014,45 @@ pub const fn crate_info() -> missive_core::CrateInfo {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::io;
+    use std::sync::{Arc, Mutex};
 
     use missive_core::{ErrorCategory, MissiveConfig};
+    use missive_observe::{LogFormat, ObserveConfig, dispatch_with_writer};
     use serde_json::json;
+    use tracing_subscriber::fmt::writer::MakeWriter;
 
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl SharedBuffer {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().expect("buffer lock").clone()).expect("UTF-8 logs")
+        }
+    }
+
+    struct SharedBufferWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedBufferWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().expect("buffer lock").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> MakeWriter<'writer> for SharedBuffer {
+        type Writer = SharedBufferWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            SharedBufferWriter(Arc::clone(&self.0))
+        }
+    }
 
     #[derive(Debug, Default)]
     struct RecordingSink {
@@ -1048,6 +1157,47 @@ mod tests {
 
         assert_eq!(info.name(), CRATE_NAME);
         assert!(info.purpose().contains("adapters"));
+    }
+
+    #[test]
+    fn adapter_registry_and_event_emission_are_traced() {
+        let buffer = SharedBuffer::default();
+        let dispatch = dispatch_with_writer(
+            ObserveConfig::new("debug", LogFormat::Human, false),
+            buffer.clone(),
+        )
+        .expect("dispatch");
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            let mut registry = AdapterRegistry::new();
+            registry
+                .register_fn("fake", |definition| {
+                    Ok(Box::new(FakeAdapter::new(definition)))
+                })
+                .expect("register fake factory");
+            let definition = AdapterDefinition::new("fake", "fake").expect("definition");
+            let _adapter = registry.create(&definition).expect("create fake adapter");
+            let sink = Arc::new(RecordingSink::default());
+            let context = AdapterContext::new(definition.clone(), sink);
+            context
+                .emit(AdapterEvent::lifecycle(
+                    AdapterLifecycleEvent::new(
+                        &definition,
+                        AdapterLifecycleState::Running,
+                        "fake adapter started",
+                    )
+                    .expect("lifecycle"),
+                ))
+                .expect("emit lifecycle");
+        });
+
+        let output = buffer.text();
+        assert!(output.contains("span.adapter.registry"), "{output}");
+        assert!(output.contains("adapter creation started"), "{output}");
+        assert!(output.contains("span.adapter.event"), "{output}");
+        assert!(output.contains("adapter_kind=fake"));
+        assert!(output.contains("event_type=missive.adapter.lifecycle"));
+        assert!(output.contains("adapter event emitted"));
     }
 
     #[test]

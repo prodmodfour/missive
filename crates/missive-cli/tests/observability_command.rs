@@ -59,3 +59,33 @@ fn trace_flag_emits_trace_bootstrap_diagnostic() {
     assert!(stderr.contains("filter=trace"));
     assert!(stderr.contains("TRACE missive_observe: trace diagnostics enabled"));
 }
+
+#[test]
+fn debug_filter_emits_cli_command_span_fields() {
+    let output = Command::new(env!("CARGO_BIN_EXE_missive"))
+        .args(["--json", "doctor"])
+        .env("RUST_LOG", "missive_cli=debug")
+        .env("MISSIVE_LOG_FORMAT", "json")
+        .output()
+        .expect("missive should run");
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr UTF-8");
+    let configured = stderr
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("JSON diagnostics line"))
+        .find(|value| value["fields"]["message"] == "CLI command configured")
+        .expect("CLI command configured log line");
+
+    assert_eq!(configured["target"], "missive_cli");
+    assert_eq!(configured["fields"]["command"], "doctor");
+    assert_eq!(configured["fields"]["selected_profile"], "default");
+    assert_eq!(configured["fields"]["output_mode"], "json");
+    let spans = configured["spans"].as_array().expect("span context");
+    assert!(spans.iter().any(|span| {
+        span["name"] == "cli.command"
+            && span["fields"]
+                .as_str()
+                .is_some_and(|fields| fields.contains("command=doctor"))
+    }));
+}

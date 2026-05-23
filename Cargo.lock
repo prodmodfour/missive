@@ -1034,9 +1034,12 @@ version = "0.1.0"
 dependencies = [
  "a2a-lf",
  "missive-core",
+ "missive-observe",
  "reqwest",
  "serde",
  "serde_json",
+ "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
@@ -1045,9 +1048,12 @@ name = "missive-adapters"
 version = "0.1.0"
 dependencies = [
  "missive-core",
+ "missive-observe",
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1068,6 +1074,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
  "url",
 ]
 
@@ -1101,6 +1108,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1128,10 +1136,13 @@ version = "0.1.0"
 dependencies = [
  "fs2",
  "missive-core",
+ "missive-observe",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

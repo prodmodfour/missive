@@ -1475,7 +1475,7 @@ Validation:
 
 ## 049 — Add observability spans across missive operations
 
-Status: TODO
+Status: DONE
 
 Phase: Observability
 

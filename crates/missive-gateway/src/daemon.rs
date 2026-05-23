@@ -757,6 +757,23 @@ pub async fn run_gateway_daemon(
     config: GatewayDaemonConfig,
     event_tx: mpsc::UnboundedSender<GatewayRuntimeEvent>,
 ) -> Result<GatewayDaemonSummary> {
+    let daemon_span = tracing::debug_span!(
+        target: "missive_gateway",
+        "gateway.daemon",
+        profile = %config.profile,
+        bind_address = %config.bind_addr,
+        job_concurrency = config.job_concurrency,
+        protocol_version = %config.service_parameters.protocol_version,
+        http_adapter_enabled = config.http_adapter.is_some(),
+    );
+    daemon_span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            profile = %config.profile,
+            bind_address = %config.bind_addr,
+            "gateway daemon starting"
+        );
+    });
     config.validate()?;
     config.state_paths.ensure_directories()?;
 
@@ -895,7 +912,19 @@ pub async fn run_gateway_daemon(
     )
     .await?;
 
-    Ok(summary_event(&config, &state, local_addr, &reason))
+    let summary = summary_event(&config, &state, local_addr, &reason);
+    daemon_span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            profile = %summary.profile,
+            bind_address = %summary.bind_address,
+            shutdown_reason = %summary.shutdown_reason,
+            uptime_ms = summary.uptime_ms,
+            event_bus_events = summary.event_bus_events,
+            "gateway daemon stopped"
+        );
+    });
+    Ok(summary)
 }
 
 async fn initialize_store(paths: &StatePaths) -> Result<()> {
@@ -918,11 +947,23 @@ async fn supervisor_loop(
     while let Some(event) = bus_rx.recv().await {
         match event {
             GatewayBusEvent::Component(component) => {
+                tracing::debug!(
+                    target: "missive_gateway",
+                    component = %component.name,
+                    state = %component.state,
+                    "gateway component status observed"
+                );
                 state.set_component(component.clone());
                 state.note_bus_event();
                 let _ = runtime_tx.send(GatewayRuntimeEvent::Component(component));
             }
             GatewayBusEvent::Adapter(adapter_event) => {
+                tracing::debug!(
+                    target: "missive_gateway",
+                    adapter_name = %adapter_event.adapter_name(),
+                    event_type = %adapter_event.event_type(),
+                    "gateway adapter event observed"
+                );
                 let component = GatewayComponentStatus::running(
                     COMPONENT_ADAPTERS,
                     format!(
@@ -1012,6 +1053,22 @@ async fn http_adapter_control(
     body: Bytes,
 ) -> Response {
     let remote = Some(remote_addr.to_string());
+    let request_span = tracing::debug_span!(
+        target: "missive_gateway",
+        "gateway.http_adapter.request",
+        profile = %state.profile,
+        remote_addr = %remote.as_deref().unwrap_or("-"),
+        body_bytes = body.len(),
+    );
+    request_span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            profile = %state.profile,
+            remote_addr = %remote.as_deref().unwrap_or("-"),
+            body_bytes = body.len(),
+            "HTTP adapter request received"
+        );
+    });
     let Some(http_adapter) = state.http_adapter.as_ref() else {
         return (
             StatusCode::NOT_FOUND,
@@ -1125,6 +1182,23 @@ async fn accept_http_adapter_request(
     remote_addr: Option<&str>,
     auth_validated: bool,
 ) -> Result<HttpAdapterAcceptedResponse> {
+    let span = tracing::debug_span!(
+        target: "missive_gateway",
+        "gateway.adapter_event",
+        adapter_kind = HTTP_ADAPTER_KIND,
+        request_id = %frame.id,
+        command = %frame.command.as_str(),
+        auth_validated,
+    );
+    span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            adapter_kind = HTTP_ADAPTER_KIND,
+            request_id = %frame.id,
+            command = %frame.command.as_str(),
+            "HTTP adapter request accepted for journaling"
+        );
+    });
     let mut definition = AdapterDefinition::new("http", HTTP_ADAPTER_KIND)?;
     definition.session_profile = frame.source.profile.clone();
     let adapter = HttpAdapter::new(definition)?;
@@ -1148,6 +1222,16 @@ async fn accept_http_adapter_request(
     .await?;
     http_adapter.accepted.fetch_add(1, Ordering::SeqCst);
     http_adapter.emit_adapter_event(adapter_event)?;
+    span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            adapter_kind = HTTP_ADAPTER_KIND,
+            request_id = %frame.id,
+            event_id = %record.event_id.as_str(),
+            sequence = record.sequence,
+            "HTTP adapter event emitted"
+        );
+    });
     Ok(HttpAdapterAcceptedResponse {
         ok: true,
         id: frame.id,
@@ -1162,6 +1246,14 @@ async fn reject_http_adapter_request(
     http_adapter: &HttpInboundAdapterState,
     rejection: HttpAdapterRejection,
 ) -> Response {
+    tracing::debug!(
+        target: "missive_gateway",
+        adapter_kind = HTTP_ADAPTER_KIND,
+        status = rejection.status.as_u16(),
+        reason = rejection.reason,
+        auth_validated = rejection.auth_validated,
+        "HTTP adapter request rejected"
+    );
     let payload = json!({
         "status": rejection.status.as_u16(),
         "reason": rejection.reason,

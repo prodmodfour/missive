@@ -28,6 +28,52 @@ const STORE_IDENTIFIER_MAX_BYTES: usize = 256;
 const STORE_IDENTIFIER_HELP: &str =
     "Use a non-empty identifier without whitespace or control characters.";
 
+fn trace_store_operation<T>(
+    operation: &'static str,
+    entity: &'static str,
+    identifier: Option<String>,
+    action: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    let span = tracing::debug_span!(
+        target: "missive_store",
+        "store.operation",
+        db_system = "sqlite",
+        operation,
+        entity,
+        identifier = %identifier.as_deref().unwrap_or("-"),
+    );
+    let _span_guard = span.enter();
+    tracing::debug!(
+        target: "missive_store",
+        operation,
+        entity,
+        identifier = %identifier.as_deref().unwrap_or("-"),
+        "store operation started"
+    );
+    let result = action();
+    match &result {
+        Ok(_) => tracing::debug!(
+            target: "missive_store",
+            operation,
+            entity,
+            identifier = %identifier.as_deref().unwrap_or("-"),
+            result = "ok",
+            "store operation completed"
+        ),
+        Err(error) => tracing::debug!(
+            target: "missive_store",
+            operation,
+            entity,
+            identifier = %identifier.as_deref().unwrap_or("-"),
+            result = "error",
+            error = %error,
+            exit_code = error.exit_code().as_i32(),
+            "store operation failed"
+        ),
+    }
+    result
+}
+
 macro_rules! impl_string_enum {
     ($name:ident, $label:literal, { $($variant:ident => $value:literal),+ $(,)? }) => {
         impl $name {
@@ -1315,22 +1361,29 @@ pub struct Store {
 impl Store {
     /// Opens a SQLite database file and applies embedded migrations.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let mut connection = open_sqlite_database(path.as_ref())?;
-        migrate_connection(&mut connection)?;
-        Ok(Self { connection })
+        let path = path.as_ref().to_path_buf();
+        trace_store_operation("open", "database", Some(path.display().to_string()), || {
+            let mut connection = open_sqlite_database(&path)?;
+            migrate_connection(&mut connection)?;
+            Ok(Self { connection })
+        })
     }
 
     /// Creates a store from an existing connection after applying embedded migrations.
     pub fn from_connection(mut connection: Connection) -> Result<Self> {
-        migrate_connection(&mut connection)?;
-        Ok(Self { connection })
+        trace_store_operation("open", "connection", None, || {
+            migrate_connection(&mut connection)?;
+            Ok(Self { connection })
+        })
     }
 
     /// Opens a migrated in-memory database. Useful for tests and local fixtures.
     pub fn open_in_memory() -> Result<Self> {
-        let connection = Connection::open_in_memory()
-            .map_err(|error| storage_error("opening in-memory SQLite database", error))?;
-        Self::from_connection(connection)
+        trace_store_operation("open", "database", Some(":memory:".to_owned()), || {
+            let connection = Connection::open_in_memory()
+                .map_err(|error| storage_error("opening in-memory SQLite database", error))?;
+            Self::from_connection(connection)
+        })
     }
 
     /// Runs a closure inside a SQLite transaction.
@@ -1342,29 +1395,34 @@ impl Store {
         &mut self,
         operation: impl FnOnce(&mut StoreTransaction<'_>) -> Result<T>,
     ) -> Result<T> {
-        let transaction = self
-            .connection
-            .transaction()
-            .map_err(|error| storage_error("starting SQLite repository transaction", error))?;
-        let mut store_transaction = StoreTransaction { transaction };
+        trace_store_operation("transaction", "database", None, || {
+            let transaction = self
+                .connection
+                .transaction()
+                .map_err(|error| storage_error("starting SQLite repository transaction", error))?;
+            let mut store_transaction = StoreTransaction { transaction };
 
-        match operation(&mut store_transaction) {
-            Ok(value) => {
-                store_transaction.transaction.commit().map_err(|error| {
-                    storage_error("committing SQLite repository transaction", error)
-                })?;
-                Ok(value)
-            }
-            Err(error) => {
-                store_transaction
-                    .transaction
-                    .rollback()
-                    .map_err(|rollback_error| {
-                        storage_error("rolling back SQLite repository transaction", rollback_error)
+            match operation(&mut store_transaction) {
+                Ok(value) => {
+                    store_transaction.transaction.commit().map_err(|error| {
+                        storage_error("committing SQLite repository transaction", error)
                     })?;
-                Err(error)
+                    Ok(value)
+                }
+                Err(error) => {
+                    store_transaction
+                        .transaction
+                        .rollback()
+                        .map_err(|rollback_error| {
+                            storage_error(
+                                "rolling back SQLite repository transaction",
+                                rollback_error,
+                            )
+                        })?;
+                    Err(error)
+                }
             }
-        }
+        })
     }
 
     /// Creates or updates an auth ref and returns the stored row.
@@ -1389,22 +1447,31 @@ impl Store {
 
     /// Creates or updates an agent and returns the stored row.
     pub fn upsert_agent(&self, input: &AgentUpsert) -> Result<AgentRecord> {
-        upsert_agent(&self.connection, input)
+        trace_store_operation(
+            "upsert",
+            "agent",
+            Some(input.alias.as_str().to_owned()),
+            || upsert_agent(&self.connection, input),
+        )
     }
 
     /// Reads one agent by alias.
     pub fn get_agent(&self, alias: &AgentAlias) -> Result<Option<AgentRecord>> {
-        get_agent(&self.connection, alias)
+        trace_store_operation("get", "agent", Some(alias.as_str().to_owned()), || {
+            get_agent(&self.connection, alias)
+        })
     }
 
     /// Lists agents in deterministic alias order.
     pub fn list_agents(&self) -> Result<Vec<AgentRecord>> {
-        list_agents(&self.connection)
+        trace_store_operation("list", "agent", None, || list_agents(&self.connection))
     }
 
     /// Deletes an agent by alias. Returns `true` when a row was removed.
     pub fn delete_agent(&self, alias: &AgentAlias) -> Result<bool> {
-        delete_agent(&self.connection, alias)
+        trace_store_operation("delete", "agent", Some(alias.as_str().to_owned()), || {
+            delete_agent(&self.connection, alias)
+        })
     }
 
     /// Creates or updates a context and returns the stored row.
@@ -1429,22 +1496,31 @@ impl Store {
 
     /// Creates or updates a task and returns the stored row.
     pub fn upsert_task(&self, input: &TaskUpsert) -> Result<TaskRecord> {
-        upsert_task(&self.connection, input)
+        trace_store_operation(
+            "upsert",
+            "task",
+            Some(input.task_id.as_str().to_owned()),
+            || upsert_task(&self.connection, input),
+        )
     }
 
     /// Reads one task by id.
     pub fn get_task(&self, task_id: &TaskId) -> Result<Option<TaskRecord>> {
-        get_task(&self.connection, task_id)
+        trace_store_operation("get", "task", Some(task_id.as_str().to_owned()), || {
+            get_task(&self.connection, task_id)
+        })
     }
 
     /// Lists tasks in deterministic id order.
     pub fn list_tasks(&self) -> Result<Vec<TaskRecord>> {
-        list_tasks(&self.connection)
+        trace_store_operation("list", "task", None, || list_tasks(&self.connection))
     }
 
     /// Deletes a task by id. Returns `true` when a row was removed.
     pub fn delete_task(&self, task_id: &TaskId) -> Result<bool> {
-        delete_task(&self.connection, task_id)
+        trace_store_operation("delete", "task", Some(task_id.as_str().to_owned()), || {
+            delete_task(&self.connection, task_id)
+        })
     }
 
     /// Creates or updates an artifact and returns the stored row.
@@ -1494,22 +1570,34 @@ impl Store {
 
     /// Appends an event and returns the stored event including sequence.
     pub fn append_event(&self, input: &EventInsert) -> Result<EventRecord> {
-        append_event(&self.connection, input)
+        trace_store_operation(
+            "append",
+            "event",
+            Some(input.event_id.as_str().to_owned()),
+            || append_event(&self.connection, input),
+        )
     }
 
     /// Reads one event by event id.
     pub fn get_event(&self, event_id: &EventId) -> Result<Option<EventRecord>> {
-        get_event(&self.connection, event_id)
+        trace_store_operation("get", "event", Some(event_id.as_str().to_owned()), || {
+            get_event(&self.connection, event_id)
+        })
     }
 
     /// Lists events in sequence order.
     pub fn list_events(&self) -> Result<Vec<EventRecord>> {
-        list_events(&self.connection)
+        trace_store_operation("list", "event", None, || list_events(&self.connection))
     }
 
     /// Deletes an event by id. Returns `true` when a row was removed.
     pub fn delete_event(&self, event_id: &EventId) -> Result<bool> {
-        delete_event(&self.connection, event_id)
+        trace_store_operation(
+            "delete",
+            "event",
+            Some(event_id.as_str().to_owned()),
+            || delete_event(&self.connection, event_id),
+        )
     }
 
     /// Creates or updates a group and returns the stored row.
@@ -1591,7 +1679,12 @@ impl Store {
 
     /// Creates or updates a gateway job and returns the stored row.
     pub fn upsert_gateway_job(&self, input: &GatewayJobUpsert) -> Result<GatewayJobRecord> {
-        upsert_gateway_job(&self.connection, input)
+        trace_store_operation(
+            "upsert",
+            "gateway_job",
+            Some(input.gateway_job_id.as_str().to_owned()),
+            || upsert_gateway_job(&self.connection, input),
+        )
     }
 
     /// Reads one gateway job by id.
@@ -1599,17 +1692,29 @@ impl Store {
         &self,
         gateway_job_id: &GatewayJobId,
     ) -> Result<Option<GatewayJobRecord>> {
-        get_gateway_job(&self.connection, gateway_job_id)
+        trace_store_operation(
+            "get",
+            "gateway_job",
+            Some(gateway_job_id.as_str().to_owned()),
+            || get_gateway_job(&self.connection, gateway_job_id),
+        )
     }
 
     /// Lists gateway jobs in deterministic id order.
     pub fn list_gateway_jobs(&self) -> Result<Vec<GatewayJobRecord>> {
-        list_gateway_jobs(&self.connection)
+        trace_store_operation("list", "gateway_job", None, || {
+            list_gateway_jobs(&self.connection)
+        })
     }
 
     /// Deletes a gateway job by id. Returns `true` when a row was removed.
     pub fn delete_gateway_job(&self, gateway_job_id: &GatewayJobId) -> Result<bool> {
-        delete_gateway_job(&self.connection, gateway_job_id)
+        trace_store_operation(
+            "delete",
+            "gateway_job",
+            Some(gateway_job_id.as_str().to_owned()),
+            || delete_gateway_job(&self.connection, gateway_job_id),
+        )
     }
 
     /// Creates or updates a gateway session and returns the stored row.
@@ -3538,10 +3643,45 @@ fn storage_error(action: &str, error: rusqlite::Error) -> MissiveError {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    use missive_observe::{LogFormat, ObserveConfig, dispatch_with_writer};
     use serde_json::json;
     use tempfile::tempdir;
+    use tracing_subscriber::fmt::writer::MakeWriter;
 
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl SharedBuffer {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().expect("buffer lock").clone()).expect("UTF-8 logs")
+        }
+    }
+
+    struct SharedBufferWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedBufferWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().expect("buffer lock").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> MakeWriter<'writer> for SharedBuffer {
+        type Writer = SharedBufferWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            SharedBufferWriter(Arc::clone(&self.0))
+        }
+    }
 
     #[test]
     fn store_open_migrates_temp_database() {
@@ -3552,6 +3692,32 @@ mod tests {
 
         assert!(path.exists());
         assert!(store.list_agents().expect("agents list").is_empty());
+    }
+
+    #[test]
+    fn store_operations_emit_structured_debug_spans() {
+        let buffer = SharedBuffer::default();
+        let dispatch = dispatch_with_writer(
+            ObserveConfig::new("debug", LogFormat::Human, false),
+            buffer.clone(),
+        )
+        .expect("dispatch");
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            let store = Store::open_in_memory().expect("store");
+            let alias = AgentAlias::new("echo").expect("alias");
+            store
+                .upsert_agent(&AgentUpsert::new(alias.clone(), "http://127.0.0.1:8080"))
+                .expect("upsert agent");
+            store.get_agent(&alias).expect("get agent");
+        });
+
+        let output = buffer.text();
+        assert!(output.contains("span.store.operation"), "{output}");
+        assert!(output.contains("operation=upsert"), "{output}");
+        assert!(output.contains("entity=agent"), "{output}");
+        assert!(output.contains("identifier=echo"), "{output}");
+        assert!(output.contains("store operation started"), "{output}");
     }
 
     #[test]

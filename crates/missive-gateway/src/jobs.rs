@@ -155,6 +155,21 @@ pub(crate) async fn run_job_manager(
     bus_tx: mpsc::UnboundedSender<GatewayBusEvent>,
     mut shutdown_rx: watch::Receiver<Option<ShutdownReason>>,
 ) -> Result<JobManagerSummary> {
+    let manager_span = tracing::debug_span!(
+        target: "missive_gateway",
+        "gateway.job_manager",
+        profile = %config.profile,
+        job_concurrency = config.job_concurrency,
+        protocol_version = %config.service_parameters.protocol_version,
+    );
+    manager_span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            profile = %config.profile,
+            job_concurrency = config.job_concurrency,
+            "gateway background job manager started"
+        );
+    });
     let mut summary = JobManagerSummary::default();
     let _ = bus_tx.send(GatewayBusEvent::Component(GatewayComponentStatus::running(
         COMPONENT_BACKGROUND_JOBS,
@@ -224,6 +239,20 @@ pub(crate) async fn run_job_manager(
             summary.last_error.as_deref().unwrap_or("-"),
         ),
     )));
+    manager_span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            started = summary.started,
+            succeeded = summary.succeeded,
+            failed = summary.failed,
+            retrying = summary.retrying,
+            cancelled = summary.cancelled,
+            queued = summary.queued,
+            running = summary.running,
+            last_error = %summary.last_error.as_deref().unwrap_or("-"),
+            "gateway background job manager stopped"
+        );
+    });
 
     Ok(summary)
 }
@@ -235,6 +264,12 @@ struct ScanResult {
 }
 
 async fn scan_background_jobs(config: JobManagerConfig) -> Result<ScanResult> {
+    tracing::debug!(
+        target: "missive_gateway",
+        profile = %config.profile,
+        job_concurrency = config.job_concurrency,
+        "gateway background job scan started"
+    );
     tokio::task::spawn_blocking(move || {
         let _lock = ProcessLock::acquire(&config.state_paths, ProcessLockKind::StateMutation)?;
         let mut store = Store::open(config.state_paths.database_path())?;
@@ -287,10 +322,27 @@ fn scan_background_jobs_blocking(
             }),
             config,
         )?;
+        tracing::debug!(
+            target: "missive_gateway",
+            job_id = %claimed.gateway_job_id.as_str(),
+            kind = %claimed.kind,
+            state = %claimed.state.as_str(),
+            retry_count = claimed.retry_count,
+            "gateway background job claimed"
+        );
         snapshot.due += 1;
         candidates.push(JobCandidate { job: claimed });
     }
 
+    tracing::debug!(
+        target: "missive_gateway",
+        due = snapshot.due,
+        queued = snapshot.queued,
+        running = snapshot.running,
+        retrying = snapshot.retrying,
+        terminal = snapshot.terminal,
+        "gateway background job scan completed"
+    );
     Ok(ScanResult {
         candidates,
         snapshot,
@@ -332,7 +384,42 @@ fn running_job_upsert(
 async fn run_job_attempt(config: JobManagerConfig, candidate: JobCandidate) -> JobAttempt {
     let job_id = candidate.job.gateway_job_id.clone();
     let kind = candidate.job.kind.clone();
-    match tokio::task::spawn_blocking(move || execute_job_blocking(&config, &candidate.job)).await {
+    let agent = candidate
+        .job
+        .agent_alias
+        .as_ref()
+        .map(AgentAlias::as_str)
+        .unwrap_or("-")
+        .to_owned();
+    let task_id = candidate
+        .job
+        .task_id
+        .as_ref()
+        .map(TaskId::as_str)
+        .unwrap_or("-")
+        .to_owned();
+    let span = tracing::debug_span!(
+        target: "missive_gateway",
+        "gateway.job",
+        job_id = %job_id.as_str(),
+        kind = %kind,
+        agent = %agent,
+        task_id = %task_id,
+    );
+    span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            job_id = %job_id.as_str(),
+            kind = %kind,
+            "gateway background job attempt started"
+        );
+    });
+    let blocking_span = span.clone();
+    let joined = tokio::task::spawn_blocking(move || {
+        blocking_span.in_scope(|| execute_job_blocking(&config, &candidate.job))
+    })
+    .await;
+    let attempt = match joined {
         Ok(result) => JobAttempt {
             job_id,
             kind,
@@ -348,7 +435,17 @@ async fn run_job_attempt(config: JobManagerConfig, candidate: JobCandidate) -> J
                     .to_owned(),
             ),
         },
-    }
+    };
+    span.in_scope(|| {
+        tracing::debug!(
+            target: "missive_gateway",
+            job_id = %attempt.job_id.as_str(),
+            kind = %attempt.kind,
+            status = attempt.result.status(),
+            "gateway background job attempt completed"
+        );
+    });
+    attempt
 }
 
 fn execute_job_blocking(config: &JobManagerConfig, job: &GatewayJobRecord) -> JobAttemptResult {
@@ -362,6 +459,15 @@ fn execute_job_inner(
     config: &JobManagerConfig,
     job: &GatewayJobRecord,
 ) -> Result<JobAttemptResult> {
+    tracing::debug!(
+        target: "missive_gateway",
+        job_id = %job.gateway_job_id.as_str(),
+        kind = %job.kind,
+        state = %job.state.as_str(),
+        retry_count = job.retry_count,
+        max_attempts = job.max_attempts,
+        "gateway background job execution entered"
+    );
     if job_cancelled(config, &job.gateway_job_id)? {
         return Ok(JobAttemptResult::Cancelled(JobExecutionOutput {
             result_json: json!({"status": "cancelled", "reason": "cancelled_before_start"}),
@@ -710,6 +816,15 @@ fn finish_terminal_job(
     output: &JobExecutionOutput,
     event_type: &str,
 ) -> Result<()> {
+    tracing::debug!(
+        target: "missive_gateway",
+        job_id = %job.gateway_job_id.as_str(),
+        kind = %job.kind,
+        previous_state = %job.state.as_str(),
+        next_state = %state.as_str(),
+        event_type,
+        "gateway background job terminal transition"
+    );
     let mut upsert = job_to_upsert(job);
     upsert.state = state;
     upsert.agent_alias = output
@@ -779,6 +894,16 @@ fn finish_retry_or_fail(
         retry
             .metadata
             .insert("gateway.job.backoff_ms", json!(duration_millis(backoff)))?;
+        tracing::debug!(
+            target: "missive_gateway",
+            job_id = %job.gateway_job_id.as_str(),
+            kind = %job.kind,
+            previous_state = %job.state.as_str(),
+            next_state = %GatewayJobState::Retrying.as_str(),
+            retry_count = next_retry_count,
+            backoff_ms = duration_millis(backoff),
+            "gateway background job retry transition"
+        );
         let updated = store.upsert_gateway_job(&retry)?;
         append_job_lifecycle_event(
             store,

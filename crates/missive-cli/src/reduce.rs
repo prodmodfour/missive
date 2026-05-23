@@ -278,6 +278,25 @@ pub(crate) fn execute_reduce_command<W>(
 where
     W: Write,
 {
+    let span = tracing::debug_span!(
+        target: "missive_cli",
+        "collective.operation",
+        collective = "reduce",
+        group = %args.group,
+        context_id = %args.context,
+        strategy = %args.strategy.as_str(),
+        reducer_agent = %args.reducer_agent.as_deref().unwrap_or("-"),
+        command_reducer = args.command.is_some(),
+    );
+    let _span_guard = span.enter();
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "reduce",
+        group = %args.group,
+        context_id = %args.context,
+        strategy = %args.strategy.as_str(),
+        "collective operation started"
+    );
     validate_reduce_args(args)?;
     let service_parameters = service_parameters_from_config_and_globals(loaded_config, globals)?;
     let mut registry = open_agent_registry(loaded_config, environment)?;
@@ -298,6 +317,14 @@ where
         match run_reducer(args, &operation, &provenance, &mut runtime) {
             Ok(reduction) => reduction,
             Err(error) => {
+                tracing::debug!(
+                    target: "missive_cli",
+                    collective = "reduce",
+                    operation_id = %operation.operation_id,
+                    error = %error,
+                    exit_code = error.exit_code().as_i32(),
+                    "collective operation failed"
+                );
                 append_reduce_failed_event(runtime.store, &operation, &error)?;
                 return Err(error);
             }
@@ -322,6 +349,19 @@ where
     );
     append_reduce_input_events(&registry.store, &output)?;
     append_reduce_completed_event(&registry.store, &output)?;
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "reduce",
+        operation_id = %output.operation_id,
+        status = %output.status,
+        strategy = %output.strategy,
+        method = %output.reducer.method,
+        input_count = output.input_count,
+        text_input_count = output.text_input_count,
+        gathered_count = output.gathered_count,
+        missing_count = output.missing_count,
+        "collective operation completed"
+    );
     render_reduce_success(writer, mode, &output)
 }
 

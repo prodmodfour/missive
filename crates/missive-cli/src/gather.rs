@@ -154,6 +154,22 @@ pub(crate) fn execute_gather_command<W>(
 where
     W: Write,
 {
+    let span = tracing::debug_span!(
+        target: "missive_cli",
+        "collective.operation",
+        collective = "gather",
+        group = %args.group,
+        context_id = %args.context,
+        output_dir = %args.output_dir.as_ref().map(|path| path.display().to_string()).unwrap_or_else(|| "-".to_owned()),
+    );
+    let _span_guard = span.enter();
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "gather",
+        group = %args.group,
+        context_id = %args.context,
+        "collective operation started"
+    );
     let mut registry = open_agent_registry(loaded_config, environment)?;
     let operation = prepare_gather_operation(args, &mut registry.store)?;
     append_gather_started_event(&registry.store, &operation)?;
@@ -164,6 +180,17 @@ where
     let output = finalize_gather_output(registry.profile.clone(), &operation, members);
     append_gather_member_events(&registry.store, &output)?;
     append_gather_completed_event(&registry.store, &output)?;
+    tracing::debug!(
+        target: "missive_cli",
+        collective = "gather",
+        operation_id = %output.operation_id,
+        status = %output.status,
+        member_count = output.member_count,
+        gathered_count = output.gathered_count,
+        missing_count = output.missing_count,
+        artifact_count = output.artifact_count,
+        "collective operation completed"
+    );
     render_gather_success(writer, mode, &output)
 }
 

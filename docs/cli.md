@@ -80,10 +80,12 @@ the effective protocol version on inbound callback events when the callback omit
 `missive-observe` tracing subscriber: logs go to stderr, `RUST_LOG` uses
 `tracing-subscriber` filter syntax and takes precedence over `--verbose` and
 `--trace`, and `MISSIVE_LOG_FORMAT=json` enables one JSON log object per stderr
-line without changing stdout command JSON. Broader operation-level spans and
-command-specific timeout semantics are intentionally left to their ordered
-implementation tickets. See [`observability.md`](observability.md) for log
-levels, JSON log mode, destinations, and redaction boundaries.
+line without changing stdout command JSON. Operation-level spans now cover CLI
+command dispatch, A2A requests, store operations, gateway jobs, adapter events,
+and collectives; command-specific timeout semantics beyond the implemented
+commands remain intentionally scoped to their ordered tickets. See
+[`observability.md`](observability.md) for log levels, JSON log mode,
+destinations, span fields, and redaction boundaries.
 
 ## Top-level commands
 

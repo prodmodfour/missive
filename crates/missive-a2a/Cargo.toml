@@ -16,4 +16,9 @@ missive-core.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+missive-observe.workspace = true
+tracing-subscriber.workspace = true

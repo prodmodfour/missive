@@ -16,6 +16,9 @@ missive-core.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
+missive-observe.workspace = true
 tempfile.workspace = true
+tracing-subscriber.workspace = true

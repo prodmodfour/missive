@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use missive_a2a::ServiceParameters;
 use missive_core::{ConfigDiscovery, LoadedConfig, MissiveError, MissiveExitCode, Result};
+use tracing::field;
 
 pub mod adapter;
 pub mod agent;
@@ -465,10 +466,35 @@ where
     R: Read,
     W: Write,
 {
-    let loaded_config = load_config(&cli.globals, environment, current_dir)?;
-    let mode = OutputMode::from_globals_and_config(&cli.globals, loaded_config.output_format()?)?;
+    let command_name = cli.command.as_ref().map(Commands::name).unwrap_or("help");
+    let command_span = tracing::debug_span!(
+        target: "missive_cli",
+        "cli.command",
+        command = %command_name,
+        selected_profile = field::Empty,
+        output_mode = field::Empty,
+    );
+    let _command_span_guard = command_span.enter();
+    tracing::debug!(
+        target: "missive_cli",
+        command = %command_name,
+        "CLI command started"
+    );
 
-    match &cli.command {
+    let loaded_config = load_config(&cli.globals, environment, current_dir)?;
+    command_span.record("selected_profile", loaded_config.selected_profile.as_str());
+    let mode = OutputMode::from_globals_and_config(&cli.globals, loaded_config.output_format()?)?;
+    let mode_label = output_mode_label(mode);
+    command_span.record("output_mode", mode_label);
+    tracing::debug!(
+        target: "missive_cli",
+        command = %command_name,
+        selected_profile = %loaded_config.selected_profile,
+        output_mode = %mode_label,
+        "CLI command configured"
+    );
+
+    let result = match &cli.command {
         Some(Commands::Adapter {
             command: Some(adapter_command),
         }) => adapter::execute_adapter_command(
@@ -641,7 +667,29 @@ where
             let status = CommandStatus::root_help_available().with_config(&loaded_config);
             render_success(writer, mode, "command_status", &status, &status.message)
         }
+    };
+
+    match &result {
+        Ok(()) => tracing::debug!(
+            target: "missive_cli",
+            command = %command_name,
+            selected_profile = %loaded_config.selected_profile,
+            output_mode = %mode_label,
+            "CLI command completed"
+        ),
+        Err(error) => tracing::debug!(
+            target: "missive_cli",
+            command = %command_name,
+            selected_profile = %loaded_config.selected_profile,
+            output_mode = %mode_label,
+            exit_code = error.exit_code().as_i32(),
+            error_code = error.code(),
+            error_category = ?error.category(),
+            "CLI command failed"
+        ),
     }
+
+    result
 }
 
 fn load_config(
@@ -699,6 +747,15 @@ fn split_global_key_value<'a>(flag: &str, value: &'a str) -> Result<(&'a str, &'
 
 fn process_environment() -> BTreeMap<String, String> {
     std::env::vars().collect()
+}
+
+const fn output_mode_label(mode: OutputMode) -> &'static str {
+    match mode {
+        OutputMode::Human => "human",
+        OutputMode::Json => "json",
+        OutputMode::Ndjson => "ndjson",
+        OutputMode::Quiet => "quiet",
+    }
 }
 
 /// Builds the observability configuration from parsed global diagnostics flags.
