@@ -4,7 +4,7 @@
 
 ## Observability tests
 
-`crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config plus `cli.command` span fields in JSON stderr logs. A2A, store, and adapter unit tests use scoped dispatchers to verify representative `a2a.request`, `store.operation`, and `adapter.event` spans without relying on one process-global subscriber in parallel test runs.
+`crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config plus `cli.command` span fields in JSON stderr logs. `logs_command` tests run with isolated `MISSIVE_HOME` directories, assert actionable empty-source JSON, profile-file JSON/NDJSON rendering, bounded `--limit` behavior, and token/cookie/API-key redaction; `events_command` tests cover event list/export/replay plus bounded `events tail` follow/timeout behavior and secret-like free-text payload redaction. A2A, store, and adapter unit tests use scoped dispatchers to verify representative `a2a.request`, `store.operation`, and `adapter.event` spans without relying on one process-global subscriber in parallel test runs.
 
 ## Local mock A2A server fixtures
 

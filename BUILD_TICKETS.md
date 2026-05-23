@@ -1506,7 +1506,7 @@ Validation:
 
 ## 050 — Implement logs and event-tail diagnostics commands
 
-Status: TODO
+Status: DONE
 
 Phase: Observability
 

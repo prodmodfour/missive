@@ -405,7 +405,7 @@ pub fn redact_text(input: &str) -> String {
         output = redact_after_auth_scheme(&output, scheme);
     }
 
-    output
+    redact_secret_assignments(&output)
 }
 
 fn redact_after_auth_scheme(input: &str, scheme: &str) -> String {
@@ -434,6 +434,135 @@ fn redact_after_auth_scheme(input: &str, scheme: &str) -> String {
     output
 }
 
+fn redact_secret_assignments(input: &str) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let mut output = String::with_capacity(input.len());
+    let mut index = 0;
+
+    while index < chars.len() {
+        if let Some(key_end) = secret_key_end_at(&chars, index) {
+            let mut separator = key_end;
+            if separator < chars.len() && matches!(chars[separator], '"' | '\'') {
+                separator += 1;
+            }
+            while separator < chars.len() && chars[separator].is_whitespace() {
+                separator += 1;
+            }
+
+            if separator < chars.len() && matches!(chars[separator], '=' | ':') {
+                for character in &chars[index..=separator] {
+                    output.push(*character);
+                }
+                index = separator + 1;
+                while index < chars.len() && chars[index].is_whitespace() {
+                    output.push(chars[index]);
+                    index += 1;
+                }
+
+                if index < chars.len() && matches!(chars[index], '"' | '\'') {
+                    let quote = chars[index];
+                    output.push(quote);
+                    output.push_str(REDACTED);
+                    index += 1;
+                    while index < chars.len() && chars[index] != quote {
+                        index += 1;
+                    }
+                    if index < chars.len() {
+                        output.push(chars[index]);
+                        index += 1;
+                    }
+                } else {
+                    output.push_str(REDACTED);
+                    index = skip_unquoted_secret_value(&chars, index);
+                }
+                continue;
+            }
+        }
+
+        output.push(chars[index]);
+        index += 1;
+    }
+
+    output
+}
+
+fn secret_key_end_at(chars: &[char], index: usize) -> Option<usize> {
+    if index > 0 && is_key_character(chars[index - 1]) {
+        return None;
+    }
+    if !is_key_character(chars[index]) {
+        return None;
+    }
+
+    let mut end = index;
+    let mut normalized = String::new();
+    while end < chars.len() && is_key_character(chars[end]) {
+        if chars[end].is_ascii_alphanumeric() {
+            normalized.extend(chars[end].to_lowercase());
+        }
+        end += 1;
+    }
+
+    is_secret_key_normalized(&normalized).then_some(end)
+}
+
+fn is_key_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
+}
+
+fn skip_unquoted_secret_value(chars: &[char], mut index: usize) -> usize {
+    if chars_start_with(chars, index, REDACTED) {
+        return index + REDACTED.chars().count();
+    }
+
+    if let Some(scheme_len) = auth_scheme_len_at(chars, index) {
+        index += scheme_len;
+        while index < chars.len() && chars[index].is_whitespace() {
+            index += 1;
+        }
+        if chars_start_with(chars, index, REDACTED) {
+            return index + REDACTED.chars().count();
+        }
+    }
+
+    while index < chars.len() && !is_unquoted_secret_delimiter(chars[index]) {
+        index += 1;
+    }
+    index
+}
+
+fn chars_start_with(chars: &[char], index: usize, needle: &str) -> bool {
+    needle
+        .chars()
+        .enumerate()
+        .all(|(offset, character)| chars.get(index + offset) == Some(&character))
+}
+
+fn auth_scheme_len_at(chars: &[char], index: usize) -> Option<usize> {
+    for scheme in ["Bearer", "Basic", "Token", "ApiKey", "Api-Key"] {
+        if chars_start_with_ascii_case_insensitive(chars, index, scheme)
+            && chars
+                .get(index + scheme.chars().count())
+                .is_some_and(|character| character.is_whitespace())
+        {
+            return Some(scheme.chars().count());
+        }
+    }
+    None
+}
+
+fn chars_start_with_ascii_case_insensitive(chars: &[char], index: usize, needle: &str) -> bool {
+    needle.chars().enumerate().all(|(offset, character)| {
+        chars
+            .get(index + offset)
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(&character))
+    })
+}
+
+fn is_unquoted_secret_delimiter(character: char) -> bool {
+    character.is_whitespace() || matches!(character, ',' | ';' | '}' | ']')
+}
+
 fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
     haystack
         .to_ascii_lowercase()
@@ -454,8 +583,12 @@ fn is_secret_key(key: &str) -> bool {
         .flat_map(char::to_lowercase)
         .collect();
 
+    is_secret_key_normalized(&normalized)
+}
+
+fn is_secret_key_normalized(normalized: &str) -> bool {
     matches!(
-        normalized.as_str(),
+        normalized,
         "authorization"
             | "proxyauthorization"
             | "cookie"
@@ -594,7 +727,7 @@ mod tests {
     }
 
     #[test]
-    fn redacts_auth_headers_and_secret_json_fields() {
+    fn redacts_auth_headers_secret_json_fields_and_text_assignments() {
         assert_eq!(
             redact_header("Authorization", "Bearer value-hidden-in-output"),
             format!("Bearer {REDACTED}")
@@ -617,6 +750,14 @@ mod tests {
         assert_eq!(redacted["token"], REDACTED);
         assert_eq!(redacted["nested"]["client_secret"], REDACTED);
         assert_eq!(redacted["nested"]["safe"], format!("Bearer {REDACTED}"));
+        assert_eq!(
+            redact_text("token=value-hidden-in-output api_key: value-hidden-in-output"),
+            format!("token={REDACTED} api_key: {REDACTED}")
+        );
+        assert_eq!(
+            redact_text("{\"password\":\"value-hidden-in-output\"}"),
+            format!("{{\"password\":\"{REDACTED}\"}}")
+        );
         assert!(!rendered.contains("value-hidden-in-output"));
     }
 

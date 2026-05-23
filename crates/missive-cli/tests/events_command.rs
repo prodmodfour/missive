@@ -133,6 +133,18 @@ fn append_task_event(
     store.append_event(&event).expect("event").sequence
 }
 
+fn append_diagnostic_event(store: &Store, event_id: &str, message: &str) -> i64 {
+    let event = EventInsert::new(
+        EventId::new(event_id).expect("event id"),
+        "cli",
+        "diagnostic.log",
+        json!({
+            "message": message,
+        }),
+    );
+    store.append_event(&event).expect("event").sequence
+}
+
 #[test]
 fn events_list_and_export_render_redacted_records() {
     let temp = tempdir().expect("tempdir");
@@ -336,4 +348,85 @@ fn events_tail_follows_new_events() {
     assert_eq!(lines[0]["sequence"], sequence);
     assert_eq!(lines[0]["data"]["event_type"], "a2a.task.updated");
     assert_eq!(lines[0]["data"]["task_id"], "task-tail");
+}
+
+#[test]
+fn events_tail_json_timeout_is_bounded_and_machine_readable() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let environment = isolated_env(&home);
+    add_agent("echo", "http://127.0.0.1:65530", &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "--timeout",
+            "100ms",
+            "events",
+            "tail",
+            "--type",
+            "diagnostic.log",
+            "--limit",
+            "1",
+            "--poll-interval",
+            "10ms",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    let value = json_success(&stdout, "events_tail");
+    assert_eq!(value["data"]["emitted"], 0);
+    assert_eq!(value["data"]["timed_out"], true);
+    assert!(
+        value["data"]["events"]
+            .as_array()
+            .expect("events")
+            .is_empty()
+    );
+}
+
+#[test]
+fn events_tail_ndjson_redacts_secret_like_text_values() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let environment = isolated_env(&home);
+    add_agent("echo", "http://127.0.0.1:65530", &environment, temp.path());
+
+    let store = open_store(&home);
+    let sequence = append_diagnostic_event(
+        &store,
+        "evt-tail-diagnostic",
+        "token=value-hidden-in-output Authorization: Bearer value-hidden-in-output",
+    );
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "events",
+            "tail",
+            "--type",
+            "diagnostic.log",
+            "--from-sequence",
+            "0",
+            "--limit",
+            "1",
+            "--ndjson",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Success.as_i32(), "stderr: {stderr}");
+    let lines = ndjson_lines(&stdout);
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0]["kind"], "event_record");
+    assert_eq!(lines[0]["sequence"], sequence);
+    assert_eq!(
+        lines[0]["data"]["payload"]["message"],
+        format!("token={REDACTED} Authorization: {REDACTED}")
+    );
+    assert!(!stdout.contains("value-hidden-in-output"));
 }

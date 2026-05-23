@@ -11,7 +11,7 @@ commands, public A2A Agent Card inspection/refresh, the subprocess-oriented
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
 `missive gather`, `missive reduce`, `missive push create/get/list/delete`,
 `missive webhook run`, `missive gateway run` including the opt-in HTTP inbound adapter,
-`missive gateway install/start/stop/status/uninstall`, and `missive job start/list/show/cancel` for gateway-managed background work;
+`missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel` for gateway-managed background work, `missive logs`, and `missive events list/tail/replay/export`;
 other top-level commands still emit skeletal parsed status until their ordered
 tickets land.
 
@@ -41,6 +41,8 @@ missive gateway install --help
 missive gateway status --help
 missive webhook --help
 missive webhook run --help
+missive logs --help
+missive events --help
 ```
 
 ## Global flags
@@ -1128,7 +1130,42 @@ Machine-readable stream output uses `webhook_started`, `webhook_event`,
 final `webhook_stopped` summary after the receiver shuts down; use `--ndjson` for
 one object per runtime event.
 
-## Event commands
+## Logs and event diagnostics
+
+`missive logs` inspects local diagnostic sources for the selected profile without
+running health checks. Foreground missive commands write tracing diagnostics to
+stderr; installed Linux services normally capture that stderr in the systemd
+journal, and macOS launchd services can write stdout/stderr files as documented
+by the service plan. Because missive does not yet force all logs into one
+repository-managed file, `missive logs` inventories the sources that are locally
+available and reads bounded records from the profile log directory when an
+operator or supervisor has redirected logs there.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive logs
+MISSIVE_HOME=/tmp/missive-demo missive logs --json
+MISSIVE_HOME=/tmp/missive-demo missive logs --source profile-files --limit 20 --ndjson
+MISSIVE_HOME=/tmp/missive-demo missive logs --source event-journal --json
+```
+
+The profile file-log source is `<profile state dir>/logs/` and accepts
+`.log`, `.txt`, `.ndjson`, `.jsonl`, and `.json` files. JSON log lines produced
+with `MISSIVE_LOG_FORMAT=json` are parsed into stable fields such as `timestamp`,
+`level`, `target`, `message`, and redacted `fields`; plain text lines are exposed
+as redacted messages. `--limit` bounds returned file records, and `--source`
+filters to one of `profile-files`, `event-journal`, or `gateway-service`.
+
+Machine output uses `kind: "logs"` for `--json`. `--ndjson` emits one
+`log_source` envelope for each inspected source followed by one `log_record`
+envelope per returned profile log line. The event-journal and gateway-service
+sources are reported as actionable source records with commands/hints; use
+`missive events` for structured event payloads and the platform supervisor tools
+for service-manager logs. `missive logs` is intentionally not the later
+`missive doctor` health-check surface: it does not validate endpoint reachability,
+SQLite migration health, gateway liveness, or external tool installation beyond
+reporting where diagnostics would be read.
 
 `missive events` exposes the selected profile's append-only SQLite event
 journal. The current producers record local agent registry changes, group
@@ -1177,10 +1214,10 @@ The current renderer supports four modes:
   stream emits one `stream_event` line per SSE event plus a `stream_result`
   summary, gateway run emits `gateway_started`/`gateway_component`/
   `gateway_stopped` lines, webhook run emits `webhook_started`/`webhook_event`/
-  `webhook_rejected`/`webhook_stopped` lines, `events export` and `events tail`
-  emit one `event_record` line per event, while other implemented commands emit
-  one command-specific envelope and skeletal commands emit one command-status
-  event
+  `webhook_rejected`/`webhook_stopped` lines, `logs` emits `log_source` and
+  `log_record` lines, `events export` and `events tail` emit one `event_record`
+  line per event, while other implemented commands emit one command-specific
+  envelope and skeletal commands emit one command-status event
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are

@@ -23,6 +23,7 @@ pub mod gateway;
 pub(crate) mod gather;
 pub mod group;
 pub mod job;
+pub mod logs;
 pub mod output;
 pub mod push;
 pub(crate) mod reduce;
@@ -342,9 +343,9 @@ pub enum Commands {
 
     /// Inspect local missive logs.
     #[command(
-        long_about = "Inspect local missive logs without exposing secrets. Log collection and filtering are implemented by a later observability ticket."
+        long_about = "Inspect local missive diagnostic sources for the selected profile. Foreground command logs are written to stderr; this command inventories service-manager and event-journal sources and reads bounded records from profile-local log files when available."
     )]
-    Logs,
+    Logs(logs::LogsArgs),
 
     /// Inspect, tail, replay, or export the local event journal.
     #[command(
@@ -391,7 +392,7 @@ impl Commands {
             Self::Push { .. } => "push",
             Self::Job { .. } => "job",
             Self::Doctor => "doctor",
-            Self::Logs => "logs",
+            Self::Logs(_) => "logs",
             Self::Events { .. } => "events",
             Self::Completion => "completion",
             Self::Manpage => "manpage",
@@ -652,6 +653,9 @@ where
             input,
             writer,
         ),
+        Some(Commands::Logs(args)) => {
+            logs::execute_logs_command(args, &loaded_config, environment, mode, writer)
+        }
         Some(command) => {
             let status = CommandStatus::parsed(command.name()).with_config(&loaded_config);
             render_success(writer, mode, "command_status", &status, &status.message)

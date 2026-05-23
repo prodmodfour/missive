@@ -34,7 +34,7 @@ fn json_output_parses_for_every_current_skeletal_command() {
     for command in required_subcommands().into_iter().filter(|command| {
         !matches!(
             *command,
-            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce"
+            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce" | "logs"
         )
     }) {
         let (code, stdout, stderr) = run(&["missive", command, "--json"]);
@@ -61,7 +61,7 @@ fn ndjson_output_is_one_json_object_per_line_for_every_current_skeletal_command(
     for command in required_subcommands().into_iter().filter(|command| {
         !matches!(
             *command,
-            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce"
+            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce" | "logs"
         )
     }) {
         let (code, stdout, stderr) = run(&["missive", command, "--ndjson"]);

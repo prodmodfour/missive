@@ -107,4 +107,38 @@ RUST_LOG=info missive gateway run --timeout 30s
 MISSIVE_LOG_FORMAT=json RUST_LOG=missive_gateway=debug missive gateway run --timeout 30s
 ```
 
-The `missive logs` command remains a placeholder until the diagnostics-command ticket lands; use stderr, `journalctl`, or macOS `log stream` for now.
+## Inspecting diagnostics
+
+Use `missive logs` to inventory local diagnostic sources for the selected profile
+and read bounded records from the profile file-log directory when a supervisor or
+operator redirects logs there:
+
+```bash
+missive logs
+missive logs --json
+missive logs --source profile-files --limit 20 --ndjson
+```
+
+The command reports these sources:
+
+* `profile-files` — files under `<profile state dir>/logs/` with `.log`, `.txt`,
+  `.ndjson`, `.jsonl`, or `.json` extensions;
+* `event-journal` — the SQLite event journal path and matching `missive events`
+  command hints;
+* `gateway-service` — platform service-manager hints for the installed gateway
+  service, when supported.
+
+`missive logs --json` emits one stable `logs` document. `missive logs --ndjson`
+emits `log_source` lines followed by `log_record` lines. All log messages and
+JSON fields pass through the CLI redaction helpers, including auth schemes and
+secret-like `key=value` fragments. `missive logs` is an inspection surface, not a
+health checker; endpoint reachability, migration state, gateway liveness, and
+tool availability are reserved for `missive doctor`.
+
+Use `missive events tail` when you need structured control-plane event
+diagnostics rather than stderr logs:
+
+```bash
+missive events tail --from-sequence 100 --limit 10 --ndjson
+missive --timeout 5s events tail --type a2a.task.updated --ndjson
+```
