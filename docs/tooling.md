@@ -71,6 +71,7 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `miri` | No | Aggressive gate | Undefined-behaviour-oriented Rust test checks. |
 | `cargo-mutants` | No | Aggressive gate | Bounded mutation compile smoke checks. |
 | `cargo-fuzz` | No | Aggressive gate when fuzz targets exist | Fuzz smoke runs. |
+| Criterion via `cargo bench` | No | Aggressive gate compiles when benchmark sources exist | Local benchmark measurements and saved-baseline comparisons. |
 | `sqlx` (`sqlx-cli`) | No | Future store tickets | SQLite migration and query tooling if sqlx is selected. |
 | `just` | No | If a `justfile` with `ci` exists | Optional command runner. |
 | `jq` | No | Helper scripts | JSON processing for repository automation. |
@@ -124,8 +125,10 @@ MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh
 Aggressive mode adds optional paths for `cargo-nextest`, `cargo-llvm-cov`,
 `cargo-deny`/`cargo-audit`/`cargo-machete`, `miri`, a bounded `cargo-mutants`
 compile smoke through `scripts/mutation-smoke.sh`, `cargo-fuzz` smoke runs for
-the parser/replay targets under `fuzz/`, benchmark compilation, and Docker or
-devcontainer checks when those inputs exist. Mutation and fuzz smoke bounds can
+the parser/replay targets under `fuzz/`, Criterion benchmark compilation when
+`*/benches/*.rs` sources exist, and Docker or devcontainer checks when those
+inputs exist. Full benchmark measurement remains a manual `cargo bench` workflow
+documented in [`performance.md`](performance.md). Mutation and fuzz smoke bounds can
 be adjusted with `MISSIVE_MUTANTS_MODE`, `MISSIVE_MUTANTS_FILES`,
 `MISSIVE_MUTANTS_RE`, `MISSIVE_MUTANTS_SHARD`, `MISSIVE_MUTANTS_TIMEOUT`,
 `MISSIVE_MUTANTS_JOBS`, `MISSIVE_MUTANTS_BASELINE`, `MISSIVE_FUZZ_SECONDS`, and

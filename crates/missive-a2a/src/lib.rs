@@ -3615,6 +3615,22 @@ where
     on_record(record)
 }
 
+/// Parses one A2A streaming event payload through the same path used by the
+/// SSE client.
+///
+/// This hidden helper is intended for local benchmarks and parser-focused
+/// smoke tests that need to exercise the production JSON-RPC unwrapping and
+/// `StreamResponse` decoding without opening a network stream.
+#[doc(hidden)]
+pub fn parse_stream_event_data_for_benchmarks(
+    data: &str,
+    sequence: u64,
+) -> Result<(protocol::StreamResponse, Value)> {
+    let endpoint =
+        Url::parse("http://127.0.0.1/a2a").expect("static benchmark endpoint URL should parse");
+    parse_stream_event_data(data, &endpoint, sequence, protocol::VERSION)
+}
+
 fn parse_stream_event_data(
     data: &str,
     endpoint: &Url,

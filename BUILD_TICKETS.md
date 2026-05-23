@@ -1749,7 +1749,7 @@ Validation:
 
 ## 058 — Add benchmarks and performance budgets
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 

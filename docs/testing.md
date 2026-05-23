@@ -100,6 +100,28 @@ cargo mutants --workspace --all-features --output mutants.out --timeout 120
 
 `mutants.out/` and temporary `missive-mutants.*` directories are generated runtime artifacts; do not commit them.
 
+## Benchmarks and performance budgets
+
+Criterion benchmarks live in `crates/missive-cli/benches/performance.rs` and cover config load/redaction, store operations, router planning, event replay, A2A streaming event parsing, and local group collective gather/reduce paths. Compile all benchmark targets without measuring:
+
+```bash
+cargo bench --workspace --all-features --no-run
+```
+
+Run the benchmark suite locally:
+
+```bash
+cargo bench -p missive-cli --bench performance --all-features
+```
+
+For a fast CI-style smoke run of the custom Criterion harness:
+
+```bash
+cargo bench -p missive-cli --bench performance --all-features -- --test
+```
+
+The current budgets are intentionally soft investigation thresholds rather than default quality-gate failures. See [`performance.md`](performance.md) for the benchmark list, baseline/compare workflow, generated artifact hygiene, and initial budget table.
+
 ## Observability tests
 
 `crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config plus `cli.command` span fields in JSON stderr logs. `completion_manpage_command` tests generate bash/zsh/fish/PowerShell completion scripts, snapshot stable prefixes, assert completion/manpage generation bypasses configuration loading, and verify JSON envelopes for generated content. `doctor_command` tests run with isolated `MISSIVE_HOME` directories and cover no-config reports, valid populated config plus migrated SQLite state, invalid config as a structured failed check, unmigrated database detection, mock reachable/unreachable A2A endpoint probes, gateway running/unavailable status probes, deterministic `PATH` tool lookup, and redaction of secret-like config/auth metadata. `logs_command` tests assert actionable empty-source JSON, profile-file JSON/NDJSON rendering, bounded `--limit` behavior, and token/cookie/API-key redaction; `events_command` tests cover event list/export/replay plus bounded `events tail` follow/timeout behavior and secret-like free-text payload redaction. A2A, store, and adapter unit tests use scoped dispatchers to verify representative `a2a.request`, `store.operation`, and `adapter.event` spans without relying on one process-global subscriber in parallel test runs.
