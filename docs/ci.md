@@ -1,16 +1,18 @@
 # Continuous integration
 
-missive uses GitHub Actions to mirror the local `scripts/quality-gate.sh` validation path on Linux and to compile/test the Rust workspace on Linux, macOS, and Windows.
+missive uses GitHub Actions to mirror the local `scripts/quality-gate.sh` validation path on Linux and to compile/test the Rust workspace on Linux, macOS, and Windows. The workflows use Node.js 24-compatible GitHub-maintained actions (`actions/checkout@v6` and `actions/cache@v5`).
 
 ## Workflow
 
-The workflow lives at `.github/workflows/ci.yml` and runs on:
+The CI workflow lives at `.github/workflows/ci.yml` and runs on:
 
 * `push`
 * `pull_request`
 * manual `workflow_dispatch`
 
-The default CI path has three validation jobs plus optional coverage:
+The default CI path has three validation jobs plus optional coverage. Every CI job first tries `actions/checkout@v6` with read-only credentials and `persist-credentials: false`; if that checkout step fails before repository code is available, CI falls back to an unauthenticated public fetch of the exact `${{ github.sha }}` and verifies the checked-out commit before continuing.
+
+The default CI path has these validation jobs:
 
 1. `workflow-lint` installs a pinned `actionlint` release and validates GitHub Actions workflow syntax.
 2. `quality-gate` runs on Linux, installs the stable Rust toolchain with `rustfmt` and `clippy`, installs small Linux system tools used by the local gate plus pinned `cargo-deny`, restores a Cargo cache, and runs `scripts/quality-gate.sh`.
@@ -43,7 +45,7 @@ Windows support currently means the Rust CLI, library crates, local SQLite state
 
 ## Cache and secret posture
 
-The workflow uses `permissions: contents: read` and checks out with `persist-credentials: false`. It does not require repository secrets for the default gate or matrix.
+The workflows use `permissions: contents: read` and check out with `persist-credentials: false`. The CI fallback checkout path uses only the public repository URL and the exact workflow commit SHA; it does not consume repository secrets or persist credentials. The default gate and matrix do not require repository secrets.
 
 The cache is limited to Cargo registry/git data and `target/` build outputs keyed by the operating system, stable Rust toolchain, lockfile, and Cargo manifests. Runtime state, credentials, local config, coverage reports, databases, logs, and other generated private files must remain outside version control and should not be uploaded as artifacts.
 
@@ -78,7 +80,7 @@ The coverage job is a smoke check only and does not publish coverage artifacts b
 
 The release packaging workflow lives at `.github/workflows/release.yml`. It runs
 on manual `workflow_dispatch` and release tags matching `v*.*.*`. The workflow
-uses read-only repository permissions, builds the `missive` binary with the
+uses read-only repository permissions plus Node.js 24-compatible checkout/cache/artifact actions, builds the `missive` binary with the
 workspace `dist` profile, packages common Linux/macOS/Windows target archives,
 generates SHA-256 checksum files, and uploads the archives/checksums as workflow
 artifacts. It does not create GitHub Releases or require repository secrets.

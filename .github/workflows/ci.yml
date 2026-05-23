@@ -32,9 +32,35 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        id: checkout
+        uses: actions/checkout@v6
+        continue-on-error: true
         with:
           persist-credentials: false
+
+      - name: Fallback unauthenticated checkout
+        if: ${{ steps.checkout.outcome == 'failure' }}
+        env:
+          MISSIVE_CHECKOUT_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          MISSIVE_CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "::warning::actions/checkout failed; falling back to unauthenticated public fetch for ${MISSIVE_CHECKOUT_SHA}"
+          find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          git init .
+          git remote add origin "${MISSIVE_CHECKOUT_URL}"
+          git -c protocol.version=2 fetch --no-tags --prune --depth=1 origin "+${MISSIVE_CHECKOUT_SHA}:refs/ci/checkout"
+          git -c advice.detachedHead=false checkout --force refs/ci/checkout
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Verify checked out commit
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [[ "${actual}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::checked out ${actual}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
 
       - name: Install actionlint
         env:
@@ -63,9 +89,35 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        id: checkout
+        uses: actions/checkout@v6
+        continue-on-error: true
         with:
           persist-credentials: false
+
+      - name: Fallback unauthenticated checkout
+        if: ${{ steps.checkout.outcome == 'failure' }}
+        env:
+          MISSIVE_CHECKOUT_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          MISSIVE_CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "::warning::actions/checkout failed; falling back to unauthenticated public fetch for ${MISSIVE_CHECKOUT_SHA}"
+          find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          git init .
+          git remote add origin "${MISSIVE_CHECKOUT_URL}"
+          git -c protocol.version=2 fetch --no-tags --prune --depth=1 origin "+${MISSIVE_CHECKOUT_SHA}:refs/ci/checkout"
+          git -c advice.detachedHead=false checkout --force refs/ci/checkout
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Verify checked out commit
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [[ "${actual}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::checked out ${actual}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         run: |
@@ -75,7 +127,7 @@ jobs:
           rustup show
 
       - name: Cache Cargo dependencies and build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/git/db
@@ -123,9 +175,35 @@ jobs:
         shell: bash
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        id: checkout
+        uses: actions/checkout@v6
+        continue-on-error: true
         with:
           persist-credentials: false
+
+      - name: Fallback unauthenticated checkout
+        if: ${{ steps.checkout.outcome == 'failure' }}
+        env:
+          MISSIVE_CHECKOUT_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          MISSIVE_CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "::warning::actions/checkout failed; falling back to unauthenticated public fetch for ${MISSIVE_CHECKOUT_SHA}"
+          find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          git init .
+          git remote add origin "${MISSIVE_CHECKOUT_URL}"
+          git -c protocol.version=2 fetch --no-tags --prune --depth=1 origin "+${MISSIVE_CHECKOUT_SHA}:refs/ci/checkout"
+          git -c advice.detachedHead=false checkout --force refs/ci/checkout
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Verify checked out commit
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [[ "${actual}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::checked out ${actual}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         run: |
@@ -135,7 +213,7 @@ jobs:
           rustup show
 
       - name: Cache Cargo dependencies and build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/git/db
@@ -163,9 +241,35 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        id: checkout
+        uses: actions/checkout@v6
+        continue-on-error: true
         with:
           persist-credentials: false
+
+      - name: Fallback unauthenticated checkout
+        if: ${{ steps.checkout.outcome == 'failure' }}
+        env:
+          MISSIVE_CHECKOUT_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          MISSIVE_CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "::warning::actions/checkout failed; falling back to unauthenticated public fetch for ${MISSIVE_CHECKOUT_SHA}"
+          find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          git init .
+          git remote add origin "${MISSIVE_CHECKOUT_URL}"
+          git -c protocol.version=2 fetch --no-tags --prune --depth=1 origin "+${MISSIVE_CHECKOUT_SHA}:refs/ci/checkout"
+          git -c advice.detachedHead=false checkout --force refs/ci/checkout
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Verify checked out commit
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [[ "${actual}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::checked out ${actual}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
 
       - name: Install Rust toolchain with coverage tools
         run: |
@@ -175,7 +279,7 @@ jobs:
           rustup show
 
       - name: Cache Cargo dependencies and coverage build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/git/db
