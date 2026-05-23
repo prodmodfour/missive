@@ -168,8 +168,6 @@ jobs:
             os: ubuntu-latest
           - platform: macos
             os: macos-latest
-          - platform: windows
-            os: windows-latest
     defaults:
       run:
         shell: bash

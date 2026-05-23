@@ -117,7 +117,7 @@ Reference and maintainer docs:
 * [`docs/supply-chain.md`](docs/supply-chain.md) — cargo-deny policy, dependency-update rules, duplicate-dependency exceptions, and SBOM generation.
 * [`docs/testing.md`](docs/testing.md) — local validation, smoke tests, mock fixtures, property/fuzz/mutation checks, and conformance fixtures.
 * [`docs/performance.md`](docs/performance.md) — local benchmarks and soft performance budgets.
-* [`docs/ci.md`](docs/ci.md) — GitHub Actions quality gate, cross-platform matrix, and release dry-run workflow.
+* [`docs/ci.md`](docs/ci.md) — GitHub Actions quality gate, Linux/macOS workspace matrix, and release dry-run workflow.
 * [`docs/container.md`](docs/container.md) — Docker and devcontainer workflows.
 * [`docs/release.md`](docs/release.md) — release archives, checksums, and install/update guidance.
 
@@ -179,7 +179,7 @@ Validate the checkout with:
 scripts/quality-gate.sh
 ```
 
-GitHub Actions runs the same default quality gate on Linux and a workspace check/test/build matrix on Linux, macOS, and Windows for `push` and `pull_request`; see [`docs/ci.md`](docs/ci.md) for workflow details, platform-specific test gating, and optional coverage smoke checks.
+GitHub Actions runs the same default quality gate on Linux and a workspace check/test/build matrix on Linux and macOS for `push` and `pull_request`; see [`docs/ci.md`](docs/ci.md) for workflow details, platform-specific test gating, and optional coverage smoke checks.
 
 Container validation is also available locally:
 
