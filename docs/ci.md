@@ -57,6 +57,17 @@ cargo llvm-cov --workspace --all-features --no-report
 
 The coverage job is a smoke check only and does not publish coverage artifacts by default.
 
+## Container validation
+
+Docker and devcontainer support are available for local reproducible validation, but the default GitHub Actions workflow does not yet build the Docker image on every push. Validate the container workflow locally when Docker-related files change:
+
+```bash
+docker build --pull=false --tag missive-dev:local .
+scripts/docker-integration.sh
+```
+
+Aggressive local quality-gate mode also builds the Docker image and validates the devcontainer configuration when the relevant tools are installed. See [`container.md`](container.md) for image contents, build arguments, and runtime hygiene notes.
+
 ## Local validation
 
 Run the same default checks locally before pushing:

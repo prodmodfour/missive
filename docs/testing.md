@@ -6,6 +6,17 @@
 
 GitHub Actions runs the Linux default quality gate on `push` and `pull_request` through `.github/workflows/ci.yml`, then runs a Rust workspace matrix on Linux, macOS, and Windows. The workflow first validates GitHub Actions YAML with `actionlint`; the Linux quality-gate job runs `scripts/quality-gate.sh` so CI covers the same shell checks, guardrails, Rust formatting, clippy, tests, doc tests, docs, and builds as local ticket validation. The cross-platform matrix runs workspace `cargo check`, `cargo test`, and debug builds on `ubuntu-latest`, `macos-latest`, and `windows-latest` so portable CLI/library functionality stays buildable beyond Linux. Platform-specific shell/service tests are gated: Bash example smoke scripts are not treated as Windows-native tests, Linux systemd and macOS launchd service planning are documented as host-specific, and Windows service installation remains unsupported with a clear diagnostic. Optional coverage smoke is available through manual workflow dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable. See [`ci.md`](ci.md) for the workflow, cache, platform matrix, and secret posture.
 
+## Container validation
+
+The Docker development image contains Rust stable, protobuf tooling, SQLite tooling, ShellCheck, Python/YAML validation support, and the default optional cargo helpers used by the quality gate. Build it and run the local quality gate inside the container with:
+
+```bash
+docker build --pull=false --tag missive-dev:local .
+scripts/docker-integration.sh
+```
+
+The wrapper bind-mounts the checkout, uses temporary container paths for Cargo and target output, sets `MISSIVE_HOME` outside the repository, and runs `scripts/quality-gate.sh`. Use `MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh` on the host to include Docker/devcontainer checks in the aggressive path when Docker is available. See [`container.md`](container.md) for manual `docker run` and devcontainer workflows.
+
 ## Property-based tests
 
 Property-based tests use `proptest` and run as part of the normal workspace test pass. Current properties cover core identifier round trips and rejection, routing-policy parsing from CLI/config names, config rejection of reserved A2A service-parameter headers, metadata merge right-bias plus deterministic key order, CLI value parsers for group weights/tags/metadata, and router selection invariants for round-robin, weighted, and tag-match policies.

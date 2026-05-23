@@ -1,0 +1,41 @@
+# Git metadata and local VCS state are not needed to build the tool image.
+.git
+.gitignore
+
+# Rust build output and generated reports.
+target/
+coverage/
+dist/
+mutants.out/
+*.profraw
+
+# Local missive/runtime state and credentials.
+.missive/
+.agent/
+.env
+.env.*
+!.env.example
+missive.toml
+.missive.toml
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pid
+*.sock
+
+# Fuzz-generated output.
+fuzz/artifacts/
+fuzz/crashes/
+fuzz/corpus/
+fuzz/coverage/
+fuzz/target/
+fuzz/Cargo.lock
+
+# Operating-system and editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

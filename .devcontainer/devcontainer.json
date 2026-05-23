@@ -1,0 +1,30 @@
+{
+  "name": "missive",
+  "build": {
+    "context": "..",
+    "dockerfile": "../Dockerfile",
+    "target": "dev",
+    "args": {
+      "MISSIVE_INSTALL_OPTIONAL_CARGO_TOOLS": "1"
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/missive,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace/missive",
+  "remoteUser": "missive",
+  "updateRemoteUserUID": true,
+  "runArgs": ["--init"],
+  "containerEnv": {
+    "CARGO_TERM_COLOR": "always",
+    "MISSIVE_HOME": "/home/missive/.local/share/missive-dev"
+  },
+  "postCreateCommand": "sudo chown -R $(id -u):$(id -g) /home/missive /workspace/missive && bash scripts/bootstrap-tools.sh --check",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb"
+      ]
+    }
+  }
+}

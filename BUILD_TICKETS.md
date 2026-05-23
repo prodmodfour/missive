@@ -1837,7 +1837,7 @@ Validation:
 
 ## 061 — Add Docker and devcontainer support
 
-Status: TODO
+Status: DONE
 
 Phase: Developer Experience
 

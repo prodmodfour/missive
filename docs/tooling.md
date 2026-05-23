@@ -79,7 +79,7 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `gh` | No | Helper scripts | Optional GitHub issue creation. |
 | `protoc` | No | Future protocol work | Protocol buffer generation if needed. |
 | `sqlite3` | No | Future store/debug work | Inspect local SQLite databases in tests. |
-| Docker | No | Aggressive gate when Docker inputs exist | Local container/devcontainer validation. |
+| Docker | No | Aggressive gate when Docker inputs exist | Local container/devcontainer validation through `Dockerfile`, `.devcontainer/devcontainer.json`, and `scripts/docker-integration.sh`. |
 
 ## Quality gate behavior
 
@@ -119,6 +119,15 @@ Run the default gate for every ticket:
 ```bash
 scripts/quality-gate.sh
 ```
+
+Run the same gate inside the development container when Docker validation is relevant:
+
+```bash
+docker build --pull=false --tag missive-dev:local .
+scripts/docker-integration.sh
+```
+
+The container workflow is documented in [`container.md`](container.md). It keeps `MISSIVE_HOME`, Cargo caches, and build output out of tracked repository files.
 
 Run deeper validation when feasible:
 

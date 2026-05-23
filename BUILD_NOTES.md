@@ -2,7 +2,7 @@
 
 ## Current state
 
-Tickets 000 through 060 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
+Tickets 000 through 061 are complete. The repository uses the target Cargo workspace layout for `missive` with these crates:
 
 * `crates/missive-cli` — package `missive-cli`, binary `missive`, clap-derived CLI tree, global flags, configuration loading from CLI/env/discovery, A2A service-parameter CLI overrides, authentication input resolution for implemented Agent Card/doctor endpoint/send/bcast/barrier/gather/reduce/stream/task/push/job-cancel/route-capability requests, output rendering and redaction helpers, shared diagnostics initialization for `RUST_LOG`, `--trace`, `--verbose`, and JSON log formatting, `cli.command` plus collective operation tracing spans, help snapshots and A2A conformance CLI golden tests, implemented foreground subprocess `missive adapter stdio` JSON/NDJSON frame loop for send/stream/task commands, implemented foreground `missive adapter file-drop` inbox/outbox request-file loop for send/stream/task and job command files, implemented opt-in `missive gateway run --http-adapter` local HTTP inbound control endpoint, implemented `missive agent add/list/show/inspect/refresh/capabilities/remove/rename`, implemented non-streaming `missive send` with rich text/file-reference/file-bytes/JSON-data message parts, implemented streaming `missive stream` with the same rich input parser, implemented `missive task get/list/wait/cancel`, implemented `missive task artifact list/show/save/export`, implemented `missive context create/list/show/fork/close/export`, implemented `missive group create/list/show/capabilities/add/remove/rename/delete`, implemented Agent Card-aware dry-run `missive route explain`, implemented `missive bcast`, implemented `missive barrier`, implemented `missive gather`, implemented `missive reduce`, implemented `missive push create/get/list/delete`, implemented `missive webhook run`, implemented `missive gateway run`, implemented `missive gateway install/start/stop/status/uninstall` service management, implemented gateway-managed `missive job start/list/show/cancel` background communication jobs, implemented `missive doctor` local/A2A endpoint/gateway health checks, implemented `missive logs`, implemented `missive events list/tail/replay/export`, implemented `missive completion <shell>` for bash/zsh/fish/PowerShell, implemented `missive manpage` roff generation, and owns the Criterion `performance` benchmark target covering config load, store operations, routing, event replay, stream parsing, and local group collectives
 * `crates/missive-core` — core domain primitive scaffolding, including shared error/result types, strongly typed IDs, timestamps, metadata maps and A2A metadata keys, envelopes, canonical routing policy names, configuration schema with profile/source busy-input policy, protocol service-parameter defaults, routing defaults, config auth-ref schema, config discovery, profile validation, redacted config rendering, deterministic task-wait/barrier exit-code variants, and property tests for identifier, metadata, routing-policy, and config parser invariants
@@ -23,6 +23,8 @@ Autonomous build tooling is documented in `docs/tooling.md`. `scripts/bootstrap-
 `scripts/quality-gate.sh` is the hardened default gate for autonomous cycles. It runs shell checks, GitHub Actions workflow validation through `scripts/validate-ci.sh` when workflows exist, secret and generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, and optional installed dependency checks. `MISSIVE_AGGRESSIVE_TESTS=1` enables deeper optional checks without editing the script, including the bounded `scripts/mutation-smoke.sh` cargo-mutants path when `cargo-mutants` is installed and benchmark compile smoke with `cargo bench --workspace --all-features --no-run` when bench sources exist.
 
 The repository now has a GitHub Actions CI workflow at `.github/workflows/ci.yml`. It runs on `push`, `pull_request`, and manual dispatch; validates workflow syntax with pinned `actionlint`; runs the full local quality gate on Linux with read-only repository permissions and checkout credentials disabled; runs a fail-fast-disabled Rust workspace matrix on Linux, macOS, and Windows for `cargo check`, `cargo test`, and debug builds; uses scoped OS-specific Cargo caches; and offers an opt-in coverage smoke job through manual dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable.
+
+Docker and devcontainer support now exists for local reproducible development/test environments. The root `Dockerfile` builds a non-root Debian/Rust development image with Rust stable, `rustfmt`, `clippy`, `llvm-tools-preview`, protobuf tooling, SQLite tooling, ShellCheck, Python/YAML workflow-validation support, and default quality-gate cargo helpers `cargo-audit` plus `cargo-machete`. `.dockerignore` excludes Git metadata, runtime state, databases, logs, target output, fuzz artifacts, coverage, and secret-bearing local files from the build context. `.devcontainer/devcontainer.json` uses the same Dockerfile target, mounts the checkout at `/workspace/missive`, enables UID/GID remapping, and keeps `MISSIVE_HOME` under the container user's home. `scripts/docker-integration.sh` builds or reuses the image, bind-mounts the checkout with temporary container Cargo/target/MISSIVE_HOME paths, and runs `scripts/quality-gate.sh` inside the container.
 
 `scripts/build-loop.sh` now cleans failed agent attempts by default: when the agent process fails, leaves the checkout dirty, or returns without a new commit, the loop resets to the pre-attempt `HEAD`, removes untracked non-ignored files with `git clean -fd`, waits 600 seconds, and retries the same cycle. The delay is configurable with `--failure-retry-sleep` or `MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP`; `--no-failure-retry` cleans once and exits. If the failed attempt log indicates a model token/context-length limit, the loop cleans the failed attempt, launches a splitter agent with reduced context files to split the current lowest TODO/IN_PROGRESS ticket into two smaller sequential tickets and commit that queue-only change, then retries after the same delay. `MISSIVE_SPLIT_AGENT_CONTEXT_FILES` customizes the splitter context, and `scripts/run-agent.sh` accepts `MISSIVE_AGENT_CONTEXT_FILES` for reduced-context agent launches.
 
@@ -127,33 +129,32 @@ Checks run by the default gate included:
 * optional `cargo machete` check because it is installed
 * optional `cargo audit` check because it is installed
 
-Additional targeted validation run during ticket 060:
+Additional targeted validation run during ticket 061:
 
 ```bash
-scripts/validate-ci.sh
-cargo test -p missive-gateway --all-features service::tests -- --nocapture
-cargo test -p missive-cli --test example_smoke --all-features -- --nocapture
-for i in {1..10}; do cargo test -p missive-store --all-features --lib >/tmp/store-full-after-$i.log; done
-for i in {1..5}; do cargo test -p missive-gateway --all-features --lib >/tmp/gateway-lib-$i.log; done
-cargo test --workspace --all-targets --all-features >/tmp/workspace-test-once.log
+docker build --pull=false --tag missive-dev:local .
+MISSIVE_DOCKER_TEST_TAG=missive-dev:local scripts/docker-integration.sh
+docker build --pull=false --tag missive-dev:local .
+docker run --rm missive-dev:local bash -c 'cargo --version && rustc --version && protoc --version && sqlite3 --version | cut -d" " -f1 && cargo audit --version && cargo machete --version'
+MISSIVE_DOCKER_TEST_TAG=missive-dev:local MISSIVE_DOCKER_RUN_QUALITY_GATE=0 scripts/docker-integration.sh
 scripts/quality-gate.sh
 ```
 
-The targeted checks covered pinned `actionlint` validation of the expanded `.github/workflows/ci.yml`, gateway service-manager unit coverage after Windows-specific gating, the Bash example smoke test on Linux, repeated store and gateway library test runs after stabilizing scoped tracing interest-cache handling and subscription timing assertions, one workspace all-targets/all-features test pass, and the full local quality gate. The latest full `scripts/quality-gate.sh` run passed.
+The targeted checks covered Docker image build with the final `rust:bookworm` base, a full containerized `scripts/quality-gate.sh` run through `scripts/docker-integration.sh`, a rebuild after Dockerfile user/cache refinements, tool availability inside the image for Rust, protobuf, SQLite, `cargo-audit`, and `cargo-machete`, wrapper behavior when only image validation is requested, and the full host quality gate. The latest full `scripts/quality-gate.sh` run passed.
 
-Environment/tooling notes: no Rust components, cargo subcommands, OS packages, or third-party services were installed during this ticket. The existing optional local `actionlint` validator from ticket 059 was reused.
+Environment/tooling notes: no host Rust components, cargo subcommands, OS packages, or third-party services were installed during this ticket. Docker was already available locally; validation pulled the public `rust:bookworm` base image and created local `missive-dev:local`/quality-gate Docker images as disposable build artifacts.
 
 ## Latest cycle notes
 
-Implemented ticket 060 — Add cross-platform build matrix.
+Implemented ticket 061 — Add Docker and devcontainer support.
 
 Included:
 
-* added a fail-fast-disabled GitHub Actions `workspace-matrix` job for Linux, macOS, and Windows that runs workspace check, test, and debug build commands plus a `missive` binary build
-* kept the full `scripts/quality-gate.sh` job Linux-only and documented the split between Linux guardrails/full gate and portable Rust workspace validation on macOS/Windows
-* gated platform-specific tests so Bash/POSIX example smoke scripts are ignored on Windows and service-manager tests do not rely on POSIX path semantics there
-* stabilized existing scoped tracing span tests that could miss previously cached tracing callsites during full parallel test runs, and widened gateway subscription test timing so the workspace matrix is less sensitive to runner load
-* documented platform-specific gateway service support and Windows service-manager limitations in `docs/ci.md`, `docs/testing.md`, `docs/gateway.md`, and README
+* added a root `Dockerfile` for a non-root Rust development/test image with Rust stable, `rustfmt`, `clippy`, `llvm-tools-preview`, protobuf tooling, SQLite tooling, ShellCheck, Python/YAML validation support, and default optional `cargo-audit`/`cargo-machete` helpers
+* added `.dockerignore` guardrails so Git metadata, runtime state, databases, logs, target output, fuzz artifacts, coverage, and secret-bearing local files are not sent to Docker builds
+* added `.devcontainer/devcontainer.json` that reuses the Dockerfile target, mounts the checkout at `/workspace/missive`, uses the `missive` user with UID/GID remapping, and keeps `MISSIVE_HOME` under the container user's home directory
+* added `scripts/docker-integration.sh` to build or reuse a local Docker image and run `scripts/quality-gate.sh` in the container with temporary Cargo, target, and missive state paths
+* documented local Docker and devcontainer workflows in README, `docs/container.md`, `docs/tooling.md`, `docs/testing.md`, and `docs/ci.md`
 
 ## Latest maintenance notes
 
@@ -183,7 +184,9 @@ The mutation path added in ticket 057 is a bounded smoke/check workflow and a fo
 
 The benchmarks added in ticket 058 are local Criterion probes and soft performance-budget guidance, not an enforced regression gate. The default quality gate runs the Criterion harness in test mode through `cargo test --all-targets`; aggressive mode compiles benchmarks with `cargo bench --no-run`; full measurements and saved-baseline comparisons remain manual. Generated Criterion output under `target/criterion/` must not be committed.
 
-The CI workflow now includes a Linux full quality-gate job plus a Linux/macOS/Windows Rust workspace matrix. The matrix validates portable Rust check/test/build coverage, but it does not run the Bash-based local quality gate, shell guardrails, shell example smoke scripts, Linux package installation, systemd commands, launchd commands, or optional coverage on macOS/Windows. Optional coverage remains a Linux smoke check that runs only through manual dispatch or a non-secret repository variable and does not publish reports by default.
+The CI workflow now includes a Linux full quality-gate job plus a Linux/macOS/Windows Rust workspace matrix. The matrix validates portable Rust check/test/build coverage, but it does not run the Bash-based local quality gate, shell guardrails, shell example smoke scripts, Linux package installation, systemd commands, launchd commands, Docker image builds, devcontainer validation, or optional coverage on macOS/Windows. Optional coverage remains a Linux smoke check that runs only through manual dispatch or a non-secret repository variable and does not publish reports by default.
+
+The Docker image and devcontainer added in ticket 061 are development/test environments only. They are not hardened production gateway images, do not run systemd or launchd inside the container, do not provide TLS termination, do not start external chat adapters, and do not include secret-management automation beyond keeping `MISSIVE_HOME` outside tracked files by default. `scripts/docker-integration.sh` requires a local Docker daemon and can be slow on a cold cache because it runs the full quality gate inside the container.
 
 The command examples under `examples/` are local smoke demos, not an interoperability or production operations suite. By default they require Bash plus Cargo unless `MISSIVE_BIN` and/or `MISSIVE_EXAMPLE_A2A_BASE_URL` are provided, create temporary runtime state under `MISSIVE_HOME`, and exercise the local mock A2A fixture rather than an independent remote A2A implementation. They intentionally cover agent registry, send, stream/task, context/group/route, and gateway lifecycle commands only; broader push/webhook/collective/end-to-end demos remain for their later tickets.
 
@@ -281,4 +284,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 061 — Add Docker and devcontainer support.
+Ticket 062 — Add release packaging.
