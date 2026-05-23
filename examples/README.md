@@ -3,7 +3,8 @@
 This directory contains runnable, local-only demos for the implemented `missive`
 command surfaces. They use a deterministic mock A2A server and temporary
 `MISSIVE_HOME` state so they can run from a clean checkout without contacting any
-third-party agent.
+third-party agent. See [`../docs/examples.md`](../docs/examples.md) for the
+smoke-test coverage table and links into the user guide.
 
 ## Run every demo
 

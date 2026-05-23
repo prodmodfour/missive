@@ -31,7 +31,7 @@ exit code `78`.
 
 ## Examples
 
-Validated examples live under [`examples/config/`](../examples/config/):
+Validated examples live under [`examples/config/`](../examples/config/). For a guided local run that does not require a config file, start with [`quickstart.md`](quickstart.md):
 
 ```bash
 MISSIVE_HOME=/tmp/missive-demo missive agent list --config examples/config/minimal.toml --json
@@ -78,7 +78,7 @@ header = "Authorization"
 scheme = "Bearer"
 ```
 
-Supported sections in this ticket:
+Supported sections in the current implementation:
 
 * `profiles` — profile descriptions, default agent aliases, and optional
   profile-specific storage/output/gateway/qos overrides.

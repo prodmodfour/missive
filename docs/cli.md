@@ -13,6 +13,13 @@ create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
 `missive webhook run`, `missive gateway run` including the opt-in HTTP inbound adapter,
 `missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel` for gateway-managed background work, `missive logs`, `missive events list/tail/replay/export`, `missive completion <shell>`, and `missive manpage`.
 
+For task-oriented user guides, start with [`quickstart.md`](quickstart.md), then
+see [`agent-registry.md`](agent-registry.md), [`messaging.md`](messaging.md),
+[`streaming.md`](streaming.md), [`tasks.md`](tasks.md),
+[`contexts.md`](contexts.md), [`groups.md`](groups.md), [`gateway.md`](gateway.md),
+[`adapters.md`](adapters.md), and [`push-webhooks.md`](push-webhooks.md). This
+file remains the compact command reference and output-contract reference.
+
 Run help with:
 
 ```bash

@@ -12,7 +12,7 @@ This repository is at early workspace stage. It contains:
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
 * the autonomous ticket queue used to build the project one commit at a time
-* starter documentation directories, including `docs/adr/`
+* user, developer, and maintenance documentation under `docs/`, including `docs/adr/`
 
 Current crates:
 
@@ -28,7 +28,7 @@ crates/missive-observe    tracing, logs, diagnostics, event export helpers
 crates/missive-test-support reusable local A2A integration fixtures for tests
 ```
 
-The current binary exposes help for the top-level command tree, accepts global flags, implements `missive completion <shell>`, `missive manpage`, `missive adapter stdio`, `missive adapter file-drop`, the `missive gateway run --http-adapter` inbound HTTP endpoint, `missive agent add/list/show/inspect/refresh/capabilities/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, `missive group create/list/show/capabilities/add/remove/rename/delete`, Agent Card-aware `missive route explain`, `missive bcast`, `missive barrier`, `missive gather`, `missive reduce`, `missive push create/get/list/delete`, `missive webhook run`, `missive gateway run`, Linux systemd/macOS launchd `missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel`, and `missive events list/tail/replay/export`:
+The current binary exposes help for the top-level command tree, accepts global flags, implements `missive completion <shell>`, `missive manpage`, `missive adapter stdio`, `missive adapter file-drop`, the `missive gateway run --http-adapter` inbound HTTP endpoint, `missive agent add/list/show/inspect/refresh/capabilities/remove/rename`, non-streaming `missive send`, streaming `missive stream`, `missive task get/list/wait/cancel`, `missive task artifact list/show/save/export`, `missive context create/list/show/fork/close/export`, `missive group create/list/show/capabilities/add/remove/rename/delete`, Agent Card-aware `missive route explain`, `missive bcast`, `missive barrier`, `missive gather`, `missive reduce`, `missive push create/get/list/delete`, `missive webhook run`, `missive gateway run`, Linux systemd/macOS launchd `missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel`, `missive doctor`, `missive logs`, and `missive events list/tail/replay/export`:
 
 ```bash
 cargo run -p missive-cli --bin missive -- --help
@@ -71,6 +71,8 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- job sta
 MISSIVE_HTTP_ADAPTER_TOKEN=change-me MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- gateway run --port 7347 --http-adapter --http-adapter-auth-token-env MISSIVE_HTTP_ADAPTER_TOKEN --timeout 30s --ndjson
 curl -sS -H 'Authorization: Bearer change-me' -H 'Content-Type: application/json' -d '{"schema_version":"missive.http.v1","id":"req-1","command":"task_list"}' http://127.0.0.1:7347/adapter/http/v1/messages
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- job list --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- doctor --json
+MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- logs --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- push list echo task-123 --json
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- push delete echo task-123 local-webhook
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --json
@@ -81,7 +83,40 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events 
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/examples.md`](docs/examples.md) for runnable local command demos, [`docs/completions.md`](docs/completions.md) for shell completion and manpage generation/installation, [`docs/collectives.md`](docs/collectives.md) for the implemented broadcast, barrier, gather, and reduce collectives, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth/routing defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task subscription/push/webhook/artifact mapping, context continuity, interface negotiation mapping, and conformance fixture coverage, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, [`docs/gateway.md`](docs/gateway.md) for gateway daemon operation, HTTP inbound adapter operation, subscription resume, background jobs, service installation, and log inspection, [`docs/observability.md`](docs/observability.md) for tracing/log initialization, `RUST_LOG`, JSON log mode, and redaction boundaries, [`docs/adapters.md`](docs/adapters.md) for the adapter trait, registry, stdio frame loop, file-drop handoff, HTTP frame schema, lifecycle, external adapter stubs, and gateway event-bus bridge, [`docs/adapter-roadmap.md`](docs/adapter-roadmap.md) for Discord/Slack/Telegram/Matrix/Email placeholder boundaries and future secret/permission requirements, [`docs/security.md`](docs/security.md) for auth storage tradeoffs, [`docs/supply-chain.md`](docs/supply-chain.md) for cargo-deny policy, dependency-update rules, duplicate-dependency exceptions, and SBOM generation, [`docs/testing.md`](docs/testing.md) for local validation, reusable mock A2A fixtures, command-example smoke tests, gateway/webhook/job/adapter integration coverage, capability-selection tests, and protocol-versioned conformance fixtures, [`docs/performance.md`](docs/performance.md) for local benchmarks and soft performance budgets, [`docs/ci.md`](docs/ci.md) for the GitHub Actions Linux quality gate plus Linux/macOS/Windows workspace matrix and release dry-run workflow, [`docs/container.md`](docs/container.md) for Docker and devcontainer workflows, and [`docs/release.md`](docs/release.md) for release archives, checksums, and install/update guidance. Future tickets add embedded webhook management, daemon-started stdio/file-drop/external adapters, and broader interoperability tests.
+## Documentation
+
+User-facing docs:
+
+* [`docs/quickstart.md`](docs/quickstart.md) — local mock-agent workflow from a clean checkout.
+* [`docs/cli.md`](docs/cli.md) — command reference, global flags, output contract, completions, and manpage generation.
+* [`docs/configuration.md`](docs/configuration.md) — config discovery, schema, profiles, auth refs, state paths, validation, and redaction.
+* [`docs/agent-registry.md`](docs/agent-registry.md) — agent aliases, Agent Card discovery/cache, capability summaries, config-seeded agents, and registry mutations.
+* [`docs/messaging.md`](docs/messaging.md) — non-streaming `send`, message parts, metadata, auth, service parameters, persistence, and limits.
+* [`docs/streaming.md`](docs/streaming.md) — foreground `stream`, NDJSON event output, capability checks, and streaming persistence.
+* [`docs/tasks.md`](docs/tasks.md) — task list/get/wait/cancel, deterministic wait exit codes, and task artifact export.
+* [`docs/contexts.md`](docs/contexts.md) — context creation, naming, forking, closing, export, and continuity limits.
+* [`docs/groups.md`](docs/groups.md) — group membership, capability summaries, dry-run routing, and collective workflow entry points.
+* [`docs/collectives.md`](docs/collectives.md) — broadcast, barrier, gather, and reduce behavior.
+* [`docs/gateway.md`](docs/gateway.md) — gateway daemon run mode, health/status endpoints, HTTP adapter ingress, subscriptions, jobs, sessions, and service helpers.
+* [`docs/adapters.md`](docs/adapters.md) — stdio, file-drop, HTTP adapter surfaces, registry contract, and external stub boundaries.
+* [`docs/push-webhooks.md`](docs/push-webhooks.md) — A2A push config CRUD and the local webhook receiver.
+* [`docs/examples.md`](docs/examples.md) and [`examples/README.md`](examples/README.md) — runnable smoke-tested command demos.
+* [`docs/troubleshooting.md`](docs/troubleshooting.md) — doctor/logs/events workflow and common setup/runtime issues.
+
+Reference and maintainer docs:
+
+* [`docs/completions.md`](docs/completions.md) — shell completion and manpage installation paths.
+* [`docs/protocol.md`](docs/protocol.md) — current A2A type boundary and protocol mapping.
+* [`docs/storage.md`](docs/storage.md) — SQLite migration/schema contract.
+* [`docs/observability.md`](docs/observability.md) — tracing/log initialization, `RUST_LOG`, JSON log mode, span fields, and redaction boundaries.
+* [`docs/adapter-roadmap.md`](docs/adapter-roadmap.md) — Discord/Slack/Telegram/Matrix/Email placeholder boundaries and future secret/permission requirements.
+* [`docs/security.md`](docs/security.md) — auth storage tradeoffs, redaction, adapter/webhook trust boundaries, and current limitations.
+* [`docs/supply-chain.md`](docs/supply-chain.md) — cargo-deny policy, dependency-update rules, duplicate-dependency exceptions, and SBOM generation.
+* [`docs/testing.md`](docs/testing.md) — local validation, smoke tests, mock fixtures, property/fuzz/mutation checks, and conformance fixtures.
+* [`docs/performance.md`](docs/performance.md) — local benchmarks and soft performance budgets.
+* [`docs/ci.md`](docs/ci.md) — GitHub Actions quality gate, cross-platform matrix, and release dry-run workflow.
+* [`docs/container.md`](docs/container.md) — Docker and devcontainer workflows.
+* [`docs/release.md`](docs/release.md) — release archives, checksums, and install/update guidance.
 
 ## Installation and updates
 
