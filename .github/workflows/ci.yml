@@ -95,6 +95,58 @@ jobs:
       - name: Run local quality gate
         run: scripts/quality-gate.sh
 
+  workspace-matrix:
+    name: Workspace (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    needs: workflow-lint
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+          - platform: macos
+            os: macos-latest
+          - platform: windows
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile default --component rustfmt --component clippy
+          rustup default stable
+          rustup show
+
+      - name: Cache Cargo dependencies and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: ${{ runner.os }}-stable-workspace-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-stable-workspace-
+            ${{ runner.os }}-stable-cargo-
+
+      - name: Check, test, and build the workspace
+        run: |
+          set -euo pipefail
+          cargo check --workspace --all-targets --all-features
+          cargo test --workspace --all-targets --all-features
+          cargo build --workspace --all-features
+          cargo build -p missive-cli --bin missive --all-features
+
   coverage:
     name: Optional coverage smoke
     runs-on: ubuntu-latest

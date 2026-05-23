@@ -74,9 +74,14 @@ Gateway service commands are intentionally thin wrappers around the host's norma
 
 Supported managers:
 
-* Linux: systemd user units by default, or system units with `--system`.
-* macOS: launchd LaunchAgents by default, or LaunchDaemons with `--system`.
-* Other platforms: service commands fail clearly and recommend running `missive gateway run` under an external supervisor.
+| Platform | Service manager support |
+| --- | --- |
+| Linux | systemd user units by default, or system units with `--system` |
+| macOS | launchd LaunchAgents by default, or LaunchDaemons with `--system` |
+| Windows | no built-in service manager integration yet; run `missive gateway run` under an external supervisor |
+| Other platforms | service commands fail clearly and recommend running `missive gateway run` under an external supervisor |
+
+The gateway daemon itself is portable Rust and is covered by the cross-platform CI build/test matrix. Only the `gateway install/start/stop/status/uninstall` service-management wrappers are platform-specific.
 
 Always inspect the generated file first:
 

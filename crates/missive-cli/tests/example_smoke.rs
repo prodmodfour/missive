@@ -100,6 +100,10 @@ fn wait_for_child(mut child: Child, timeout: Duration) -> (ExitStatus, String, S
     (status, stdout, stderr)
 }
 
+#[cfg_attr(
+    windows,
+    ignore = "shell example smoke scripts require Bash plus POSIX utility behavior; Windows CI validates the Rust CLI directly"
+)]
 #[test]
 fn top_level_command_examples_run_against_mock_a2a_server() {
     let server = MockA2aServer::start();

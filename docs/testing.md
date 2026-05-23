@@ -4,7 +4,7 @@
 
 ## CI validation
 
-GitHub Actions runs the Linux default quality gate on `push` and `pull_request` through `.github/workflows/ci.yml`. The workflow first validates GitHub Actions YAML with `actionlint`, then runs `scripts/quality-gate.sh` so CI covers the same shell checks, guardrails, Rust formatting, clippy, tests, doc tests, docs, and builds as local ticket validation. Optional coverage smoke is available through manual workflow dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable. See [`ci.md`](ci.md) for the workflow, cache, and secret posture.
+GitHub Actions runs the Linux default quality gate on `push` and `pull_request` through `.github/workflows/ci.yml`, then runs a Rust workspace matrix on Linux, macOS, and Windows. The workflow first validates GitHub Actions YAML with `actionlint`; the Linux quality-gate job runs `scripts/quality-gate.sh` so CI covers the same shell checks, guardrails, Rust formatting, clippy, tests, doc tests, docs, and builds as local ticket validation. The cross-platform matrix runs workspace `cargo check`, `cargo test`, and debug builds on `ubuntu-latest`, `macos-latest`, and `windows-latest` so portable CLI/library functionality stays buildable beyond Linux. Platform-specific shell/service tests are gated: Bash example smoke scripts are not treated as Windows-native tests, Linux systemd and macOS launchd service planning are documented as host-specific, and Windows service installation remains unsupported with a clear diagnostic. Optional coverage smoke is available through manual workflow dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable. See [`ci.md`](ci.md) for the workflow, cache, platform matrix, and secret posture.
 
 ## Property-based tests
 

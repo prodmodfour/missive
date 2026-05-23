@@ -1808,7 +1808,7 @@ Validation:
 
 ## 060 — Add cross-platform build matrix
 
-Status: TODO
+Status: DONE
 
 Phase: CI/CD
 

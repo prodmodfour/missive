@@ -3702,6 +3702,8 @@ mod tests {
             buffer.clone(),
         )
         .expect("dispatch");
+        let _ = tracing::dispatcher::set_global_default(dispatch.clone());
+        tracing::callsite::rebuild_interest_cache();
 
         tracing::dispatcher::with_default(&dispatch, || {
             let store = Store::open_in_memory().expect("store");
@@ -3711,6 +3713,7 @@ mod tests {
                 .expect("upsert agent");
             store.get_agent(&alias).expect("get agent");
         });
+        tracing::callsite::rebuild_interest_cache();
 
         let output = buffer.text();
         assert!(output.contains("span.store.operation"), "{output}");

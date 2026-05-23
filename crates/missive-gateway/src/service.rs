@@ -532,41 +532,52 @@ fn build_launchd_plan(
     platform: GatewayServicePlatform,
 ) -> Result<GatewayServiceResult> {
     let service_path = launchd_plist_path(options.scope, &options.environment)?;
-    let domain = launchd_domain(options.scope)?;
     let mut planned_commands = Vec::new();
     match options.action {
         GatewayServiceAction::Install => {}
-        GatewayServiceAction::Start => planned_commands.push(GatewayServiceCommand::new(
-            "launchctl",
-            vec![
-                "bootstrap".to_owned(),
-                domain.clone(),
-                service_path.display().to_string(),
-            ],
-        )),
-        GatewayServiceAction::Stop => planned_commands.push(GatewayServiceCommand::new(
-            "launchctl",
-            vec![
-                "bootout".to_owned(),
-                domain.clone(),
-                service_path.display().to_string(),
-            ],
-        )),
-        GatewayServiceAction::Status => planned_commands.push(GatewayServiceCommand::new(
-            "launchctl",
-            vec![
-                "print".to_owned(),
-                format!("{domain}/{DEFAULT_LAUNCHD_LABEL}"),
-            ],
-        )),
-        GatewayServiceAction::Uninstall => planned_commands.push(GatewayServiceCommand::new(
-            "launchctl",
-            vec![
-                "bootout".to_owned(),
-                domain,
-                service_path.display().to_string(),
-            ],
-        )),
+        GatewayServiceAction::Start => {
+            let domain = launchd_domain(options.scope)?;
+            planned_commands.push(GatewayServiceCommand::new(
+                "launchctl",
+                vec![
+                    "bootstrap".to_owned(),
+                    domain,
+                    service_path.display().to_string(),
+                ],
+            ));
+        }
+        GatewayServiceAction::Stop => {
+            let domain = launchd_domain(options.scope)?;
+            planned_commands.push(GatewayServiceCommand::new(
+                "launchctl",
+                vec![
+                    "bootout".to_owned(),
+                    domain,
+                    service_path.display().to_string(),
+                ],
+            ));
+        }
+        GatewayServiceAction::Status => {
+            let domain = launchd_domain(options.scope)?;
+            planned_commands.push(GatewayServiceCommand::new(
+                "launchctl",
+                vec![
+                    "print".to_owned(),
+                    format!("{domain}/{DEFAULT_LAUNCHD_LABEL}"),
+                ],
+            ));
+        }
+        GatewayServiceAction::Uninstall => {
+            let domain = launchd_domain(options.scope)?;
+            planned_commands.push(GatewayServiceCommand::new(
+                "launchctl",
+                vec![
+                    "bootout".to_owned(),
+                    domain,
+                    service_path.display().to_string(),
+                ],
+            ));
+        }
     }
 
     let (executable, arguments, environment, service_file) =
@@ -1014,6 +1025,7 @@ fn xml_escape(value: &str) -> String {
 mod tests {
     use super::*;
 
+    #[cfg(not(windows))]
     fn base_environment() -> BTreeMap<String, String> {
         BTreeMap::from([
             ("HOME".to_owned(), "/home/example".to_owned()),
@@ -1022,6 +1034,7 @@ mod tests {
         ])
     }
 
+    #[cfg(not(windows))]
     fn install_options(platform: GatewayServicePlatform) -> GatewayServiceOptions {
         GatewayServiceOptions {
             action: GatewayServiceAction::Install,
@@ -1036,6 +1049,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn systemd_dry_run_generates_unit_file() {
         let result =
@@ -1060,6 +1074,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn launchd_dry_run_generates_plist() {
         let result =
@@ -1080,6 +1095,7 @@ mod tests {
         assert!(plist.contains("<key>MISSIVE_HOME</key>"));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn system_install_requires_explicit_missive_home() {
         let mut options = install_options(GatewayServicePlatform::LinuxSystemd);
@@ -1097,6 +1113,7 @@ mod tests {
         assert!(error.message().contains("sensitive-looking"));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn status_plan_does_not_need_executable() {
         let options = GatewayServiceOptions {
@@ -1117,5 +1134,14 @@ mod tests {
             result.planned_commands[0].display,
             "systemctl --user status missive-gateway.service --no-pager"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn service_platform_is_unsupported_on_windows() {
+        let error =
+            GatewayServicePlatform::current().expect_err("Windows service manager unsupported");
+        assert!(error.message().contains("unsupported"));
+        assert!(error.message().contains("windows"));
     }
 }

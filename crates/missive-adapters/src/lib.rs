@@ -1167,6 +1167,8 @@ mod tests {
             buffer.clone(),
         )
         .expect("dispatch");
+        let _ = tracing::dispatcher::set_global_default(dispatch.clone());
+        tracing::callsite::rebuild_interest_cache();
 
         tracing::dispatcher::with_default(&dispatch, || {
             let mut registry = AdapterRegistry::new();

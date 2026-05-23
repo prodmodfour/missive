@@ -3936,6 +3936,9 @@ mod tests {
             .insert("Authorization", "Bearer raw-secret")
             .expect("auth header");
 
+        let _ = tracing::dispatcher::set_global_default(dispatch.clone());
+        tracing::callsite::rebuild_interest_cache();
+
         tracing::dispatcher::with_default(&dispatch, || {
             SendMessageClient::new()
                 .expect("client")

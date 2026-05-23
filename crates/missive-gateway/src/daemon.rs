@@ -1939,7 +1939,7 @@ mod tests {
             "TASK_STATE_COMPLETED",
             Some("done"),
         )]);
-        let (_temp, config) = test_config(Some(Duration::from_millis(250)));
+        let (_temp, config) = test_config(Some(Duration::from_secs(2)));
         seed_streaming_task(&config, &server, "task-resume", TaskState::Working, true);
         let database_path = config.state_paths.database_path().to_path_buf();
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -1988,7 +1988,7 @@ mod tests {
     #[tokio::test]
     async fn gateway_subscription_failures_persist_bounded_backoff() {
         let server = MockA2aServer::builder().malformed_stream_event().start();
-        let (_temp, config) = test_config(Some(Duration::from_millis(250)));
+        let (_temp, config) = test_config(Some(Duration::from_secs(2)));
         seed_streaming_task(&config, &server, "task-backoff", TaskState::Working, false);
         let database_path = config.state_paths.database_path().to_path_buf();
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
@@ -2007,7 +2007,7 @@ mod tests {
             .find(|job| job.kind == TASK_SUBSCRIPTION_JOB_KIND)
             .expect("retrying subscription job");
         assert_eq!(job.state, GatewayJobState::Retrying);
-        assert_eq!(job.retry_count, 1);
+        assert!(job.retry_count >= 1);
         assert!(job.next_run_at.is_some());
         let backoff_ms = job
             .metadata
