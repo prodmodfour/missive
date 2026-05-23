@@ -2,6 +2,10 @@
 
 `missive` tests should be runnable from a clean checkout without contacting third-party agents by default. The ordered build loop still uses `scripts/quality-gate.sh` as the required validation entry point for every ticket.
 
+## CI validation
+
+GitHub Actions runs the Linux default quality gate on `push` and `pull_request` through `.github/workflows/ci.yml`. The workflow first validates GitHub Actions YAML with `actionlint`, then runs `scripts/quality-gate.sh` so CI covers the same shell checks, guardrails, Rust formatting, clippy, tests, doc tests, docs, and builds as local ticket validation. Optional coverage smoke is available through manual workflow dispatch or the non-secret `MISSIVE_CI_COVERAGE=1` repository variable. See [`ci.md`](ci.md) for the workflow, cache, and secret posture.
+
 ## Property-based tests
 
 Property-based tests use `proptest` and run as part of the normal workspace test pass. Current properties cover core identifier round trips and rejection, routing-policy parsing from CLI/config names, config rejection of reserved A2A service-parameter headers, metadata merge right-bias plus deterministic key order, CLI value parsers for group weights/tags/metadata, and router selection invariants for round-robin, weighted, and tag-match policies.

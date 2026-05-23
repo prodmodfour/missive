@@ -72,6 +72,7 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `cargo-mutants` | No | Aggressive gate | Bounded mutation compile smoke checks. |
 | `cargo-fuzz` | No | Aggressive gate when fuzz targets exist | Fuzz smoke runs. |
 | Criterion via `cargo bench` | No | Aggressive gate compiles when benchmark sources exist | Local benchmark measurements and saved-baseline comparisons. |
+| `actionlint` | No | Default gate when present, CI workflow-lint job | GitHub Actions workflow validation. |
 | `sqlx` (`sqlx-cli`) | No | Future store tickets | SQLite migration and query tooling if sqlx is selected. |
 | `just` | No | If a `justfile` with `ci` exists | Optional command runner. |
 | `jq` | No | Helper scripts | JSON processing for repository automation. |
@@ -90,6 +91,7 @@ or build regressions.
 Default checks include:
 
 * `bash -n` for repository shell scripts, plus `shellcheck` when installed;
+* GitHub Actions workflow validation through `scripts/validate-ci.sh` when `.github/workflows/` exists;
 * secret scanning across tracked files and untracked non-ignored files;
 * generated/private/runtime-file scanning across tracked files and untracked
   non-ignored files;
@@ -107,6 +109,8 @@ Optional tools are handled as follows:
 
 * if an optional tool is missing, the gate emits a warning and skips that check;
 * if an optional tool is present, the gate runs the matching check;
+* `scripts/validate-ci.sh` uses `actionlint` when available, otherwise it falls
+  back to basic YAML syntax validation with Ruby or PyYAML when present;
 * `cargo-deny` is skipped until a deny configuration exists, because the policy
   itself is introduced by a later ticket.
 
@@ -147,6 +151,7 @@ allowed when a ticket needs it. Examples:
 rustup toolchain install stable --profile default --component rustfmt --component clippy
 cargo install --locked cargo-audit
 cargo install --locked cargo-machete
+go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 sudo apt-get update
 sudo apt-get install -y jq shellcheck protobuf-compiler sqlite3 pkg-config
 ```

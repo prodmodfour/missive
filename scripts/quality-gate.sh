@@ -78,6 +78,19 @@ run_shell_checks() {
   fi
 }
 
+run_ci_config_checks() {
+  if [[ ! -d .github/workflows ]]; then
+    return 0
+  fi
+
+  pp_section "CI workflow validation"
+  if [[ ! -x scripts/validate-ci.sh ]]; then
+    pp_error "Missing required CI workflow validator: scripts/validate-ci.sh"
+    exit 1
+  fi
+  run_cmd bash scripts/validate-ci.sh
+}
+
 run_guardrails() {
   pp_section "Secret guardrail"
   if [[ ! -f scripts/check-no-secrets.sh ]]; then
@@ -330,6 +343,7 @@ pp_kv "repository" "$REPO_ROOT"
 pp_kv "aggressive checks" "$(pp_on_off "$AGGRESSIVE")"
 
 run_shell_checks
+run_ci_config_checks
 run_guardrails
 
 if [[ -f Cargo.toml ]]; then
