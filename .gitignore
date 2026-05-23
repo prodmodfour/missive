@@ -26,9 +26,13 @@
 /mutants.out/
 *.profraw
 
-# Fuzz crash/artifact output
+# Fuzz crash/artifact output and generated local corpora
 /fuzz/artifacts/
 /fuzz/crashes/
+/fuzz/corpus/
+/fuzz/coverage/
+/fuzz/target/
+/fuzz/Cargo.lock
 
 # Operating system and editor noise
 .DS_Store

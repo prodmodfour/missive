@@ -1689,7 +1689,7 @@ Validation:
 
 ## 056 — Add fuzzing smoke tests
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 

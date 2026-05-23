@@ -28,6 +28,10 @@ bad_patterns=(
   '\.key$'
   'fuzz/artifacts/'
   'fuzz/crashes/'
+  'fuzz/corpus/'
+  'fuzz/coverage/'
+  'fuzz/target/'
+  '^fuzz/Cargo\.lock$'
 )
 
 failed=0

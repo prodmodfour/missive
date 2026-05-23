@@ -163,6 +163,7 @@ run_dependency_checks() {
 
 run_fuzz_smoke() {
   local fuzz_seconds="${MISSIVE_FUZZ_SECONDS:-15}"
+  local fuzz_sanitizer="${MISSIVE_FUZZ_SANITIZER:-none}"
   local fuzz_targets=()
   local target
 
@@ -186,7 +187,7 @@ run_fuzz_smoke() {
   fi
 
   for target in "${fuzz_targets[@]}"; do
-    run_cmd cargo fuzz run "$target" -- -max_total_time="$fuzz_seconds"
+    run_cmd cargo fuzz run "$target" --sanitizer "$fuzz_sanitizer" -- -max_total_time="$fuzz_seconds"
   done
 }
 

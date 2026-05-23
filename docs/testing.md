@@ -16,6 +16,33 @@ cargo test -p missive-cli --lib --all-features group::tests
 
 When a property fails, `proptest` prints the minimized failing input and reproduction details in the test output; set `PROPTEST_RNG_SEED=<seed>` when a reported RNG seed needs to be replayed exactly. Do not commit transient failure artifacts unless a regression file is intentionally added as a stable seed for a known bug fix.
 
+## Fuzzing smoke tests
+
+`cargo-fuzz` targets live under [`fuzz/`](../fuzz/) and are intentionally scoped to untrusted parser/replay boundaries rather than long-running network behaviour. Current targets cover TOML config parsing, A2A protocol JSON parsing, event replay reconstruction, and stdio/HTTP/file-drop adapter frame parsing.
+
+Compile all fuzz targets on the stable toolchain:
+
+```bash
+cargo fuzz build --sanitizer none
+```
+
+Run short targeted smoke checks:
+
+```bash
+cargo fuzz run config_parse --sanitizer none -- -runs=100
+cargo fuzz run a2a_json_parse --sanitizer none -- -runs=100
+cargo fuzz run event_replay --sanitizer none -- -runs=100
+cargo fuzz run cli_frame_parse --sanitizer none -- -runs=100
+```
+
+Aggressive quality-gate mode automatically discovers the same targets when `cargo-fuzz` is installed and bounds each run with `MISSIVE_FUZZ_SECONDS`. It defaults to `MISSIVE_FUZZ_SANITIZER=none` for stable-toolchain compatibility; use a compatible nightly setup and `MISSIVE_FUZZ_SANITIZER=address` for sanitizer-backed campaigns:
+
+```bash
+MISSIVE_AGGRESSIVE_TESTS=1 MISSIVE_FUZZ_SECONDS=3 scripts/quality-gate.sh
+```
+
+Generated `fuzz/corpus/`, `fuzz/artifacts/`, `fuzz/crashes/`, `fuzz/coverage/`, and `fuzz/target/` output is ignored and guarded against accidental commits. Commit only intentional, reviewed regression seeds when a future bug fix explicitly requires stable corpus data.
+
 ## Observability tests
 
 `crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config plus `cli.command` span fields in JSON stderr logs. `completion_manpage_command` tests generate bash/zsh/fish/PowerShell completion scripts, snapshot stable prefixes, assert completion/manpage generation bypasses configuration loading, and verify JSON envelopes for generated content. `doctor_command` tests run with isolated `MISSIVE_HOME` directories and cover no-config reports, valid populated config plus migrated SQLite state, invalid config as a structured failed check, unmigrated database detection, mock reachable/unreachable A2A endpoint probes, gateway running/unavailable status probes, deterministic `PATH` tool lookup, and redaction of secret-like config/auth metadata. `logs_command` tests assert actionable empty-source JSON, profile-file JSON/NDJSON rendering, bounded `--limit` behavior, and token/cookie/API-key redaction; `events_command` tests cover event list/export/replay plus bounded `events tail` follow/timeout behavior and secret-like free-text payload redaction. A2A, store, and adapter unit tests use scoped dispatchers to verify representative `a2a.request`, `store.operation`, and `adapter.event` spans without relying on one process-global subscriber in parallel test runs.

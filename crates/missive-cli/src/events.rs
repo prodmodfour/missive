@@ -557,6 +557,21 @@ fn filtered_events(
     Ok(records)
 }
 
+/// Replays event records into the same stable JSON summary used by the CLI.
+///
+/// This hidden helper keeps the `cargo-fuzz` event-replay target on the real
+/// replay implementation without requiring it to create profile directories or
+/// SQLite databases for each generated input.
+#[doc(hidden)]
+pub fn replay_event_records_for_fuzzing(records: &[EventRecord]) -> Result<Value> {
+    let filters = ParsedEventFilters::empty();
+    let replay = replay_records("fuzz", &filters, Some(records.len()), records);
+    serde_json::to_value(replay).map_err(|error| {
+        MissiveError::orchestration("failed to serialize fuzz event replay summary")
+            .with_source(error)
+    })
+}
+
 fn replay_records(
     profile: &str,
     filters: &ParsedEventFilters,
@@ -962,6 +977,18 @@ fn validate_non_negative_sequence(flag: &str, sequence: i64) -> Result<i64> {
 }
 
 impl ParsedEventFilters {
+    fn empty() -> Self {
+        Self {
+            agent: None,
+            context_id: None,
+            task_id: None,
+            source: None,
+            event_type: None,
+            since: None,
+            after_sequence: None,
+        }
+    }
+
     fn from_parts(selector: &EventSelectorArgs, after_sequence: Option<i64>) -> Result<Self> {
         Ok(Self {
             agent: selector
