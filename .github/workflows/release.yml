@@ -1,0 +1,80 @@
+name: Release packaging
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  package:
+    name: Package missive (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile default
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+          rustup show
+
+      - name: Cache Cargo dependencies and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-release-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-release-
+            ${{ runner.os }}-stable-workspace-
+            ${{ runner.os }}-stable-cargo-
+
+      - name: Build archive and checksums
+        run: scripts/release-package.sh --dry-run --target "${{ matrix.target }}" --dist-dir "dist/${{ matrix.target }}"
+
+      - name: Upload release dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: missive-${{ matrix.target }}
+          path: |
+            dist/${{ matrix.target }}/*.tar.gz
+            dist/${{ matrix.target }}/*.tar.gz.sha256
+            dist/${{ matrix.target }}/SHA256SUMS
+          if-no-files-found: error

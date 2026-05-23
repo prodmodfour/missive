@@ -81,7 +81,34 @@ MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- events 
 MISSIVE_HOME=/tmp/missive-demo cargo run -p missive-cli --bin missive -- agent list --config examples/config/minimal.toml --json
 ```
 
-See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/examples.md`](docs/examples.md) for runnable local command demos, [`docs/completions.md`](docs/completions.md) for shell completion and manpage generation/installation, [`docs/collectives.md`](docs/collectives.md) for the implemented broadcast, barrier, gather, and reduce collectives, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth/routing defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task subscription/push/webhook/artifact mapping, context continuity, interface negotiation mapping, and conformance fixture coverage, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, [`docs/gateway.md`](docs/gateway.md) for gateway daemon operation, HTTP inbound adapter operation, subscription resume, background jobs, service installation, and log inspection, [`docs/observability.md`](docs/observability.md) for tracing/log initialization, `RUST_LOG`, JSON log mode, and redaction boundaries, [`docs/adapters.md`](docs/adapters.md) for the adapter trait, registry, stdio frame loop, file-drop handoff, HTTP frame schema, lifecycle, external adapter stubs, and gateway event-bus bridge, [`docs/adapter-roadmap.md`](docs/adapter-roadmap.md) for Discord/Slack/Telegram/Matrix/Email placeholder boundaries and future secret/permission requirements, [`docs/security.md`](docs/security.md) for auth storage tradeoffs, [`docs/testing.md`](docs/testing.md) for local validation, reusable mock A2A fixtures, command-example smoke tests, gateway/webhook/job/adapter integration coverage, capability-selection tests, and protocol-versioned conformance fixtures, [`docs/performance.md`](docs/performance.md) for local benchmarks and soft performance budgets, [`docs/ci.md`](docs/ci.md) for the GitHub Actions Linux quality gate plus Linux/macOS/Windows workspace matrix, and [`docs/container.md`](docs/container.md) for Docker and devcontainer workflows. Future tickets add embedded webhook management, daemon-started stdio/file-drop/external adapters, broader interoperability tests, and packaging.
+See [`docs/cli.md`](docs/cli.md) for current command behaviour and the output envelope, [`docs/examples.md`](docs/examples.md) for runnable local command demos, [`docs/completions.md`](docs/completions.md) for shell completion and manpage generation/installation, [`docs/collectives.md`](docs/collectives.md) for the implemented broadcast, barrier, gather, and reduce collectives, [`docs/configuration.md`](docs/configuration.md) for config discovery, schema, A2A service-parameter/auth/routing defaults, state paths, examples, validation, and redaction, [`docs/protocol.md`](docs/protocol.md) for the current official A2A type boundary, Agent Card discovery, service-parameter/auth handling, send/stream/task subscription/push/webhook/artifact mapping, context continuity, interface negotiation mapping, and conformance fixture coverage, [`docs/storage.md`](docs/storage.md) for the SQLite migration/schema contract, [`docs/gateway.md`](docs/gateway.md) for gateway daemon operation, HTTP inbound adapter operation, subscription resume, background jobs, service installation, and log inspection, [`docs/observability.md`](docs/observability.md) for tracing/log initialization, `RUST_LOG`, JSON log mode, and redaction boundaries, [`docs/adapters.md`](docs/adapters.md) for the adapter trait, registry, stdio frame loop, file-drop handoff, HTTP frame schema, lifecycle, external adapter stubs, and gateway event-bus bridge, [`docs/adapter-roadmap.md`](docs/adapter-roadmap.md) for Discord/Slack/Telegram/Matrix/Email placeholder boundaries and future secret/permission requirements, [`docs/security.md`](docs/security.md) for auth storage tradeoffs, [`docs/testing.md`](docs/testing.md) for local validation, reusable mock A2A fixtures, command-example smoke tests, gateway/webhook/job/adapter integration coverage, capability-selection tests, and protocol-versioned conformance fixtures, [`docs/performance.md`](docs/performance.md) for local benchmarks and soft performance budgets, [`docs/ci.md`](docs/ci.md) for the GitHub Actions Linux quality gate plus Linux/macOS/Windows workspace matrix and release dry-run workflow, [`docs/container.md`](docs/container.md) for Docker and devcontainer workflows, and [`docs/release.md`](docs/release.md) for release archives, checksums, and install/update guidance. Future tickets add embedded webhook management, daemon-started stdio/file-drop/external adapters, broader interoperability tests, and supply-chain release hardening.
+
+## Installation and updates
+
+Build a local development binary with Cargo:
+
+```bash
+cargo install --path crates/missive-cli --locked
+```
+
+Create a reviewed release archive and checksums for the current host target:
+
+```bash
+scripts/release-package.sh --dry-run
+```
+
+Install or update from a generated or downloaded archive after verifying its checksum:
+
+```bash
+scripts/install-release.sh \
+  --artifact dist/missive-v0.1.0-x86_64-unknown-linux-gnu.tar.gz \
+  --checksum dist/missive-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256 \
+  --bin-dir ~/.local/bin
+missive --version
+missive doctor
+```
+
+See [`docs/release.md`](docs/release.md) for the common target matrix, CI release dry run, checksum verification, and current packaging limitations.
 
 ## Build and validation
 

@@ -8,6 +8,7 @@ This project follows an autonomous ticket queue. Each completed ticket should ad
 
 ### Added
 
+* Release packaging dry-run workflow, local archive/checksum scripts, and install/update documentation for `missive` release artifacts.
 * Bootstrap Rust workspace root with a placeholder `missive` binary.
 * Repository hygiene files, licensing, contribution, security, and changelog scaffolding.
 * Initial documentation directory for future architecture decision records.

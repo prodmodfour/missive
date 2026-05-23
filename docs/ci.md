@@ -57,6 +57,24 @@ cargo llvm-cov --workspace --all-features --no-report
 
 The coverage job is a smoke check only and does not publish coverage artifacts by default.
 
+## Release packaging dry run
+
+The release packaging workflow lives at `.github/workflows/release.yml`. It runs
+on manual `workflow_dispatch` and release tags matching `v*.*.*`. The workflow
+uses read-only repository permissions, builds the `missive` binary with the
+workspace `dist` profile, packages common Linux/macOS/Windows target archives,
+generates SHA-256 checksum files, and uploads the archives/checksums as workflow
+artifacts. It does not create GitHub Releases or require repository secrets.
+
+Run the same packaging path locally with:
+
+```bash
+scripts/release-package.sh --dry-run
+```
+
+See [`release.md`](release.md) for the target matrix, archive contents,
+checksum verification, and install/update instructions.
+
 ## Container validation
 
 Docker and devcontainer support are available for local reproducible validation, but the default GitHub Actions workflow does not yet build the Docker image on every push. Validate the container workflow locally when Docker-related files change:

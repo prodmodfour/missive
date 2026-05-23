@@ -20,6 +20,28 @@ rust-version = "1.85"
 license = "Apache-2.0"
 publish = false
 
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
+[profile.dist]
+inherits = "release"
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
+[workspace.metadata.missive.release]
+package = "missive-cli"
+binary = "missive"
+default-profile = "dist"
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
 [workspace.dependencies]
 a2a = { package = "a2a-lf", version = "0.3" }
 axum = { version = "0.7", features = ["http1", "json", "tokio"] }

@@ -1867,7 +1867,7 @@ Validation:
 
 ## 062 — Add release packaging
 
-Status: TODO
+Status: DONE
 
 Phase: Release
 
