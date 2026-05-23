@@ -1983,7 +1983,7 @@ Validation:
 
 ## 066 — Add compatibility tests against a2a-rs example agent
 
-Status: TODO
+Status: DONE
 
 Phase: Interoperability
 

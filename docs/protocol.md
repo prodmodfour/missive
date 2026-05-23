@@ -329,6 +329,10 @@ present. Any artifacts embedded in the returned task are also persisted to the
 local `artifacts` table with kind, name, MIME type, metadata, raw A2A artifact
 JSON, and an incremented version when the same artifact id is observed again.
 `ListTasks` persists each returned task before applying local output filters.
+For interoperability with current `a2a-rs` example agents, missive accepts
+`ListTasksResponse` payloads that omit or null out pagination fields and treats
+missing `nextPageToken`, `pageSize`, and `totalSize` as empty-token/observed-task
+count defaults before deserializing into the official Rust type.
 
 `task wait` repeatedly calls `GetTask` unless `--local` is supplied. The wait
 loop treats `completed`, `failed`, `cancelled`, and `input_required` as decisive

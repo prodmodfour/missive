@@ -2802,13 +2802,8 @@ impl TaskClient {
 
         let (status, raw_json) =
             send_task_request(http_request, &endpoint, service_parameters, "A2A ListTasks")?;
-        let response = serde_json::from_value::<protocol::ListTasksResponse>(raw_json.clone())
-            .map_err(|error| {
-                MissiveError::protocol(format!(
-                    "A2A ListTasks response from {endpoint} is not a ListTasksResponse"
-                ))
-                .with_source(error)
-            })?;
+        let response =
+            list_tasks_response_from_json(raw_json.clone(), &endpoint, "A2A ListTasks response")?;
         Ok(ListTasksOutcome {
             url: endpoint.to_string(),
             status,
@@ -2835,13 +2830,11 @@ impl TaskClient {
             service_parameters,
             auth_headers,
         )?;
-        let response = serde_json::from_value::<protocol::ListTasksResponse>(raw_json.clone())
-            .map_err(|error| {
-                MissiveError::protocol(format!(
-                    "A2A JSON-RPC ListTasks result from {endpoint} is not a ListTasksResponse"
-                ))
-                .with_source(error)
-            })?;
+        let response = list_tasks_response_from_json(
+            raw_json.clone(),
+            &endpoint,
+            "A2A JSON-RPC ListTasks result",
+        )?;
         Ok(ListTasksOutcome {
             url: endpoint.to_string(),
             status: StatusCode::OK.as_u16(),
@@ -3405,6 +3398,51 @@ fn task_from_json(raw_json: Value, endpoint: &Url, label: &str) -> Result<protoc
             .with_source(error)
             .with_help("Expected an A2A Task object with id, contextId, and status fields.")
     })
+}
+
+fn list_tasks_response_from_json(
+    raw_json: Value,
+    endpoint: &Url,
+    label: &str,
+) -> Result<protocol::ListTasksResponse> {
+    let normalized = normalize_list_tasks_response(raw_json);
+    serde_json::from_value::<protocol::ListTasksResponse>(normalized).map_err(|error| {
+        MissiveError::protocol(format!(
+            "{label} from {endpoint} is not a ListTasksResponse"
+        ))
+        .with_source(error)
+        .with_help("Expected an A2A ListTasksResponse with a tasks array and pagination fields.")
+    })
+}
+
+fn normalize_list_tasks_response(mut raw_json: Value) -> Value {
+    let Some(object) = raw_json.as_object_mut() else {
+        return raw_json;
+    };
+    let task_count = object
+        .get("tasks")
+        .and_then(Value::as_array)
+        .map_or(0_i64, |tasks| {
+            i64::try_from(tasks.len()).unwrap_or(i64::MAX)
+        });
+
+    if object.get("nextPageToken").is_none_or(Value::is_null) {
+        object.insert("nextPageToken".to_owned(), Value::String(String::new()));
+    }
+    if object.get("pageSize").is_none_or(Value::is_null) {
+        object.insert(
+            "pageSize".to_owned(),
+            Value::Number(serde_json::Number::from(task_count)),
+        );
+    }
+    if object.get("totalSize").is_none_or(Value::is_null) {
+        object.insert(
+            "totalSize".to_owned(),
+            Value::Number(serde_json::Number::from(task_count)),
+        );
+    }
+
+    raw_json
 }
 
 fn append_list_tasks_query(endpoint: &mut Url, request: &protocol::ListTasksRequest) -> Result<()> {
@@ -4148,6 +4186,37 @@ mod tests {
             .expect_err("unknown stream response should fail");
 
         assert!(error.to_string().contains("malformed A2A stream event 7"));
+    }
+
+    #[test]
+    fn list_tasks_response_accepts_a2a_rs_missing_pagination_fields() {
+        let endpoint = Url::parse("http://127.0.0.1:3000/rest/tasks").expect("url");
+        let response = list_tasks_response_from_json(
+            json!({"tasks": []}),
+            &endpoint,
+            "A2A ListTasks response",
+        )
+        .expect("a2a-rs helloworld list response without pagination should parse");
+
+        assert!(response.tasks.is_empty());
+        assert_eq!(response.next_page_token, "");
+        assert_eq!(response.page_size, 0);
+        assert_eq!(response.total_size, 0);
+    }
+
+    #[test]
+    fn list_tasks_response_accepts_null_pagination_fields() {
+        let endpoint = Url::parse("http://127.0.0.1:3000/jsonrpc").expect("url");
+        let response = list_tasks_response_from_json(
+            json!({"tasks": [], "nextPageToken": null, "pageSize": null, "totalSize": null}),
+            &endpoint,
+            "A2A JSON-RPC ListTasks result",
+        )
+        .expect("null pagination fields should normalize to empty defaults");
+
+        assert_eq!(response.next_page_token, "");
+        assert_eq!(response.page_size, 0);
+        assert_eq!(response.total_size, 0);
     }
 
     #[test]

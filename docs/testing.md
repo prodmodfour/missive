@@ -279,6 +279,24 @@ Only commit the normalized golden JSON, not local ports, generated message IDs,
 timestamps, runtime databases, or captured external traffic. The fixture README
 contains the update process for future A2A protocol versions.
 
+## Upstream a2a-rs interoperability check
+
+The opt-in upstream compatibility script runs missive against the pinned
+`a2aproject/a2a-rs` hello-world example agent:
+
+```bash
+scripts/interop-a2a-rs.sh
+```
+
+It clones the pinned upstream revision into a temporary directory, starts the
+example server on its fixed local ports, creates an isolated `MISSIVE_HOME`, and
+validates Agent Card discovery, `send`, `stream`, remote `task list`, and push
+configuration when the example advertises push support. The current pinned
+hello-world Agent Card advertises `pushNotifications=false`, so `push_config` is
+reported as an `upstream_example_limitation` skip rather than a missive failure.
+See [`interoperability.md`](interoperability.md) for the pinned revision,
+configuration variables, result files, and failure classifications.
+
 ## Command example smoke tests
 
 Runnable shell examples live under [`examples/`](../examples/). The canonical
