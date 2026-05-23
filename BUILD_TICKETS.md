@@ -1600,7 +1600,7 @@ Validation:
 
 ## 053 — Implement shell completions and manpages
 
-Status: TODO
+Status: DONE
 
 Phase: CLI Polish
 

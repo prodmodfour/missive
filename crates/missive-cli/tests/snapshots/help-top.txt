@@ -23,7 +23,7 @@ Commands:
   logs        Inspect local missive logs
   events      Inspect, tail, replay, or export the local event journal
   completion  Generate shell completion scripts
-  manpage     Generate manual pages
+  manpage     Generate a manual page
 
 Options:
   -h, --help

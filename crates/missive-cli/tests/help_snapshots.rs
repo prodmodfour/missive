@@ -152,6 +152,10 @@ fn key_subcommand_help_snapshots_are_stable() {
             &["missive", "completion", "--help"],
             include_str!("snapshots/help-completion.txt"),
         ),
+        (
+            &["missive", "manpage", "--help"],
+            include_str!("snapshots/help-manpage.txt"),
+        ),
     ];
 
     for (args, expected) in cases {

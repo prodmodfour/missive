@@ -20,6 +20,8 @@ native-keyring = ["dep:keyring"]
 
 [dependencies]
 clap.workspace = true
+clap_complete.workspace = true
+clap_mangen.workspace = true
 missive-adapters.workspace = true
 missive-a2a.workspace = true
 missive-core.workspace = true

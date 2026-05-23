@@ -1,0 +1,20 @@
+#compdef missive
+
+autoload -U is-at-least
+
+_missive() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'--config=[Read configuration from this file path]:PATH:_files' \
+'--profile=[Select a named configuration profile]:PROFILE:_default' \
+'--timeout=[Set an overall command timeout such as 30s, 2m, or 1h]:DURATION:_default' \

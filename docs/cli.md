@@ -11,9 +11,7 @@ commands, public A2A Agent Card inspection/refresh, the subprocess-oriented
 create/list/show/add/remove/rename/delete`, `missive bcast`, `missive barrier`,
 `missive gather`, `missive reduce`, `missive push create/get/list/delete`,
 `missive webhook run`, `missive gateway run` including the opt-in HTTP inbound adapter,
-`missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel` for gateway-managed background work, `missive logs`, and `missive events list/tail/replay/export`;
-other top-level commands still emit skeletal parsed status until their ordered
-tickets land.
+`missive gateway install/start/stop/status/uninstall`, `missive job start/list/show/cancel` for gateway-managed background work, `missive logs`, `missive events list/tail/replay/export`, `missive completion <shell>`, and `missive manpage`.
 
 Run help with:
 
@@ -43,6 +41,8 @@ missive webhook --help
 missive webhook run --help
 missive logs --help
 missive events --help
+missive completion --help
+missive manpage --help
 ```
 
 ## Global flags
@@ -114,16 +114,40 @@ doctor      Diagnose local config, storage, tools, A2A endpoints, and gateway st
 logs        Inspect local missive logs
 events      Inspect, tail, replay, or export the local event journal
 completion  Generate shell completion scripts
-manpage     Generate manual pages
+manpage     Generate a manual page
 ```
 
-Each top-level command has a help page. Running an unimplemented command other
-than help currently loads and validates configuration, then emits a
-command-status record through the selected renderer. `missive doctor` is now an
-implemented health-check command; implemented command groups with no
+Each top-level command has a help page. Implemented command groups with no
 selected subcommand, such as `missive context --json`, `missive gateway --json`,
-or `missive webhook --json`, still emit that parsed command-status record so
+or `missive webhook --json`, still emit a parsed command-status record so
 automation can distinguish parser support from a specific operation.
+
+## Shell completions and manpage
+
+`missive completion <shell>` writes a generated completion script to stdout for
+`bash`, `zsh`, `fish`, or `powershell`:
+
+```bash
+missive completion bash > ~/.local/share/bash-completion/completions/missive
+missive completion zsh > ~/.local/share/zsh/site-functions/_missive
+missive completion fish > ~/.config/fish/completions/missive.fish
+missive completion powershell > ./missive.ps1
+```
+
+`missive manpage` writes the roff source for `missive(1)` to stdout:
+
+```bash
+mkdir -p ~/.local/share/man/man1
+missive manpage > ~/.local/share/man/man1/missive.1
+```
+
+Completion and manpage generation are local-only operations and do not load the
+missive configuration file or contact network endpoints. In normal human mode the
+raw script/roff is emitted for direct redirection. With `--json` or `--ndjson`,
+the generated content is wrapped in a `missive.output.v1` envelope for
+automation, so do not use those flags when redirecting directly into shell or
+manpage install locations. See [`completions.md`](completions.md) for
+shell-specific install directories and PowerShell profile guidance.
 
 ## Adapter commands
 

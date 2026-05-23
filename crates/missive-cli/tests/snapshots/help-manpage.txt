@@ -1,16 +1,6 @@
-Generate shell completion scripts for bash, zsh, fish, or powershell. The generated script is written to stdout by default so it can be redirected into the shell-specific completion directory.
+Generate the roff source for the missive(1) manual page from the current clap command tree. The generated page is written to stdout by default and does not require network access.
 
-Usage: missive completion [OPTIONS] <SHELL>
-
-Arguments:
-  <SHELL>
-          Shell to generate completions for
-
-          Possible values:
-          - bash:       Generate a bash completion script
-          - zsh:        Generate a zsh completion script
-          - fish:       Generate a fish completion script
-          - powershell: Generate a PowerShell completion script
+Usage: missive manpage [OPTIONS]
 
 Options:
   -h, --help

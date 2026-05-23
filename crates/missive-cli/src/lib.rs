@@ -17,6 +17,7 @@ pub(crate) mod auth;
 pub(crate) mod barrier;
 pub(crate) mod bcast;
 pub(crate) mod capabilities;
+pub mod completion;
 pub mod context;
 pub mod doctor;
 pub mod events;
@@ -25,6 +26,7 @@ pub(crate) mod gather;
 pub mod group;
 pub mod job;
 pub mod logs;
+pub mod manpage;
 pub mod output;
 pub mod push;
 pub(crate) mod reduce;
@@ -360,15 +362,15 @@ pub enum Commands {
 
     /// Generate shell completion scripts.
     #[command(
-        long_about = "Generate shell completion scripts for supported shells. Completion generation is implemented by a later CLI polish ticket."
+        long_about = "Generate shell completion scripts for bash, zsh, fish, or powershell. The generated script is written to stdout by default so it can be redirected into the shell-specific completion directory."
     )]
-    Completion,
+    Completion(completion::CompletionArgs),
 
-    /// Generate manual pages.
+    /// Generate a manual page.
     #[command(
-        long_about = "Generate manual pages for the missive CLI. Manpage generation is implemented by a later CLI polish ticket."
+        long_about = "Generate the roff source for the missive(1) manual page from the current clap command tree. The generated page is written to stdout by default and does not require network access."
     )]
-    Manpage,
+    Manpage(manpage::ManpageArgs),
 }
 
 impl Commands {
@@ -395,8 +397,8 @@ impl Commands {
             Self::Doctor => "doctor",
             Self::Logs(_) => "logs",
             Self::Events { .. } => "events",
-            Self::Completion => "completion",
-            Self::Manpage => "manpage",
+            Self::Completion(_) => "completion",
+            Self::Manpage(_) => "manpage",
         }
     }
 }
@@ -482,6 +484,75 @@ where
         command = %command_name,
         "CLI command started"
     );
+
+    if let Some(Commands::Completion(args)) = &cli.command {
+        command_span.record("selected_profile", "not-applicable");
+        command_span.record("output_mode", "generated");
+        tracing::debug!(
+            target: "missive_cli",
+            command = %command_name,
+            selected_profile = "not-applicable",
+            output_mode = "generated",
+            shell = %args.shell.as_str(),
+            "CLI command configured"
+        );
+        let result = completion::execute_completion_command(args, &cli.globals, writer);
+        match &result {
+            Ok(()) => tracing::debug!(
+                target: "missive_cli",
+                command = %command_name,
+                selected_profile = "not-applicable",
+                output_mode = "generated",
+                shell = %args.shell.as_str(),
+                "CLI command completed"
+            ),
+            Err(error) => tracing::debug!(
+                target: "missive_cli",
+                command = %command_name,
+                selected_profile = "not-applicable",
+                output_mode = "generated",
+                shell = %args.shell.as_str(),
+                exit_code = error.exit_code().as_i32(),
+                error_code = error.code(),
+                error_category = ?error.category(),
+                "CLI command failed"
+            ),
+        }
+        return result;
+    }
+
+    if let Some(Commands::Manpage(_args)) = &cli.command {
+        command_span.record("selected_profile", "not-applicable");
+        command_span.record("output_mode", "generated");
+        tracing::debug!(
+            target: "missive_cli",
+            command = %command_name,
+            selected_profile = "not-applicable",
+            output_mode = "generated",
+            "CLI command configured"
+        );
+        let result = manpage::execute_manpage_command(&cli.globals, writer);
+        match &result {
+            Ok(()) => tracing::debug!(
+                target: "missive_cli",
+                command = %command_name,
+                selected_profile = "not-applicable",
+                output_mode = "generated",
+                "CLI command completed"
+            ),
+            Err(error) => tracing::debug!(
+                target: "missive_cli",
+                command = %command_name,
+                selected_profile = "not-applicable",
+                output_mode = "generated",
+                exit_code = error.exit_code().as_i32(),
+                error_code = error.code(),
+                error_category = ?error.category(),
+                "CLI command failed"
+            ),
+        }
+        return result;
+    }
 
     if matches!(cli.command, Some(Commands::Doctor)) {
         let mut selected_profile = "unknown".to_owned();
@@ -1214,7 +1285,9 @@ A2A-Tenant = "tenant-a"
                 quiet: true,
                 ..GlobalArgs::default()
             },
-            command: Some(Commands::Completion),
+            command: Some(Commands::Completion(completion::CompletionArgs {
+                shell: completion::CompletionShell::Bash,
+            })),
         };
         let mut output = Vec::new();
 

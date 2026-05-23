@@ -1,0 +1,20 @@
+# Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
+function __fish_missive_global_optspecs
+	string join \n json ndjson q/quiet no-color config= profile= timeout= protocol-version= a2a-extension= service-param= bearer-token-env= header= trace v/verbose h/help V/version
+end
+
+function __fish_missive_needs_command
+	# Figure out if the current invocation already has a command.
+	set -l cmd (commandline -opc)
+	set -e cmd[1]
+	argparse -s (__fish_missive_global_optspecs) -- $cmd 2>/dev/null
+	or return
+	if set -q argv[1]
+		# Also print the command, so this can be used to figure out what it is.
+		echo $argv[1]
+		return 1
+	end
+	return 0
+end
+
+function __fish_missive_using_subcommand
