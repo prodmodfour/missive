@@ -31,7 +31,7 @@ EOF
 example_cleanup() {
   local status=$?
   local mock_pid
-  for mock_pid in "${MISSIVE_EXAMPLE_MOCK_PIDS[@]}"; do
+  for mock_pid in "${MISSIVE_EXAMPLE_MOCK_PIDS[@]+"${MISSIVE_EXAMPLE_MOCK_PIDS[@]}"}"; do
     kill "$mock_pid" >/dev/null 2>&1 || true
     wait "$mock_pid" >/dev/null 2>&1 || true
   done

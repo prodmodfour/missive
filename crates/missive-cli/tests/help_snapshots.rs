@@ -9,10 +9,14 @@ fn rendered_help(args: &[&str]) -> String {
     error.to_string()
 }
 
+fn normalize_newlines(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
 fn assert_help_snapshot(args: &[&str], expected: &str) {
     assert_eq!(
         rendered_help(args),
-        expected,
+        normalize_newlines(expected),
         "help snapshot changed for {args:?}"
     );
 }

@@ -29,6 +29,10 @@ fn first_lines(text: &str, count: usize) -> String {
     lines
 }
 
+fn normalize_newlines(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
 #[test]
 fn completion_prefix_snapshots_are_stable_for_supported_shells() {
     let environment = BTreeMap::from([(
@@ -50,7 +54,11 @@ fn completion_prefix_snapshots_are_stable_for_supported_shells() {
 
         assert_eq!(code, MissiveExitCode::Success.as_i32(), "{shell}");
         assert!(stderr.is_empty(), "{shell}: {stderr}");
-        assert_eq!(first_lines(&stdout, 20), expected_prefix, "{shell}");
+        assert_eq!(
+            first_lines(&stdout, 20),
+            normalize_newlines(expected_prefix),
+            "{shell}"
+        );
         assert!(stdout.contains("missive"), "{shell}");
         assert!(stdout.contains("completion"), "{shell}");
         assert!(stdout.contains("manpage"), "{shell}");
