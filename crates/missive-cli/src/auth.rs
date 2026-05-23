@@ -310,4 +310,16 @@ mod tests {
         assert_eq!(error.code(), "missive::auth");
         assert!(error.to_string().contains("MISSIVE_TEST_TOKEN"));
     }
+
+    #[test]
+    fn bearer_env_validation_rejects_injected_token_values_without_echoing_them() {
+        let hidden = "Bearer value-hidden-in-output";
+        let error = validate_env_var_name("--bearer-token-env", hidden)
+            .expect_err("raw token values are not env var names");
+
+        assert_eq!(error.code(), "missive::validation");
+        let rendered = error.to_string();
+        assert!(rendered.contains("environment variable name"));
+        assert!(!rendered.contains("value-hidden-in-output"));
+    }
 }

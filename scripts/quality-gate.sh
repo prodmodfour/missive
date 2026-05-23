@@ -202,21 +202,10 @@ run_miri_smoke() {
 }
 
 run_mutation_smoke() {
-  local shard="${MISSIVE_MUTANTS_SHARD:-1/8}"
-  local timeout="${MISSIVE_MUTANTS_TIMEOUT:-30}"
-  local jobs="${MISSIVE_MUTANTS_JOBS:-1}"
-  local output_parent
-  local status
-
-  if have cargo-mutants; then
-    output_parent="$(mktemp -d "${TMPDIR:-/tmp}/missive-mutants.XXXXXX")"
-    if run_cmd cargo mutants --workspace --check --shard "$shard" --timeout "$timeout" --jobs "$jobs" --no-shuffle --output "$output_parent"; then
-      rm -rf "$output_parent"
-    else
-      status=$?
-      rm -rf "$output_parent"
-      return "$status"
-    fi
+  if [[ -x scripts/mutation-smoke.sh ]]; then
+    run_cmd scripts/mutation-smoke.sh
+  elif have cargo-mutants; then
+    run_cmd cargo mutants --workspace --check --shard "${MISSIVE_MUTANTS_SHARD:-1/12}" --timeout "${MISSIVE_MUTANTS_TIMEOUT:-30}" --jobs "${MISSIVE_MUTANTS_JOBS:-1}" --no-shuffle
   else
     warn "cargo-mutants not installed; skipping mutation smoke"
   fi

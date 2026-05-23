@@ -831,3 +831,73 @@ fn task_cancel_requests_remote_cancellation_and_updates_store() {
         .expect("task persisted");
     assert_eq!(task.state, TaskState::Cancelled);
 }
+
+#[test]
+fn task_cancel_malformed_response_redacts_auth_and_leaves_no_task_row() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let mut environment = isolated_env(&home);
+    let hidden = "value-hidden-in-output";
+    environment.insert("MISSIVE_TEST_TOKEN".to_owned(), hidden.to_owned());
+    let server = MockServer::start(|base_url| {
+        vec![
+            MockResponse::ok_a2a_json(agent_card(base_url)),
+            MockResponse::ok_a2a_json(json!({
+                "unexpected": true,
+                "token": hidden,
+                "headers": {"Authorization": format!("Bearer {hidden}")}
+            })),
+        ]
+    });
+    add_agent("echo", &server.base_url, &environment, temp.path());
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "task",
+            "cancel",
+            "task-cancel-malformed",
+            "--agent",
+            "echo",
+            "--bearer-token-env",
+            "MISSIVE_TEST_TOKEN",
+            "--header",
+            "X-Api-Key:value-hidden-in-output",
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Protocol.as_i32(), "stderr: {stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        !stderr.contains(hidden),
+        "stderr leaked hidden token: {stderr}"
+    );
+    let error = json_error(&stderr);
+    assert_eq!(error["data"]["code"], "missive::protocol");
+    assert_eq!(
+        error["data"]["exit_code"],
+        MissiveExitCode::Protocol.as_u8()
+    );
+
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[1].headers.get("authorization").map(String::as_str),
+        Some("Bearer value-hidden-in-output")
+    );
+    assert_eq!(
+        requests[1].headers.get("x-api-key").map(String::as_str),
+        Some("value-hidden-in-output")
+    );
+
+    let store = open_store(&home);
+    assert!(
+        store
+            .get_task(&TaskId::new("task-cancel-malformed").expect("task id"))
+            .expect("task lookup")
+            .is_none()
+    );
+}

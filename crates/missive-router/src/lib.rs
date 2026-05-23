@@ -1217,6 +1217,31 @@ mod tests {
     }
 
     #[test]
+    fn route_validation_rejects_injected_invalid_candidates_and_requirements() {
+        let mut invalid_weight = candidate("alpha");
+        invalid_weight.weight = f64::NAN;
+        let error = explain_route(&route_input(
+            RoutingPolicyKind::Weighted,
+            vec![invalid_weight],
+        ))
+        .expect_err("NaN weights should be rejected");
+        assert!(error.to_string().contains("invalid weight"));
+
+        let mut duplicate_tags = route_input(RoutingPolicyKind::TagMatch, vec![candidate("alpha")]);
+        duplicate_tags.required_tags = vec!["Writer".to_owned(), "writer".to_owned()];
+        let error = explain_route(&duplicate_tags).expect_err("duplicate tags should fail");
+        assert!(error.to_string().contains("duplicate required tag"));
+
+        let mut missing_preferred = route_input(
+            RoutingPolicyKind::Direct,
+            vec![candidate("alpha"), candidate("beta")],
+        );
+        missing_preferred.preferred_agent = Some(alias("gamma"));
+        let error = explain_route(&missing_preferred).expect_err("preferred agent should exist");
+        assert!(error.to_string().contains("preferred agent"));
+    }
+
+    #[test]
     fn metadata_capabilities_extract_strings_arrays_and_boolean_maps() {
         let metadata = Metadata::try_from_iter([
             ("capabilities", json!(["summarise", "json"])),

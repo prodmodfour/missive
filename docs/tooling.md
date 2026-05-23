@@ -123,14 +123,17 @@ MISSIVE_AGGRESSIVE_TESTS=1 scripts/quality-gate.sh
 
 Aggressive mode adds optional paths for `cargo-nextest`, `cargo-llvm-cov`,
 `cargo-deny`/`cargo-audit`/`cargo-machete`, `miri`, a bounded `cargo-mutants`
-compile smoke, `cargo-fuzz` smoke runs for the parser/replay targets under
-`fuzz/`, benchmark compilation, and Docker or devcontainer checks when those
-inputs exist. Mutation and fuzz smoke bounds can be adjusted with
-`MISSIVE_MUTANTS_SHARD`, `MISSIVE_MUTANTS_TIMEOUT`, `MISSIVE_MUTANTS_JOBS`,
-`MISSIVE_FUZZ_SECONDS`, and `MISSIVE_FUZZ_SANITIZER`. The quality gate defaults
-fuzz smoke runs to `MISSIVE_FUZZ_SANITIZER=none` so they compile on the stable
-toolchain; set `MISSIVE_FUZZ_SANITIZER=address` (and use a compatible nightly
-setup) for sanitizer-backed fuzz campaigns.
+compile smoke through `scripts/mutation-smoke.sh`, `cargo-fuzz` smoke runs for
+the parser/replay targets under `fuzz/`, benchmark compilation, and Docker or
+devcontainer checks when those inputs exist. Mutation and fuzz smoke bounds can
+be adjusted with `MISSIVE_MUTANTS_MODE`, `MISSIVE_MUTANTS_FILES`,
+`MISSIVE_MUTANTS_RE`, `MISSIVE_MUTANTS_SHARD`, `MISSIVE_MUTANTS_TIMEOUT`,
+`MISSIVE_MUTANTS_JOBS`, `MISSIVE_MUTANTS_BASELINE`, `MISSIVE_FUZZ_SECONDS`, and
+`MISSIVE_FUZZ_SANITIZER`. The mutation smoke defaults to a `check`-mode shard of
+critical store, router, auth/redaction, task, and collective command files. The
+quality gate defaults fuzz smoke runs to `MISSIVE_FUZZ_SANITIZER=none` so they
+compile on the stable toolchain; set `MISSIVE_FUZZ_SANITIZER=address` (and use a
+compatible nightly setup) for sanitizer-backed fuzz campaigns.
 
 ## Manual package examples
 

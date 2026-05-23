@@ -1719,7 +1719,7 @@ Validation:
 
 ## 057 — Add mutation and failure-injection tests
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 

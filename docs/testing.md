@@ -43,6 +43,63 @@ MISSIVE_AGGRESSIVE_TESTS=1 MISSIVE_FUZZ_SECONDS=3 scripts/quality-gate.sh
 
 Generated `fuzz/corpus/`, `fuzz/artifacts/`, `fuzz/crashes/`, `fuzz/coverage/`, and `fuzz/target/` output is ignored and guarded against accidental commits. Commit only intentional, reviewed regression seeds when a future bug fix explicitly requires stable corpus data.
 
+## Mutation and failure-injection tests
+
+Targeted failure-injection tests now exercise critical communication-control paths without relying on external services:
+
+* `missive-store` verifies transactions roll back both newly inserted rows and updates to preexisting rows after injected SQLite constraint failures.
+* `missive-router` rejects injected invalid candidate weights, duplicate normalized requirements, and missing preferred-agent references before planning a route.
+* `missive-cli` auth/redaction tests reject token-looking `--bearer-token-env` values without echoing them.
+* `task_command` injects malformed remote cancellation responses while proving outbound auth headers are sent, stderr is redacted, and no partial task row is persisted.
+* `reduce_command` injects a failing local reducer pipeline, records a `missive.reduce.failed` event, and redacts command stderr in both output and the event journal.
+
+The bounded mutation smoke entry point is:
+
+```bash
+scripts/mutation-smoke.sh
+```
+
+By default it runs `cargo-mutants` in `--check` mode over the store repository,
+router planner, auth/output redaction, task wait/cancel, and collective command
+source files. The same script is used by aggressive quality-gate mode when
+`cargo-mutants` is installed:
+
+```bash
+MISSIVE_AGGRESSIVE_TESTS=1 MISSIVE_MUTANTS_TIMEOUT=20 scripts/quality-gate.sh
+```
+
+Useful controls:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MISSIVE_MUTANTS_MODE` | `check` | Use `check`, `list`, or `run`. `run` executes tests against selected mutants. |
+| `MISSIVE_MUTANTS_FILES` | critical source list | Space-separated file globs passed as repeated `--file` filters. |
+| `MISSIVE_MUTANTS_RE` | unset | Regex filter for specific mutants from `cargo mutants --list` output. |
+| `MISSIVE_MUTANTS_SHARD` | `1/12` | Bounds the default smoke slice. Use wider shards for campaigns. |
+| `MISSIVE_MUTANTS_TIMEOUT` | `30` | Per-command timeout in seconds. |
+| `MISSIVE_MUTANTS_JOBS` | `1` | Parallel mutant jobs. |
+| `MISSIVE_MUTANTS_BASELINE` | `skip` | Baseline strategy; the quality gate has already run the normal tests. |
+| `MISSIVE_MUTANTS_KEEP_OUTPUT` | `0` | Set to `1` to retain the temporary mutants output directory for inspection. |
+
+Longer local campaigns should keep artifacts out of the repository. Examples:
+
+```bash
+# List planned mutants in the critical smoke set.
+MISSIVE_MUTANTS_MODE=list scripts/mutation-smoke.sh
+
+# Run tests for one small router mutant slice.
+MISSIVE_MUTANTS_MODE=run \
+  MISSIVE_MUTANTS_FILES='crates/missive-router/src/lib.rs' \
+  MISSIVE_MUTANTS_SHARD=1/24 \
+  MISSIVE_MUTANTS_TIMEOUT=60 \
+  scripts/mutation-smoke.sh
+
+# Run a broader campaign outside the smoke wrapper and keep generated output ignored.
+cargo mutants --workspace --all-features --output mutants.out --timeout 120
+```
+
+`mutants.out/` and temporary `missive-mutants.*` directories are generated runtime artifacts; do not commit them.
+
 ## Observability tests
 
 `crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config plus `cli.command` span fields in JSON stderr logs. `completion_manpage_command` tests generate bash/zsh/fish/PowerShell completion scripts, snapshot stable prefixes, assert completion/manpage generation bypasses configuration loading, and verify JSON envelopes for generated content. `doctor_command` tests run with isolated `MISSIVE_HOME` directories and cover no-config reports, valid populated config plus migrated SQLite state, invalid config as a structured failed check, unmigrated database detection, mock reachable/unreachable A2A endpoint probes, gateway running/unavailable status probes, deterministic `PATH` tool lookup, and redaction of secret-like config/auth metadata. `logs_command` tests assert actionable empty-source JSON, profile-file JSON/NDJSON rendering, bounded `--limit` behavior, and token/cookie/API-key redaction; `events_command` tests cover event list/export/replay plus bounded `events tail` follow/timeout behavior and secret-like free-text payload redaction. A2A, store, and adapter unit tests use scoped dispatchers to verify representative `a2a.request`, `store.operation`, and `adapter.event` spans without relying on one process-global subscriber in parallel test runs.

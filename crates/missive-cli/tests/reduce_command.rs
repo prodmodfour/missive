@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use missive_cli::{OUTPUT_SCHEMA_VERSION, run_from_with_environment};
+use missive_cli::{OUTPUT_SCHEMA_VERSION, REDACTED, run_from_with_environment};
 use missive_core::MissiveExitCode;
 use missive_store::Store;
 use missive_test_support::{
@@ -96,6 +96,14 @@ fn open_store(home: &Path) -> Store {
             .join("missive.sqlite3"),
     )
     .expect("open store")
+}
+
+fn failing_reduce_command_with_secret() -> &'static str {
+    if cfg!(windows) {
+        "echo token=value-hidden-in-output 1>&2 & exit /b 42"
+    } else {
+        "printf 'token=value-hidden-in-output\n' >&2; exit 42"
+    }
 }
 
 fn setup_group_with_agents(
@@ -305,6 +313,52 @@ fn reduce_can_send_prompt_to_mocked_reducer_agent() {
     assert!(prompt.contains("Reduce team/ctx-reduce-agent with merge"));
     assert!(prompt.contains("alpha final answer"));
     assert!(prompt.contains("beta final answer"));
+}
+
+#[test]
+fn reduce_command_failure_records_failed_event_and_redacts_stderr() {
+    let temp = tempdir().expect("tempdir");
+    let home = temp.path().join("missive-home");
+    let environment = isolated_env(&home);
+    let context_id = "ctx-reduce-command-fail";
+    let (_alpha, _beta) = seed_member_outputs(&environment, temp.path(), context_id);
+
+    let (code, stdout, stderr) = run(
+        &[
+            "missive",
+            "reduce",
+            "team",
+            "--context",
+            context_id,
+            "--command",
+            failing_reduce_command_with_secret(),
+            "--json",
+        ],
+        &environment,
+        temp.path(),
+    );
+
+    assert_eq!(code, MissiveExitCode::Software.as_i32(), "stderr: {stderr}");
+    assert!(stdout.is_empty());
+    assert!(!stderr.contains("value-hidden-in-output"));
+    let error: Value = serde_json::from_str(&stderr).expect("JSON error");
+    assert_eq!(error["data"]["code"], "missive::orchestration");
+    assert!(
+        error["data"]["help"]
+            .as_str()
+            .expect("redacted help")
+            .contains(REDACTED)
+    );
+
+    let store = open_store(&home);
+    let events = store.list_events().expect("events");
+    let failed = events
+        .iter()
+        .find(|event| event.event_type == "missive.reduce.failed")
+        .expect("failed reduce event");
+    let payload = failed.payload_json.to_string();
+    assert!(!payload.contains("value-hidden-in-output"));
+    assert!(payload.contains(REDACTED));
 }
 
 #[test]

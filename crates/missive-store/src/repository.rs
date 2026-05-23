@@ -4299,6 +4299,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn failed_transaction_restores_preexisting_rows() {
+        let mut store = Store::open_in_memory().expect("store");
+        let agent = alias("stable");
+        let mut original = AgentUpsert::new(agent.clone(), "http://127.0.0.1:9004");
+        original.notes = Some("before failure".to_owned());
+        store.upsert_agent(&original).expect("original agent");
+
+        let event_id = event_id("evt-rollback-existing");
+        let result = store.transaction(|transaction| {
+            let mut updated = original.clone();
+            updated.notes = Some("mutated inside failed transaction".to_owned());
+            transaction.upsert_agent(&updated)?;
+
+            let event = EventInsert::new(event_id.clone(), "cli", "test", json!({}));
+            transaction.append_event(&event)?;
+            transaction.append_event(&event)?;
+            Ok(())
+        });
+
+        assert!(result.is_err());
+        let restored = store
+            .get_agent(&agent)
+            .expect("agent lookup")
+            .expect("preexisting agent should remain");
+        assert_eq!(restored.notes.as_deref(), Some("before failure"));
+        assert!(
+            store
+                .get_event(&event_id)
+                .expect("event rolled back")
+                .is_none()
+        );
+    }
+
     fn seed_agent(store: &Store, value: &str) -> AgentAlias {
         let alias = alias(value);
         store
