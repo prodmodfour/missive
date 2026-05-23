@@ -1,17 +1,16 @@
 # Contributing to missive
 
-`missive` is currently built through an autonomous, ticket-driven workflow. Human and agent contributors should keep changes small, reviewable, and aligned with the active ticket.
+Human and agent contributors should keep changes small, reviewable, and aligned with the documented project goals.
 
 ## Workflow
 
-1. Read `AGENTS.md`, `PROJECT_BRIEF.md`, `BUILD_TICKETS.md`, and `BUILD_NOTES.md`.
-2. Select the lowest-numbered `TODO` or `IN_PROGRESS` ticket.
-3. Implement only that ticket.
-4. Run `scripts/quality-gate.sh`.
-5. Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`.
-6. Commit with a conventional commit message.
+1. Start from a clean working tree and create a focused branch when useful.
+2. Implement one coherent change at a time.
+3. Update tests and documentation when behavior, setup, architecture, operations, security posture, limitations, or public usage changes.
+4. Run `scripts/quality-gate.sh` before submitting or committing.
+5. Commit with a conventional commit message.
 
-Do not start future tickets or broaden scope without updating the ticket queue first.
+Avoid broad, unrelated rewrites. If a change needs a larger design discussion, document the proposal in an issue, ADR, or pull request before implementation.
 
 ## Quality gate
 

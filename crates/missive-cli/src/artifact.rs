@@ -1,8 +1,8 @@
 //! A2A artifact persistence, inspection, and safe local export helpers.
 //!
-//! The public CLI surface for ticket 024 is nested under `missive task artifact`
-//! so artifact operations stay tied to durable task state until the broader
-//! event/gateway tickets add cross-task artifact workflows.
+//! The public CLI surface is nested under `missive task artifact` so artifact
+//! operations stay tied to durable task state until broader event/gateway work
+//! adds cross-task artifact workflows.
 
 use std::collections::BTreeSet;
 use std::fs;

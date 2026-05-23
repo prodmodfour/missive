@@ -2,7 +2,7 @@
 //!
 //! This module owns the first long-running `missive gateway run` runtime.  The
 //! daemon supervises gateway components such as the event bus, task
-//! subscriptions, and background communication jobs. Later tickets can add
+//! subscriptions, and background communication jobs. Later work can add
 //! embedded webhook and adapter workers without changing the CLI lifecycle
 //! contract.
 

@@ -81,7 +81,7 @@ const REQUIRED_SUBCOMMANDS: [&str; 21] = [
     bin_name = "missive",
     version,
     about = "Manage A2A-native agent communication from the terminal.",
-    long_about = "missive is a local control-plane CLI for A2A-native agent communication. The command tree and global flags are stable, and operational behavior is being implemented ticket by ticket.",
+    long_about = "missive is a local control-plane CLI for A2A-native agent communication. The command tree and global flags are stable, and operational behavior is implemented incrementally.",
     disable_help_subcommand = true,
     propagate_version = true,
     term_width = 100

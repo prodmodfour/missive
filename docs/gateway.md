@@ -254,7 +254,7 @@ secrets are not persisted in the job row.
 Current gateway workers use configured A2A service parameters but do not resolve
 outbound auth refs, keyring values, `--bearer-token-env`, or one-shot `--header`
 values. Use foreground commands for authenticated job-like operations until a
-later hardening ticket wires gateway-safe auth resolution.
+later hardening work wires gateway-safe auth resolution.
 
 ## Sessions and reset policies
 

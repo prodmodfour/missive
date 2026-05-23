@@ -251,7 +251,7 @@ and the inbound webhook header-token hook. Gateway subscriptions and background
 job workers currently send A2A service parameters but do not yet resolve
 outbound auth refs, keyring entries, `--bearer-token-env`, or `--header` values,
 so authenticated remote subscription resume and authenticated gateway-executed
-jobs remain known limitations. Future gateway worker and adapter tickets must
+jobs remain known limitations. Future gateway worker and adapter work must
 reuse the same resolution and redaction path when they add broader outbound
 requests.
 

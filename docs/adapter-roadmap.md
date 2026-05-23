@@ -48,7 +48,7 @@ features does not add network clients or authenticate to any platform.
 ## Configuration shape
 
 External adapters use the same `[adapters.<name>]` schema as local adapters.
-Until a live implementation ticket lands, keep them disabled or use them only in
+Until live implementations land, keep them disabled or use them only in
 crate-level tests:
 
 ```toml
@@ -98,7 +98,7 @@ behaviour:
 Non-goals for these stubs and their first live implementations:
 
 * no agent cognition, memory, skill learning, or tool execution in adapters;
-* no broad platform SDK dependency until a platform-specific ticket needs it;
+* no broad platform SDK dependency until platform-specific work needs it;
 * no production chat-bot feature set before the local gateway adapter lifecycle
   is proven;
 * no committed real credentials, private workspace names, private email
@@ -106,7 +106,7 @@ Non-goals for these stubs and their first live implementations:
 
 ## Future implementation checklist
 
-A platform-specific ticket should add, at minimum:
+A platform-specific implementation should add, at minimum:
 
 1. narrow platform SDK or HTTP client dependencies with documented supply-chain
    review;

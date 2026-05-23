@@ -54,7 +54,7 @@ processed = "/var/tmp/missive-drop/processed"
 error = "/var/tmp/missive-drop/error"
 ```
 
-Core config validation checks adapter names and kinds, optional `session_profile` references, busy-input overrides, and metadata key shape. `missive-adapters` converts validated config entries into `AdapterDefinition` values and can filter disabled adapters before startup. External stub kinds use the same shape, but their settings must contain only non-secret values or secret-reference names such as `auth_ref`; live platform credential resolution is deferred to platform-specific future tickets.
+Core config validation checks adapter names and kinds, optional `session_profile` references, busy-input overrides, and metadata key shape. `missive-adapters` converts validated config entries into `AdapterDefinition` values and can filter disabled adapters before startup. External stub kinds use the same shape, but their settings must contain only non-secret values or secret-reference names such as `auth_ref`; live platform credential resolution is deferred to platform-specific future work.
 
 `settings` is for non-secret adapter-specific values only. Credentials should use config auth refs, environment variables, keyrings, or future adapter-specific secret references rather than raw values in TOML.
 
@@ -277,7 +277,7 @@ Individual feature flags are `adapter-discord`, `adapter-slack`, `adapter-telegr
 
 Do not put raw platform tokens, signing secrets, mailbox passwords, OAuth refresh values, private keys, private workspace names, or private email addresses in repository files. Use auth-ref names in config and keep actual values in environment variables, keyrings, or future platform-specific secret stores.
 
-See [`docs/adapter-roadmap.md`](adapter-roadmap.md) for required secrets, permissions/scopes, platform behaviours, Hermes-inspired boundaries, and the checklist a future live adapter ticket must satisfy.
+See [`docs/adapter-roadmap.md`](adapter-roadmap.md) for required secrets, permissions/scopes, platform behaviours, Hermes-inspired boundaries, and the checklist future live adapter work must satisfy.
 
 ## Gateway event bus
 

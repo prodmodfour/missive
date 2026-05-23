@@ -420,7 +420,7 @@ organize the canonical A2A ids used by implemented message and task calls.
 
 Context export recursively redacts secret-like keys and HTTP authorization
 headers before printing. Dedicated A2A task resubscription and task-state updates
-from webhook callbacks remain for later gateway tickets. Artifact rows can be
+from webhook callbacks remain for later gateway work. Artifact rows can be
 inspected and exported separately with `missive task artifact list/show/save/export`.
 
 ## Error mapping

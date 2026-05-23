@@ -353,7 +353,7 @@ if [[ -f Cargo.toml ]]; then
     run_aggressive_checks
   fi
 else
-  pp_info "No Cargo.toml yet; skipping Rust checks until ticket 000/001 creates the workspace."
+  pp_info "No Cargo.toml found; skipping Rust checks."
 fi
 
 run_just_ci

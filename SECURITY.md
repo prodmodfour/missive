@@ -1,6 +1,6 @@
 # Security policy
 
-`missive` has completed the autonomous build queue for its current scope, but it is still an early-stage communication control plane rather than a hardened production service. Treat protocol inputs, adapter inputs, webhook payloads, configuration files, generated diagnostics, and local SQLite state as sensitive and untrusted unless a deployment-specific review says otherwise.
+`missive` is an early-stage communication control plane rather than a hardened production service. Treat protocol inputs, adapter inputs, webhook payloads, configuration files, generated diagnostics, and local SQLite state as sensitive and untrusted unless a deployment-specific review says otherwise.
 
 ## Supported versions
 

@@ -28,10 +28,10 @@ To let the script install supported operating-system packages such as `jq`,
 scripts/bootstrap-tools.sh --system-deps
 ```
 
-The autonomous build agent is allowed to use `sudo`, package managers, `rustup`,
-`cargo install`, Docker, and local services for build and test dependencies when
-a ticket needs them. Any notable installation commands run during a ticket must
-be recorded in `BUILD_NOTES.md`.
+Maintainers may use `sudo`, package managers, `rustup`, `cargo install`, Docker,
+and local services for build and test dependencies when a change requires them.
+Document notable environment or dependency changes in the relevant pull request,
+issue, or maintenance notes.
 
 ## Bootstrap script controls
 
@@ -75,7 +75,7 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 | `cargo-fuzz` | No | Aggressive gate when fuzz targets exist | Fuzz smoke runs. |
 | Criterion via `cargo bench` | No | Aggressive gate compiles when benchmark sources exist | Local benchmark measurements and saved-baseline comparisons. |
 | `actionlint` | No | Default gate when present, CI workflow-lint job | GitHub Actions workflow validation. |
-| `sqlx` (`sqlx-cli`) | No | Future store tickets | SQLite migration and query tooling if sqlx is selected. |
+| `sqlx` (`sqlx-cli`) | No | Future store work | SQLite migration and query tooling if sqlx is selected. |
 | `just` | No | If a `justfile` with `ci` exists | Optional command runner. |
 | `jq` | No | Helper scripts | JSON processing for repository automation. |
 | `python3` | No | SBOM and CI helper scripts | Metadata-derived CycloneDX SBOM generation and YAML validation fallback. |
@@ -87,8 +87,8 @@ MISSIVE_BOOTSTRAP_CARGO_INSTALL_LOCKED=0 scripts/bootstrap-tools.sh
 ## Quality gate behavior
 
 `scripts/quality-gate.sh` must pass from a normal checkout with only required
-Rust tooling installed. The default gate is intentionally suitable for every
-autonomous cycle and fails on repository hygiene, formatting, lint, test, doc,
+Rust tooling installed. The default gate is intentionally suitable for routine
+local validation and fails on repository hygiene, formatting, lint, test, doc,
 or build regressions.
 
 Default checks include:
@@ -119,7 +119,7 @@ Optional tools are handled as follows:
   `deny.toml` are present; CI installs a pinned version so the policy is enforced
   there.
 
-Run the default gate for every ticket:
+Run the default gate before commits and pull requests:
 
 ```bash
 scripts/quality-gate.sh
@@ -173,7 +173,7 @@ compatible nightly setup) for sanitizer-backed fuzz campaigns.
 ## Manual package examples
 
 The bootstrap script is the preferred entry point, but manual installation is
-allowed when a ticket needs it. Examples:
+allowed when a change needs it. Examples:
 
 ```bash
 rustup toolchain install stable --profile default --component rustfmt --component clippy

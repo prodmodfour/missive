@@ -7,7 +7,7 @@ cd "$REPO_ROOT"
 
 # Lightweight guardrail. This does not replace a dedicated scanner such as
 # gitleaks, but it intentionally fails fast on common committed or untracked
-# secret forms before they enter an autonomous build commit.
+# secret forms before they enter a repository commit.
 patterns=(
   'AWS access key::AKIA[0-9A-Z]{16}'
   'Private key block::-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'

@@ -92,7 +92,7 @@ the effective protocol version on inbound callback events when the callback omit
 line without changing stdout command JSON. Operation-level spans now cover CLI
 command dispatch, A2A requests, store operations, gateway jobs, adapter events,
 and collectives; command-specific timeout semantics beyond the implemented
-commands remain intentionally scoped to their ordered tickets. See
+commands remain intentionally scoped to future work. See
 [`observability.md`](observability.md) for log levels, JSON log mode,
 destinations, span fields, and redaction boundaries.
 
@@ -1043,7 +1043,7 @@ Machine-readable output uses `job_start`, `job_list`, `job_show`, and
 worker lock expires are eligible for pickup by the next gateway process. Gateway
 workers currently execute outbound A2A job requests without resolving auth refs
 or one-shot CLI auth flags, so authenticated agents should be used from
-foreground commands until a later gateway-auth hardening ticket.
+foreground commands until later gateway-auth hardening work.
 
 ## Gateway daemon
 
@@ -1255,7 +1255,7 @@ journal. The current producers record local agent registry changes, group
 membership changes, A2A send/stream request records, A2A send responses,
 streaming updates, remote task changes observed by send/task commands,
 push-config changes, gateway daemon lifecycle events, and webhook callback
-acceptance/rejection events. Future gateway worker and adapter tickets will
+acceptance/rejection events. Future gateway worker and adapter work will
 append the same event table through the existing typed store API.
 
 Implemented commands:

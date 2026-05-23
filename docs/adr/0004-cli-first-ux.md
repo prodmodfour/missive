@@ -38,11 +38,11 @@ Interactive enhancements can be added later, but they must not replace non-inter
 
 ### Follow-up
 
-* Ticket 007 must add a coherent CLI skeleton and global flags.
-* Ticket 008 must define human, JSON, NDJSON, and quiet rendering contracts with redaction.
-* Later command tickets should include CLI smoke or snapshot tests where feasible.
+* Preserve the coherent CLI skeleton and global flags.
+* Keep human, JSON, NDJSON, and quiet rendering contracts covered with redaction tests.
+* Later command work should include CLI smoke or snapshot tests where feasible.
 
 ## References
 
-* [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md)
-* [`BUILD_TICKETS.md`](../../BUILD_TICKETS.md)
+* [`README.md`](../../README.md)
+* [`docs/cli.md`](../cli.md)

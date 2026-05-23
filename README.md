@@ -11,7 +11,6 @@ This repository is still early-stage, but it now contains:
 * a clap-based CLI with stable top-level commands, global flags, configuration discovery, profiles, A2A service-parameter overrides, env/header/keyring auth inputs for implemented requests, human/JSON/NDJSON/quiet output renderers, shell completion and manpage generation, the foreground `missive adapter stdio` JSON/NDJSON subprocess frame loop, the foreground `missive adapter file-drop` inbox/outbox loop, an opt-in authenticated HTTP inbound adapter mounted by `missive gateway run`, feature-gated external chat adapter stubs in the adapter crate, agent registry commands, A2A Agent Card discovery/cache inspection and capability summaries, official A2A Rust protocol type integration, A2A interface negotiation, rich text/file/byte/JSON message parts for non-streaming `missive send` and streaming `missive stream`, task `get/list/wait/cancel`, task-scoped artifact `list/show/save/export`, context `create/list/show/fork/close/export`, group `create/list/show/add/remove/rename/delete/capabilities`, dry-run route explanation with built-in and Agent Card-aware capability routing policies, broadcast collective `bcast`, barrier collective `barrier`, gather collective `gather`, reduce collective `reduce`, push notification config `create/get/list/delete`, local webhook receiver `run`, gateway daemon `run`, gateway service `install/start/stop/status/uninstall`, gateway-managed background jobs `job start/list/show/cancel`, and event journal `list/tail/replay/export`
 * store-layer state path resolution, process locks, SQLite migrations, and typed repository APIs that keep default runtime state outside the source tree
 * repository hygiene files and guardrails
-* the autonomous ticket queue used to build the project one commit at a time
 * user, developer, and maintenance documentation under `docs/`, including `docs/adr/`
 
 Current crates:
@@ -190,7 +189,7 @@ scripts/docker-integration.sh
 
 The wrapper runs `scripts/quality-gate.sh` inside the Docker image with runtime state and build output outside tracked repository files. See [`docs/container.md`](docs/container.md) for Docker build arguments, manual `docker run` examples, and the devcontainer workflow.
 
-Useful direct Rust commands during this bootstrap phase:
+Useful direct Rust commands during development:
 
 ```bash
 cargo check --workspace --all-targets --all-features
@@ -204,19 +203,6 @@ scripts/generate-sbom.sh --output dist/missive-sbom.cdx.json
 ```
 
 Runtime state, credentials, logs, database files, generated artifacts, and other machine-local files must stay out of the repository.
-
-## Autonomous build system
-
-The repository is driven by ordered tickets in `BUILD_TICKETS.md`. Each autonomous run must complete only the lowest-numbered `TODO` or `IN_PROGRESS` ticket, run the quality gate, update `BUILD_NOTES.md`, and commit the result.
-
-Key files:
-
-* `AGENTS.md` — autonomous agent rules
-* `PROJECT_BRIEF.md` — project goals, constraints, and architecture expectations
-* `BUILD_TICKETS.md` — ordered implementation queue
-* `BUILD_NOTES.md` — latest validation notes and next ticket
-* `docs/AUTONOMOUS_BUILD.md` — build-loop model
-* `docs/USAGE.md` — autonomous build usage
 
 ## License
 

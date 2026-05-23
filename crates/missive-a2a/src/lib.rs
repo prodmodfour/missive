@@ -155,7 +155,7 @@ pub const GRPC_BINDING: &str = "grpc";
 /// Protocol bindings implemented by missive today, in default preference order.
 pub const LOCALLY_SUPPORTED_BINDINGS: &[&str] = &[HTTP_JSON_BINDING, JSON_RPC_BINDING];
 
-/// Protocol bindings recognized by name but intentionally left for future tickets.
+/// Protocol bindings recognized by name but intentionally left for future work.
 pub const PLANNED_BINDINGS: &[&str] = &[GRPC_BINDING];
 
 /// Returns metadata for this crate.
@@ -887,7 +887,7 @@ pub fn canonical_protocol_binding(value: &str) -> String {
 ///
 /// `HTTP+JSON` and `JSONRPC` are implemented today. `gRPC` is recognized for
 /// diagnostics and future extension points but is not selected until a later
-/// implementation ticket adds local support.
+/// implementation adds local support.
 pub fn negotiate_agent_interface(
     card: &AgentCard,
     options: &InterfaceNegotiationOptions,

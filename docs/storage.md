@@ -165,7 +165,7 @@ should use for multi-row state changes.
 
 ## Current limitations
 
-Typed repository APIs exist for the core store tables needed by upcoming tickets,
+Typed repository APIs exist for the core store tables needed by planned work,
 and the CLI now uses the auth-ref, agent, context, group, task, artifact,
 message, event, push-config, and gateway-session repositories for `missive agent` registry
 commands, public Agent Card cache updates, non-streaming `missive send`

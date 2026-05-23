@@ -6,7 +6,7 @@ use crate::{EventId, Metadata, MissiveTimestamp};
 
 /// A typed payload with stable event identity, timestamp, and JSON metadata.
 ///
-/// Later CLI, store, gateway, and adapter tickets can use this primitive to keep
+/// Later CLI, store, gateway, and adapter work can use this primitive to keep
 /// machine-readable event records consistent without committing to a concrete
 /// protocol payload shape in `missive-core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

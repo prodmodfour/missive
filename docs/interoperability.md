@@ -97,9 +97,9 @@ uses the supplied server. That mode is useful when the upstream example is
 already running under a local supervisor, but the default pinned mode is the
 canonical reproducible check.
 
-## Latest ticket validation result
+## Latest recorded validation result
 
-Ticket 066 ran:
+The latest recorded compatibility run used:
 
 ```bash
 scripts/interop-a2a-rs.sh

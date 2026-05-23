@@ -6,13 +6,13 @@ Date: 2026-05-22
 
 ## Context
 
-A2A compatibility is mandatory for `missive`. The project must support Agent Card discovery, interface negotiation, message sending, streaming, task management, push notification configuration, context/task continuity, service parameters, and protocol-version handling. `PROJECT_BRIEF.md` also directs the project to evaluate and preferably wrap the official `a2a-rs` Rust SDK rather than unnecessarily hand-rolling protocol types.
+A2A compatibility is mandatory for `missive`. The project must support Agent Card discovery, interface negotiation, message sending, streaming, task management, push notification configuration, context/task continuity, service parameters, and protocol-version handling. The protocol strategy prefers wrapping the official `a2a-rs` Rust SDK rather than unnecessarily hand-rolling protocol types.
 
 The protocol implementation must still serve `missive` as a communication control plane: CLI output contracts, local persistence, gateway jobs, routing, and adapters must remain stable even when the upstream protocol or SDK changes.
 
 ## Decision
 
-Make A2A the canonical protocol layer. Implement A2A-facing code in `crates/missive-a2a`, prefer official `a2a-rs` protocol types where practical, and isolate compatibility code behind `missive-a2a` when direct SDK use is not viable for a ticket.
+Make A2A the canonical protocol layer. Implement A2A-facing code in `crates/missive-a2a`, prefer official `a2a-rs` protocol types where practical, and isolate compatibility code behind `missive-a2a` when direct SDK use is not viable for a feature.
 
 When `a2a-rs` is used as a Git or unreleased dependency, pin the revision and document the update process. When `missive` must temporarily define compatibility models, keep them minimal, serde-tested, and covered by A2A conformance fixtures so they can be replaced by official types later.
 
@@ -34,14 +34,14 @@ When `a2a-rs` is used as a Git or unreleased dependency, pin the revision and do
 ### Negative
 
 * `missive-a2a` must maintain mapping layers for errors, tasks, messages, artifacts, and service parameters.
-* Some tickets may need temporary compatibility structs while upstream SDK support matures.
+* Some features may need temporary compatibility structs while upstream SDK support matures.
 
 ### Follow-up
 
-* ADR 0005 documents the concrete official `a2a-lf` integration and compatibility parser selected by ticket 016.
+* ADR 0005 documents the concrete official `a2a-lf` integration and compatibility parser.
 * A2A conformance fixtures should continue to be expanded and versioned before broader protocol behavior is treated as stable.
 
 ## References
 
-* [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md)
-* [`BUILD_TICKETS.md`](../../BUILD_TICKETS.md)
+* [`README.md`](../../README.md)
+* [`docs/protocol.md`](../protocol.md)

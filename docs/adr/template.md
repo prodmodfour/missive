@@ -6,11 +6,11 @@ Date: YYYY-MM-DD
 
 ## Context
 
-Describe the forces that make a decision necessary. Include constraints from `PROJECT_BRIEF.md`, ticket acceptance criteria, operational risks, and any compatibility requirements.
+Describe the forces that make a decision necessary. Include constraints from the README, maintainer documentation, operational risks, and any compatibility requirements.
 
 ## Decision
 
-State the chosen direction clearly enough that future implementation tickets can follow it without reopening the same question.
+State the chosen direction clearly enough that future implementation work can follow it without reopening the same question.
 
 ## Alternatives considered
 
@@ -29,8 +29,8 @@ State the chosen direction clearly enough that future implementation tickets can
 
 ### Follow-up
 
-* List future tickets, validation, or documentation updates needed to keep the decision true.
+* List future implementation, validation, or documentation updates needed to keep the decision true.
 
 ## References
 
-* Link to related ADRs, tickets, docs, or protocol references.
+* Link to related ADRs, docs, issues, or protocol references.

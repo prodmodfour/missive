@@ -676,7 +676,7 @@ impl BusyInputConfig {
     }
 }
 
-/// Gateway defaults used by later daemon tickets.
+/// Gateway defaults used by later daemon work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct GatewayConfig {
@@ -749,7 +749,7 @@ impl RoutingConfig {
     }
 }
 
-/// Adapter definition used by later gateway adapter tickets.
+/// Adapter definition used by later gateway adapter work.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AdapterConfig {

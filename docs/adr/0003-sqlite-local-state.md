@@ -14,7 +14,7 @@ The project should not require an external database service for normal local ope
 
 Use SQLite as the default local persistence engine. Store runtime data under XDG-compatible state/data directories or `MISSIVE_HOME` when implemented, and manage schema changes through repository-controlled migrations.
 
-The exact Rust database crate is deferred to the schema/repository implementation tickets, but the storage contract is SQLite-backed, transactional where needed, and testable against temporary databases.
+The exact Rust database crate can evolve with implementation needs, but the storage contract is SQLite-backed, transactional where needed, and testable against temporary databases.
 
 ## Alternatives considered
 
@@ -38,11 +38,11 @@ The exact Rust database crate is deferred to the schema/repository implementatio
 
 ### Follow-up
 
-* Ticket 010 must keep state paths outside the repository and add lock handling.
-* Ticket 011 must define migrations, retention notes, and schema documentation.
-* Ticket 012 must expose repository APIs so CLI code does not embed SQL strings.
+* Keep state paths outside the repository and maintain lock handling.
+* Keep migrations, retention notes, and schema documentation current.
+* Preserve repository APIs so CLI code does not embed SQL strings.
 
 ## References
 
-* [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md)
-* [`BUILD_TICKETS.md`](../../BUILD_TICKETS.md)
+* [`README.md`](../../README.md)
+* [`docs/storage.md`](../storage.md)

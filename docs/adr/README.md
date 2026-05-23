@@ -11,7 +11,7 @@ Use one of these status values in the `Status:` field:
 * `Deprecated` — still documented for history but no longer recommended.
 * `Superseded` — replaced by another ADR; include a link to the successor.
 
-Initial ADRs use `Accepted` because they document project-defining constraints from `PROJECT_BRIEF.md`.
+Initial ADRs use `Accepted` because they document project-defining constraints captured in the README and maintainer documentation.
 
 ## Records
 

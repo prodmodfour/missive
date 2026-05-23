@@ -1,4 +1,4 @@
-missive is a local control-plane CLI for A2A-native agent communication. The command tree and global flags are stable, and operational behavior is being implemented ticket by ticket.
+missive is a local control-plane CLI for A2A-native agent communication. The command tree and global flags are stable, and operational behavior is implemented incrementally.
 
 Usage: missive [OPTIONS] [COMMAND]
 

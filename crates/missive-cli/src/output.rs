@@ -1,7 +1,7 @@
 //! Output rendering and redaction helpers for the missive CLI.
 //!
 //! The CLI keeps human output, single-document JSON, newline-delimited JSON,
-//! and quiet mode behind one small contract so future command tickets can add
+//! and quiet mode behind one small contract so future command work can add
 //! real behavior without inventing incompatible machine-readable shapes.
 
 use std::collections::BTreeMap;

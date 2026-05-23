@@ -20,7 +20,7 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/bootstrap-tools.sh [OPTIONS]
 
-Install or verify local tooling used by the missive autonomous build loop.
+Install or verify local tooling used by missive development and validation.
 The script is best-effort and idempotent: it skips tools already available and
 continues after optional-tool installation failures with a warning.
 

@@ -68,7 +68,7 @@ the `ignore` entry in `deny.toml` must include a reason, a risk assessment, and 
 planned removal condition in this document or a linked issue.
 
 Allowed crate sources are limited to the crates.io registry. Unknown registries
-and unknown Git dependencies are denied. If a future ticket pins a Git dependency
+and unknown Git dependencies are denied. If a future change pins a Git dependency
 (such as an upstream A2A SDK revision), add the exact repository URL to
 `allow-git`, document the pin/update process, and keep credentials out of Cargo
 configuration and CI.

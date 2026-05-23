@@ -6,9 +6,9 @@ Date: 2026-05-22
 
 ## Context
 
-`missive` must become a Rust CLI, protocol abstraction library, local gateway daemon, and agent communication control plane without turning into a general-purpose agent framework. The project needs clear boundaries for CLI behavior, protocol integration, local state, routing, gateway work, adapters, and observability so later autonomous tickets can make focused commits.
+`missive` must remain a Rust CLI, protocol abstraction library, local gateway daemon, and agent communication control plane without turning into a general-purpose agent framework. The project needs clear boundaries for CLI behavior, protocol integration, local state, routing, gateway work, adapters, and observability so focused changes can land without rewriting unrelated subsystems.
 
-The bootstrap tickets already created the target Cargo workspace with these crates:
+The target Cargo workspace uses these crates:
 
 ```text
 crates/missive-cli        command parsing, output rendering, exit codes
@@ -29,7 +29,7 @@ The workspace is the primary compilation, linting, testing, and documentation un
 
 ## Alternatives considered
 
-* **Single monolithic CLI crate** — simpler at first, but it would mix protocol, persistence, gateway, routing, and rendering concerns. That would make later tickets more invasive and increase the chance that CLI-only changes break library or daemon behavior.
+* **Single monolithic CLI crate** — simpler at first, but it would mix protocol, persistence, gateway, routing, and rendering concerns. That would make later changes more invasive and increase the chance that CLI-only changes break library or daemon behavior.
 * **Many highly granular crates from the start** — could create stricter layering, but would add dependency-management overhead before the domain model is stable.
 * **Protocol-SDK-only structure** — placing most logic behind an A2A SDK wrapper would underrepresent local control-plane needs such as state, collectives, adapters, and gateway jobs.
 
@@ -37,7 +37,7 @@ The workspace is the primary compilation, linting, testing, and documentation un
 
 ### Positive
 
-* Later tickets can implement one subsystem without rewriting unrelated crates.
+* Later changes can implement one subsystem without rewriting unrelated crates.
 * The binary name can remain stable while internal crates evolve.
 * Integration tests can target public crate boundaries as they become meaningful.
 
@@ -53,5 +53,5 @@ The workspace is the primary compilation, linting, testing, and documentation un
 
 ## References
 
-* [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md)
-* [`BUILD_TICKETS.md`](../../BUILD_TICKETS.md)
+* [`README.md`](../../README.md)
+* [`docs/architecture.md`](../architecture.md)

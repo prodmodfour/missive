@@ -2,7 +2,7 @@
 //!
 //! This module owns the small standalone receiver used by `missive webhook run`.
 //! It intentionally does not start the broader gateway daemon; later gateway
-//! tickets can embed the same receiver behind a supervisor.
+//! work can embed the same receiver behind a supervisor.
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};

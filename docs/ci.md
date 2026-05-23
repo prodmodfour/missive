@@ -25,7 +25,7 @@ The default CI path has these validation jobs:
    cargo build -p missive-cli --bin missive --all-features
    ```
 
-Because CI invokes the same quality gate used by autonomous local tickets on Linux, it covers shell syntax checks, workflow validation, secret scanning, generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, the release `missive` binary build, and the `cargo-deny` supply-chain policy in `deny.toml`. The matrix job keeps the core Rust CLI/library workspace compiling and testing on macOS without requiring platform-specific service managers or Bash-based repository scripts there.
+Because CI invokes the same quality gate used for local validation on Linux, it covers shell syntax checks, workflow validation, secret scanning, generated/private-file guardrails, Rust feature checks, formatting, clippy with warnings denied, workspace tests, doc tests, docs with warnings denied, debug/release builds, the release `missive` binary build, and the `cargo-deny` supply-chain policy in `deny.toml`. The matrix job keeps the core Rust CLI/library workspace compiling and testing on macOS without requiring platform-specific service managers or Bash-based repository scripts there.
 
 ## Platform-specific coverage
 
