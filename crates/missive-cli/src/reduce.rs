@@ -7,7 +7,7 @@
 //! reducer agent, or by piping that prompt to a user-supplied local command.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
@@ -648,10 +648,11 @@ fn run_command_reducer(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| MissiveError::io(format!("starting reduce command {command:?}"), error))?;
+    let mut stdin_write_error = None;
     if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(prompt.as_bytes())
-            .map_err(|error| MissiveError::io("writing reduce prompt to command stdin", error))?;
+        if let Err(error) = stdin.write_all(prompt.as_bytes()) {
+            stdin_write_error = Some(error);
+        }
     }
     let output = child
         .wait_with_output()
@@ -666,6 +667,14 @@ fn run_command_reducer(
             "Inspect the command locally. Redacted stderr: {}",
             redact_text(stderr.trim())
         )));
+    }
+    if let Some(error) = stdin_write_error {
+        if error.kind() != ErrorKind::BrokenPipe {
+            return Err(MissiveError::io(
+                "writing reduce prompt to command stdin",
+                error,
+            ));
+        }
     }
     let reduced_text = String::from_utf8(output.stdout).map_err(|error| {
         MissiveError::orchestration("reduce command stdout was not valid UTF-8")
