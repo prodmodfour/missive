@@ -7,7 +7,7 @@ Ticket statuses:
 * DONE
 * BLOCKED
 The build loop must select the lowest-numbered TODO or IN_PROGRESS ticket.
-This queue contains 67 project-specific tickets for building `missive`. Each ticket is intended to produce one autonomous commit.
+This queue contains 68 project-specific tickets for building `missive`. Each ticket is intended to produce one autonomous commit.
 ---
 ## 000 — Bootstrap repository skeleton
 
@@ -1504,7 +1504,7 @@ Validation:
 
 ---
 
-## 050 — Implement logs and diagnostics commands
+## 050 — Implement logs and event-tail diagnostics commands
 
 Status: TODO
 
@@ -1512,18 +1512,20 @@ Phase: Observability
 
 Objective:
 
-Implement implement logs and diagnostics commands for `missive` without starting later tickets.
+Implement local log and event-tail diagnostic command surfaces for `missive` without starting doctor health checks.
 
 Required:
 
-* Add missive logs, missive events tail, and missive doctor.
-* doctor should check Rust binary version, config validity, database migrations, tool availability, A2A endpoint reachability, and gateway status.
+* Add or complete `missive logs` for inspecting local missive diagnostic output sources that are available in the selected profile, including clear human output and stable JSON/NDJSON output.
+* Harden or finish `missive events tail` as the event-stream diagnostics surface, including bounded tailing through `--limit` and/or global `--timeout`, useful filters, and stable machine-readable event envelopes.
+* Reuse existing output rendering and redaction helpers so logs and event-tail output never expose authorization headers, tokens, cookies, secret-like fields, or raw private runtime paths beyond documented local-state paths.
+* Document the logs/events diagnostic workflow and how it differs from the later `doctor` health-check command.
 
 Acceptance criteria:
 
-* doctor works with no config and with a populated config.
-* doctor --json emits actionable status objects.
-* logs/events commands do not expose secrets.
+* `missive logs` works with no config and with a populated profile, either showing available local diagnostics or returning actionable empty/unavailable status without exposing secrets.
+* `missive logs --json` and `missive events tail --ndjson` emit parseable, stable machine-readable records.
+* Tests cover log rendering, bounded event tailing/follow behavior, filters where implemented, and redaction of secret-like values.
 
 Validation:
 
@@ -1533,7 +1535,38 @@ Validation:
 
 ---
 
-## 051 — Implement shell completions and manpages
+## 051 — Implement doctor health checks
+
+Status: TODO
+
+Phase: Observability
+
+Objective:
+
+Implement `missive doctor` health checks for `missive` after logs and event-tail diagnostics are in place, without changing completion/manpage/example tickets.
+
+Required:
+
+* Add or complete `missive doctor` with a reusable check model, human summary output, and stable JSON output.
+* Check Rust binary version/build info, config discovery and validation, profile state paths, SQLite database migrations, useful tool availability, configured A2A endpoint reachability, and local gateway health/status when configured or running.
+* Return actionable status objects with severity, check id, message, remediation hint where useful, and deterministic overall success/failure behavior suitable for automation.
+* Redact auth refs, headers, tokens, endpoint credentials, private config values, and secret-like fields in every doctor output mode.
+
+Acceptance criteria:
+
+* `missive doctor` works with no config and with a populated temporary config/profile store.
+* `missive doctor --json` emits parseable status objects with actionable check identifiers, severity/status, messages, and hints.
+* Tests cover no-config, valid populated config, invalid config, migrated/unmigrated database state, mock reachable/unreachable A2A endpoint checks, gateway status handling, and redaction.
+
+Validation:
+
+* Run `scripts/quality-gate.sh`.
+* Update `BUILD_TICKETS.md` and `BUILD_NOTES.md`.
+* Commit the completed ticket with a conventional commit message.
+
+---
+
+## 052 — Implement shell completions and manpages
 
 Status: TODO
 
@@ -1562,7 +1595,7 @@ Validation:
 
 ---
 
-## 052 — Implement command examples and smoke tests
+## 053 — Implement command examples and smoke tests
 
 Status: TODO
 
@@ -1592,7 +1625,7 @@ Validation:
 
 ---
 
-## 053 — Add property tests for parsers and routing
+## 054 — Add property tests for parsers and routing
 
 Status: TODO
 
@@ -1622,7 +1655,7 @@ Validation:
 
 ---
 
-## 054 — Add fuzzing smoke tests
+## 055 — Add fuzzing smoke tests
 
 Status: TODO
 
@@ -1652,7 +1685,7 @@ Validation:
 
 ---
 
-## 055 — Add mutation and failure-injection tests
+## 056 — Add mutation and failure-injection tests
 
 Status: TODO
 
@@ -1682,7 +1715,7 @@ Validation:
 
 ---
 
-## 056 — Add benchmarks and performance budgets
+## 057 — Add benchmarks and performance budgets
 
 Status: TODO
 
@@ -1712,7 +1745,7 @@ Validation:
 
 ---
 
-## 057 — Add CI workflow
+## 058 — Add CI workflow
 
 Status: TODO
 
@@ -1741,7 +1774,7 @@ Validation:
 
 ---
 
-## 058 — Add cross-platform build matrix
+## 059 — Add cross-platform build matrix
 
 Status: TODO
 
@@ -1770,7 +1803,7 @@ Validation:
 
 ---
 
-## 059 — Add Docker and devcontainer support
+## 060 — Add Docker and devcontainer support
 
 Status: TODO
 
@@ -1800,7 +1833,7 @@ Validation:
 
 ---
 
-## 060 — Add release packaging
+## 061 — Add release packaging
 
 Status: TODO
 
@@ -1829,7 +1862,7 @@ Validation:
 
 ---
 
-## 061 — Add supply-chain checks
+## 062 — Add supply-chain checks
 
 Status: TODO
 
@@ -1858,7 +1891,7 @@ Validation:
 
 ---
 
-## 062 — Write user documentation
+## 063 — Write user documentation
 
 Status: TODO
 
@@ -1887,7 +1920,7 @@ Validation:
 
 ---
 
-## 063 — Write architecture and operations documentation
+## 064 — Write architecture and operations documentation
 
 Status: TODO
 
@@ -1916,7 +1949,7 @@ Validation:
 
 ---
 
-## 064 — Add compatibility tests against a2a-rs example agent
+## 065 — Add compatibility tests against a2a-rs example agent
 
 Status: TODO
 
@@ -1947,7 +1980,7 @@ Validation:
 
 ---
 
-## 065 — Add end-to-end multi-agent demo
+## 066 — Add end-to-end multi-agent demo
 
 Status: TODO
 
@@ -1977,7 +2010,7 @@ Validation:
 
 ---
 
-## 066 — Final autonomous review and completion marker
+## 067 — Final autonomous review and completion marker
 
 Status: TODO
 

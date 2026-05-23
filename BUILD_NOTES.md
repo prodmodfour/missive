@@ -143,6 +143,8 @@ Included:
 
 ## Latest maintenance notes
 
+Recovery maintenance update requested by the user: oversized ticket 050 was split after a prior token/context-length failure into ticket 050 for `missive logs` and `missive events tail` diagnostics, and ticket 051 for `missive doctor` health checks. Later pending tickets were renumbered to 052 through 067. No product code was changed. Lightweight validation run: `bash -n scripts/build-loop.sh && bash -n scripts/run-agent.sh`, plus a heading-sequence check confirming tickets 000 through 067 are unique and ordered.
+
 Out-of-band automation update requested by the user: `scripts/build-loop.sh` now retries failed agent attempts after cleaning the checkout. A failed attempt is an agent command failure, a dirty tree after the agent returns, or a run that produces no new commit. Cleanup runs `git reset --hard <pre-attempt HEAD>` and `git clean -fd`; retry waits 600 seconds by default, can be tuned with `--failure-retry-sleep`/`MISSIVE_BUILD_LOOP_FAILURE_RETRY_SLEEP`, and can be disabled with `--no-failure-retry`.
 
 Follow-up automation update requested by the user: token/context-length failures now trigger a splitter-agent recovery path. The failed attempt is cleaned first, the splitter agent receives reduced context files and must split the oversized current ticket into two smaller sequential tickets with a conventional commit, and the build loop then retries after the configured failed-cycle delay. `scripts/run-agent.sh` now supports `MISSIVE_AGENT_CONTEXT_FILES`, while the build loop exposes `MISSIVE_SPLIT_AGENT_CONTEXT_FILES` for the splitter path.
@@ -245,4 +247,4 @@ There is not yet a `cargo-deny` policy file; the quality gate skips deny checks 
 
 ## Next recommended ticket
 
-Ticket 050 — Implement logs and diagnostics commands.
+Ticket 050 — Implement logs and event-tail diagnostics commands.
