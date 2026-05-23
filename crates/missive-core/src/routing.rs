@@ -116,6 +116,8 @@ pub fn parse_config_routing_policy(field: &str, value: &str) -> Result<RoutingPo
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
     use crate::ErrorCategory;
 
@@ -150,5 +152,22 @@ mod tests {
         assert_eq!(error.category(), ErrorCategory::Config);
         assert!(error.to_string().contains("routing.default_policy"));
         assert!(error.help().expect("help").contains("direct"));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        #[test]
+        fn policy_parser_trims_and_round_trips_canonical_names(
+            name in prop::sample::select(SUPPORTED_ROUTING_POLICIES.to_vec()),
+            prefix in prop::sample::select(vec!["", " ", "\t", "\n"]),
+            suffix in prop::sample::select(vec!["", " ", "\t", "\n"]),
+        ) {
+            let input = format!("{prefix}{name}{suffix}");
+            let policy = parse_routing_policy(&input).expect("canonical policy should parse");
+
+            prop_assert_eq!(policy.as_str(), name);
+            prop_assert_eq!(policy.to_string(), name);
+        }
     }
 }

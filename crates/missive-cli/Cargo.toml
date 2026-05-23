@@ -50,4 +50,5 @@ keyring = { version = "3.6", default-features = false, optional = true }
 
 [dev-dependencies]
 missive-test-support.workspace = true
+proptest.workspace = true
 tempfile.workspace = true

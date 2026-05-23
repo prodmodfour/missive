@@ -1713,6 +1713,7 @@ fn is_secret_key(key: &str) -> bool {
 mod tests {
     use std::fs;
 
+    use proptest::prelude::*;
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -2203,5 +2204,88 @@ public_note = "Bearer {hidden}"
 
         assert_eq!(value["source"]["kind"], json!("explicit_path"));
         assert_eq!(value["selected_profile"], json!("default"));
+    }
+
+    fn routing_policy_name_or_alias() -> impl Strategy<Value = (String, String)> {
+        prop::sample::select(vec![
+            ("direct".to_owned(), "direct".to_owned()),
+            ("capability-match".to_owned(), "capability-match".to_owned()),
+            ("capability_match".to_owned(), "capability-match".to_owned()),
+            ("tag-match".to_owned(), "tag-match".to_owned()),
+            ("tag_match".to_owned(), "tag-match".to_owned()),
+            ("round-robin".to_owned(), "round-robin".to_owned()),
+            ("round_robin".to_owned(), "round-robin".to_owned()),
+            ("weighted".to_owned(), "weighted".to_owned()),
+            ("broadcast".to_owned(), "broadcast".to_owned()),
+            ("first-success".to_owned(), "first-success".to_owned()),
+            ("first_success".to_owned(), "first-success".to_owned()),
+            ("quorum".to_owned(), "quorum".to_owned()),
+            ("fallback".to_owned(), "fallback".to_owned()),
+        ])
+    }
+
+    fn reserved_service_parameter_name() -> impl Strategy<Value = String> {
+        prop::sample::select(vec![
+            "A2A-Version".to_owned(),
+            "a2a-version".to_owned(),
+            "A2A-VERSION".to_owned(),
+            "A2A-Extensions".to_owned(),
+            "a2a-extensions".to_owned(),
+            "A2A-EXTENSIONS".to_owned(),
+        ])
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        #[test]
+        fn routing_policy_names_and_aliases_parse_from_toml_config(
+            (policy_name, canonical_name) in routing_policy_name_or_alias(),
+        ) {
+            let input = format!(
+                r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[routing]
+default_policy = "{policy_name}"
+
+[profiles.default]
+"#,
+            );
+            let config = MissiveConfig::from_toml_str(&input).expect("generated config should parse");
+            let loaded = LoadedConfig {
+                config,
+                source: ConfigSource::built_in_default(),
+                selected_profile: "default".to_owned(),
+            };
+            let routing = loaded.routing_config().expect("effective routing config");
+            let parsed = parse_config_routing_policy("routing.default_policy", &routing.default_policy)
+                .expect("policy should parse");
+
+            prop_assert_eq!(parsed.as_str(), canonical_name);
+        }
+
+        #[test]
+        fn reserved_a2a_service_parameters_are_rejected_case_insensitively(
+            reserved_name in reserved_service_parameter_name(),
+        ) {
+            let input = format!(
+                r#"
+schema_version = "missive.config.v1"
+default_profile = "default"
+
+[profiles.default]
+
+[protocol.service_parameters]
+"{reserved_name}" = "value"
+"#,
+            );
+
+            let error = MissiveConfig::from_toml_str(&input)
+                .expect_err("reserved A2A service parameter should be rejected");
+            prop_assert_eq!(error.category(), ErrorCategory::Config);
+            prop_assert!(error.to_string().contains("reserved A2A service parameter"));
+        }
     }
 }

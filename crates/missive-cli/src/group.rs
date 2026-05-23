@@ -1284,6 +1284,7 @@ fn metadata_json(metadata: &Metadata) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
     use serde_json::json;
 
     use super::*;
@@ -1318,5 +1319,55 @@ mod tests {
     fn routing_policy_validation_uses_named_identifier_rules() {
         assert_eq!(parse_routing_policy("direct").expect("policy"), "direct");
         assert!(parse_routing_policy("Bad Policy").is_err());
+    }
+
+    fn valid_cli_identifier() -> impl Strategy<Value = String> {
+        "[a-z0-9]([a-z0-9_.-]{0,20}[a-z0-9])?"
+    }
+
+    fn metadata_raw_value() -> impl Strategy<Value = String> {
+        "[A-Za-z0-9_.:-]{1,24}"
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        #[test]
+        fn positive_weight_value_parser_accepts_positive_integers(weight in 1u32..=1_000_000) {
+            let value = weight.to_string();
+            let parsed = parse_positive_weight_arg(&value).expect("positive weight should parse");
+
+            prop_assert_eq!(parsed, f64::from(weight));
+        }
+
+        #[test]
+        fn positive_weight_value_parser_rejects_non_positive_integers(weight in -1_000_000i32..=0) {
+            prop_assert!(parse_positive_weight_arg(&weight.to_string()).is_err());
+        }
+
+        #[test]
+        fn tag_value_parser_preserves_valid_cli_identifiers(tags in prop::collection::vec(valid_cli_identifier(), 0..16)) {
+            let parsed = parse_tags(&tags).expect("generated tags should parse");
+
+            prop_assert_eq!(parsed, tags);
+        }
+
+        #[test]
+        fn metadata_value_parser_accepts_unique_key_value_pairs(
+            pairs in prop::collection::btree_map(valid_cli_identifier(), metadata_raw_value(), 0..12),
+        ) {
+            let args = pairs
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>();
+            let metadata = parse_metadata(&args, "--metadata").expect("generated metadata should parse");
+
+            prop_assert_eq!(metadata.len(), pairs.len());
+            for (key, raw_value) in pairs {
+                let expected = serde_json::from_str::<serde_json::Value>(&raw_value)
+                    .unwrap_or_else(|_| json!(raw_value));
+                prop_assert_eq!(metadata.get(&key), Some(&expected));
+            }
+        }
     }
 }

@@ -170,7 +170,10 @@ fn invalid_metadata_key(key: &str, reason: impl Into<String>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use std::collections::BTreeMap;
+
+    use proptest::prelude::*;
+    use serde_json::{Value, json};
 
     use super::*;
     use crate::ErrorCategory;
@@ -228,5 +231,46 @@ mod tests {
         assert_eq!(error.category(), ErrorCategory::Validation);
         assert!(error.to_string().contains("invalid metadata key"));
         assert_eq!(error.help(), Some(METADATA_KEY_HELP));
+    }
+
+    fn metadata_key() -> impl Strategy<Value = String> {
+        "[a-z][a-z0-9_.-]{0,20}"
+    }
+
+    fn simple_json_value() -> impl Strategy<Value = Value> {
+        prop_oneof![
+            any::<bool>().prop_map(Value::Bool),
+            (-1_000_i64..=1_000).prop_map(|value| json!(value)),
+            "[A-Za-z0-9_.:-]{0,24}".prop_map(Value::String),
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        #[test]
+        fn metadata_merge_is_right_biased_and_deterministically_ordered(
+            left_pairs in prop::collection::btree_map(metadata_key(), simple_json_value(), 0..12),
+            right_pairs in prop::collection::btree_map(metadata_key(), simple_json_value(), 0..12),
+        ) {
+            let mut expected: BTreeMap<String, Value> = left_pairs.clone();
+            for (key, value) in right_pairs.clone() {
+                expected.insert(key, value);
+            }
+
+            let mut merged = Metadata::try_from_iter(left_pairs).expect("generated metadata keys are valid");
+            let right = Metadata::try_from_iter(right_pairs).expect("generated metadata keys are valid");
+            merged.merge(right);
+
+            let iterated_keys = merged
+                .iter()
+                .map(|(key, _)| key.to_owned())
+                .collect::<Vec<_>>();
+            let mut sorted_keys = iterated_keys.clone();
+            sorted_keys.sort();
+
+            prop_assert_eq!(iterated_keys, sorted_keys);
+            prop_assert_eq!(merged.into_inner(), expected);
+        }
     }
 }

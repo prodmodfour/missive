@@ -1659,7 +1659,7 @@ Validation:
 
 ## 055 — Add property tests for parsers and routing
 
-Status: TODO
+Status: DONE
 
 Phase: Testing
 

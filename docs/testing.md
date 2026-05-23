@@ -2,6 +2,20 @@
 
 `missive` tests should be runnable from a clean checkout without contacting third-party agents by default. The ordered build loop still uses `scripts/quality-gate.sh` as the required validation entry point for every ticket.
 
+## Property-based tests
+
+Property-based tests use `proptest` and run as part of the normal workspace test pass. Current properties cover core identifier round trips and rejection, routing-policy parsing from CLI/config names, config rejection of reserved A2A service-parameter headers, metadata merge right-bias plus deterministic key order, CLI value parsers for group weights/tags/metadata, and router selection invariants for round-robin, weighted, and tag-match policies.
+
+For targeted runs:
+
+```bash
+cargo test -p missive-core --all-features
+cargo test -p missive-router --all-features
+cargo test -p missive-cli --lib --all-features group::tests
+```
+
+When a property fails, `proptest` prints the minimized failing input and reproduction details in the test output; set `PROPTEST_RNG_SEED=<seed>` when a reported RNG seed needs to be replayed exactly. Do not commit transient failure artifacts unless a regression file is intentionally added as a stable seed for a known bug fix.
+
 ## Observability tests
 
 `crates/missive-observe` unit tests build scoped tracing dispatchers with an in-memory writer so `RUST_LOG`-style filters, human/JSON log rendering, and secret redaction are deterministic without mutating the process-global subscriber. CLI tests cover mapping `--trace`, `--verbose`, `RUST_LOG`, and `MISSIVE_LOG_FORMAT=json` into the shared observe config plus `cli.command` span fields in JSON stderr logs. `completion_manpage_command` tests generate bash/zsh/fish/PowerShell completion scripts, snapshot stable prefixes, assert completion/manpage generation bypasses configuration loading, and verify JSON envelopes for generated content. `doctor_command` tests run with isolated `MISSIVE_HOME` directories and cover no-config reports, valid populated config plus migrated SQLite state, invalid config as a structured failed check, unmigrated database detection, mock reachable/unreachable A2A endpoint probes, gateway running/unavailable status probes, deterministic `PATH` tool lookup, and redaction of secret-like config/auth metadata. `logs_command` tests assert actionable empty-source JSON, profile-file JSON/NDJSON rendering, bounded `--limit` behavior, and token/cookie/API-key redaction; `events_command` tests cover event list/export/replay plus bounded `events tail` follow/timeout behavior and secret-like free-text payload redaction. A2A, store, and adapter unit tests use scoped dispatchers to verify representative `a2a.request`, `store.operation`, and `adapter.event` spans without relying on one process-global subscriber in parallel test runs.

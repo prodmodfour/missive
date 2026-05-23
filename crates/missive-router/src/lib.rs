@@ -880,6 +880,7 @@ fn collect_labels(value: &Value, labels: &mut BTreeSet<String>) {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
     use serde_json::json;
 
     use super::*;
@@ -890,6 +891,22 @@ mod tests {
 
     fn candidate(value: &str) -> RouteCandidate {
         RouteCandidate::new(alias(value))
+    }
+
+    fn route_input(policy: RoutingPolicyKind, candidates: Vec<RouteCandidate>) -> RoutePlanInput {
+        RoutePlanInput {
+            policy,
+            candidates,
+            preferred_agent: None,
+            required_tags: Vec::new(),
+            required_capabilities: Vec::new(),
+            required_input_modes: Vec::new(),
+            required_output_modes: Vec::new(),
+            require_streaming: false,
+            require_push_notifications: false,
+            round_robin_cursor: 0,
+            quorum: None,
+        }
     }
 
     #[test]
@@ -1211,5 +1228,91 @@ mod tests {
             capabilities_from_metadata(&metadata),
             vec!["json".to_owned(), "summarise".to_owned(), "vote".to_owned()]
         );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        #[test]
+        fn round_robin_selection_is_cursor_modulo_candidate_count(
+            candidate_count in 1usize..16,
+            cursor in any::<u64>(),
+        ) {
+            let candidates = (0..candidate_count)
+                .map(|index| candidate(&format!("agent{index}")))
+                .collect::<Vec<_>>();
+            let mut input = route_input(RoutingPolicyKind::RoundRobin, candidates);
+            input.round_robin_cursor = cursor;
+            let plan = explain_route(&input).expect("round-robin plan");
+            let expected_index = (cursor as usize) % candidate_count;
+            let expected_alias = alias(&format!("agent{expected_index}"));
+
+            prop_assert_eq!(plan.selected, vec![expected_alias]);
+            prop_assert_eq!(plan.next_round_robin_cursor, Some(cursor.saturating_add(1)));
+            prop_assert_eq!(plan.decisions.iter().filter(|decision| decision.selected).count(), 1);
+            prop_assert_eq!(plan.decisions[expected_index].order, Some(0));
+        }
+
+        #[test]
+        fn weighted_selection_chooses_first_highest_weight(
+            weights in prop::collection::vec(1u16..=1_000, 1..16),
+        ) {
+            let candidates = weights
+                .iter()
+                .enumerate()
+                .map(|(index, weight)| {
+                    let mut candidate = candidate(&format!("agent{index}"));
+                    candidate.weight = f64::from(*weight);
+                    candidate
+                })
+                .collect::<Vec<_>>();
+            let input = route_input(RoutingPolicyKind::Weighted, candidates);
+            let plan = explain_route(&input).expect("weighted plan");
+            let max_weight = weights.iter().max().copied().expect("non-empty generated weights");
+            let expected_index = weights
+                .iter()
+                .position(|weight| *weight == max_weight)
+                .expect("max weight has an index");
+
+            prop_assert_eq!(plan.selected, vec![alias(&format!("agent{expected_index}"))]);
+            prop_assert!(plan.decisions[expected_index].selected);
+            prop_assert_eq!(plan.decisions[expected_index].order, Some(0));
+        }
+
+        #[test]
+        fn tag_match_selects_exactly_candidates_with_all_required_tags(
+            membership in prop::collection::vec(any::<bool>(), 1..16),
+        ) {
+            let candidates = membership
+                .iter()
+                .enumerate()
+                .map(|(index, has_required_tag)| {
+                    let mut candidate = candidate(&format!("agent{index}"));
+                    candidate.tags = if *has_required_tag {
+                        vec!["required".to_owned(), "shared".to_owned()]
+                    } else {
+                        vec!["shared".to_owned()]
+                    };
+                    candidate
+                })
+                .collect::<Vec<_>>();
+            let mut input = route_input(RoutingPolicyKind::TagMatch, candidates);
+            input.required_tags = vec!["required".to_owned()];
+
+            let plan = explain_route(&input).expect("tag-match plan");
+            let expected = membership
+                .iter()
+                .enumerate()
+                .filter(|(_, selected)| **selected)
+                .map(|(index, _)| alias(&format!("agent{index}")))
+                .collect::<Vec<_>>();
+
+            let expected_status = if expected.is_empty() { "no_match" } else { "selected" };
+            prop_assert_eq!(&plan.selected, &expected);
+            prop_assert_eq!(plan.status, expected_status);
+            for (decision, expected_selected) in plan.decisions.iter().zip(membership) {
+                prop_assert_eq!(decision.selected, expected_selected);
+            }
+        }
     }
 }
