@@ -34,7 +34,7 @@ fn json_output_parses_for_every_current_skeletal_command() {
     for command in required_subcommands().into_iter().filter(|command| {
         !matches!(
             *command,
-            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce" | "logs"
+            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce" | "doctor" | "logs"
         )
     }) {
         let (code, stdout, stderr) = run(&["missive", command, "--json"]);
@@ -61,7 +61,7 @@ fn ndjson_output_is_one_json_object_per_line_for_every_current_skeletal_command(
     for command in required_subcommands().into_iter().filter(|command| {
         !matches!(
             *command,
-            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce" | "logs"
+            "send" | "stream" | "bcast" | "barrier" | "gather" | "reduce" | "doctor" | "logs"
         )
     }) {
         let (code, stdout, stderr) = run(&["missive", command, "--ndjson"]);
@@ -85,7 +85,23 @@ fn ndjson_output_is_one_json_object_per_line_for_every_current_skeletal_command(
 
 #[test]
 fn quiet_mode_suppresses_success_output() {
-    let (code, stdout, stderr) = run(&["missive", "doctor", "--quiet"]);
+    let temp = tempdir().expect("tempdir");
+    let environment = BTreeMap::from([
+        (
+            "MISSIVE_HOME".to_owned(),
+            temp.path()
+                .join("missive-home")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "HOME".to_owned(),
+            temp.path().join("user-home").to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_owned(), std::env::var("PATH").unwrap_or_default()),
+    ]);
+    let (code, stdout, stderr) =
+        run_with_env(&["missive", "doctor", "--quiet"], &environment, temp.path());
 
     assert_eq!(code, MissiveExitCode::Success.as_i32());
     assert!(stdout.is_empty());
@@ -152,10 +168,24 @@ default_profile = "default"
 "#,
     )
     .expect("write config");
-    let environment = BTreeMap::from([(
-        "MISSIVE_CONFIG".to_owned(),
-        config_path.to_string_lossy().into_owned(),
-    )]);
+    let environment = BTreeMap::from([
+        (
+            "MISSIVE_CONFIG".to_owned(),
+            config_path.to_string_lossy().into_owned(),
+        ),
+        (
+            "MISSIVE_HOME".to_owned(),
+            temp.path()
+                .join("missive-home")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "HOME".to_owned(),
+            temp.path().join("user-home").to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_owned(), std::env::var("PATH").unwrap_or_default()),
+    ]);
 
     let (code, stdout, stderr) =
         run_with_env(&["missive", "doctor", "--json"], &environment, temp.path());
@@ -163,7 +193,14 @@ default_profile = "default"
     assert_eq!(code, MissiveExitCode::Success.as_i32());
     assert!(stderr.is_empty(), "stderr: {stderr}");
     let value: Value = serde_json::from_str(&stdout).expect("JSON output should parse");
-    assert_eq!(value["data"]["config"]["source"], "environment");
+    assert_eq!(value["kind"], "doctor");
+    let config_check = value["data"]["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["id"] == "config.discovery_validation")
+        .expect("config check");
+    assert_eq!(config_check["data"]["source"], "environment");
 }
 
 #[test]

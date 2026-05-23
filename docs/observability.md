@@ -132,8 +132,9 @@ The command reports these sources:
 emits `log_source` lines followed by `log_record` lines. All log messages and
 JSON fields pass through the CLI redaction helpers, including auth schemes and
 secret-like `key=value` fragments. `missive logs` is an inspection surface, not a
-health checker; endpoint reachability, migration state, gateway liveness, and
-tool availability are reserved for `missive doctor`.
+health checker. Use `missive doctor` for local binary/config/state-path, SQLite
+migration-state, and tool-availability checks; endpoint reachability and gateway
+liveness are reserved for the follow-up remote/gateway doctor checks.
 
 Use `missive events tail` when you need structured control-plane event
 diagnostics rather than stderr logs:

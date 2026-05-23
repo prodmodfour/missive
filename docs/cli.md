@@ -110,7 +110,7 @@ gateway     Run and manage the local missive gateway daemon
 webhook     Receive A2A push notification callbacks locally
 push        Manage A2A push notification configurations
 job         Enqueue, inspect, and cancel gateway-managed background communication jobs
-doctor      Diagnose local configuration, storage, gateway, and endpoint health
+doctor      Diagnose local configuration, storage, migrations, and tool availability
 logs        Inspect local missive logs
 events      Inspect, tail, replay, or export the local event journal
 completion  Generate shell completion scripts
@@ -119,10 +119,11 @@ manpage     Generate manual pages
 
 Each top-level command has a help page. Running an unimplemented command other
 than help currently loads and validates configuration, then emits a
-command-status record through the selected renderer. Implemented command groups
-with no selected subcommand, such as `missive context --json`, `missive gateway
---json`, or `missive webhook --json`, still emit that parsed command-status
-record so automation can distinguish parser support from a specific operation.
+command-status record through the selected renderer. `missive doctor` is now an
+implemented local health-check command; implemented command groups with no
+selected subcommand, such as `missive context --json`, `missive gateway --json`,
+or `missive webhook --json`, still emit that parsed command-status record so
+automation can distinguish parser support from a specific operation.
 
 ## Adapter commands
 
@@ -1130,6 +1131,49 @@ Machine-readable stream output uses `webhook_started`, `webhook_event`,
 final `webhook_stopped` summary after the receiver shuts down; use `--ndjson` for
 one object per runtime event.
 
+## Doctor local checks
+
+`missive doctor` runs local-only health checks for the selected profile. It does
+not contact configured A2A agents and it does not probe the gateway HTTP status
+endpoint yet; those remote/gateway checks are intentionally reserved for the next
+observability ticket. The current check set covers:
+
+* binary build metadata, including the package version, build profile, target,
+  and rustc version captured at build time;
+* configuration discovery and validation, including the selected profile, source,
+  config-seeded agent count, and auth-ref count;
+* selected-profile state paths for data, state, cache, locks, and SQLite;
+* existing SQLite database migration state without creating or migrating a
+  missing database; and
+* useful local tools such as `rustc`, `cargo`, `rustfmt`, `cargo-clippy`,
+  `shellcheck`, and `sqlite3` when they are available on `PATH`.
+
+Examples:
+
+```bash
+MISSIVE_HOME=/tmp/missive-demo missive doctor
+MISSIVE_HOME=/tmp/missive-demo missive doctor --json
+MISSIVE_HOME=/tmp/missive-demo missive --config ./missive.toml --profile dev doctor --json
+```
+
+Human output is a concise summary followed by one line per check. JSON and
+NDJSON output use `kind: "doctor"` with `profile`, `scope: "local"`, an
+overall summary, and stable check objects containing `id`, `category`, `status`,
+`severity`, `message`, optional `exit_code`, `hints`, and redacted `data`.
+Statuses are `pass`, `warning`, `fail`, and `skipped`. Warnings, such as missing
+optional local tools, do not make the process fail; failed local checks return a
+deterministic non-zero exit code such as `78` for invalid config or `75` for an
+unmigrated/stale SQLite database. When a failed report is emitted with `--json`,
+the report is written to stdout and the usual structured error envelope is
+written to stderr so automation can use either the report or the process status.
+
+Doctor output uses the same redaction helpers as other CLI output. Config values
+with token/password/API-key/cookie/secret-like names, headers, auth schemes, and
+free-text secret assignments are redacted before rendering. The command shows
+only documented local state paths needed for diagnosis and treats remote
+endpoint and gateway liveness as not applicable until the later remote doctor
+checks are implemented.
+
 ## Logs and event diagnostics
 
 `missive logs` inspects local diagnostic sources for the selected profile without
@@ -1162,8 +1206,8 @@ Machine output uses `kind: "logs"` for `--json`. `--ndjson` emits one
 envelope per returned profile log line. The event-journal and gateway-service
 sources are reported as actionable source records with commands/hints; use
 `missive events` for structured event payloads and the platform supervisor tools
-for service-manager logs. `missive logs` is intentionally not the later
-`missive doctor` health-check surface: it does not validate endpoint reachability,
+for service-manager logs. `missive logs` is intentionally not the `missive
+doctor` health-check surface: it does not validate endpoint reachability,
 SQLite migration health, gateway liveness, or external tool installation beyond
 reporting where diagnostics would be read.
 
@@ -1214,10 +1258,11 @@ The current renderer supports four modes:
   stream emits one `stream_event` line per SSE event plus a `stream_result`
   summary, gateway run emits `gateway_started`/`gateway_component`/
   `gateway_stopped` lines, webhook run emits `webhook_started`/`webhook_event`/
-  `webhook_rejected`/`webhook_stopped` lines, `logs` emits `log_source` and
-  `log_record` lines, `events export` and `events tail` emit one `event_record`
-  line per event, while other implemented commands emit one command-specific
-  envelope and skeletal commands emit one command-status event
+  `webhook_rejected`/`webhook_stopped` lines, `doctor` emits one `doctor` line,
+  `logs` emits `log_source` and `log_record` lines, `events export` and `events
+  tail` emit one `event_record` line per event, while other implemented commands
+  emit one command-specific envelope and skeletal commands emit one
+  command-status event
 * config `output.format = "quiet"` or `--quiet` / `-q` — no non-error output
 
 `--json` and `--ndjson` are mutually exclusive for command execution. If both are

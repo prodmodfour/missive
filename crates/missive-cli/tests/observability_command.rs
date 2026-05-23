@@ -15,7 +15,7 @@ fn verbose_flag_emits_human_diagnostics_on_stderr() {
     let stdout = String::from_utf8(output.stdout).expect("stdout UTF-8");
     let stderr = String::from_utf8(output.stderr).expect("stderr UTF-8");
 
-    assert!(stdout.contains("missive: 'doctor' command parsed"));
+    assert!(stdout.contains("missive doctor:"));
     assert!(stderr.contains("INFO missive_observe: diagnostics initialized"));
     assert!(stderr.contains("filter=info"));
 }
@@ -33,7 +33,7 @@ fn rust_log_and_json_log_format_emit_machine_readable_stderr() {
     let stdout = String::from_utf8(output.stdout).expect("stdout UTF-8");
     let stderr = String::from_utf8(output.stderr).expect("stderr UTF-8");
 
-    assert!(stdout.contains("missive: 'doctor' command parsed"));
+    assert!(stdout.contains("missive doctor:"));
     let first_line = stderr.lines().next().expect("one diagnostics line");
     let value: Value = serde_json::from_str(first_line).expect("JSON diagnostics line");
 

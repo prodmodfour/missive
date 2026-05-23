@@ -18,6 +18,7 @@ pub(crate) mod barrier;
 pub(crate) mod bcast;
 pub(crate) mod capabilities;
 pub mod context;
+pub mod doctor;
 pub mod events;
 pub mod gateway;
 pub(crate) mod gather;
@@ -335,9 +336,9 @@ pub enum Commands {
         command: Option<job::JobCommands>,
     },
 
-    /// Diagnose local configuration, storage, gateway, and endpoint health.
+    /// Diagnose local configuration, storage, migrations, and tool availability.
     #[command(
-        long_about = "Diagnose local configuration, storage, gateway status, tool availability, and A2A endpoint reachability. Diagnostic checks are implemented by a later observability ticket."
+        long_about = "Run local missive doctor checks for binary build metadata, configuration discovery and validation, selected-profile state paths, SQLite migration state, and useful local tool availability. Remote A2A endpoint and gateway liveness checks are added by a later observability ticket."
     )]
     Doctor,
 
@@ -481,6 +482,64 @@ where
         command = %command_name,
         "CLI command started"
     );
+
+    if matches!(cli.command, Some(Commands::Doctor)) {
+        let mut selected_profile = "unknown".to_owned();
+        let mut mode_label = "unknown";
+        let result =
+            match doctor::execute_doctor_command(&cli.globals, environment, current_dir, writer) {
+                Ok(outcome) => {
+                    selected_profile = outcome.selected_profile;
+                    mode_label = output_mode_label(outcome.output_mode);
+                    command_span.record("selected_profile", selected_profile.as_str());
+                    command_span.record("output_mode", mode_label);
+                    tracing::debug!(
+                        target: "missive_cli",
+                        command = %command_name,
+                        selected_profile = %selected_profile,
+                        output_mode = %mode_label,
+                        "CLI command configured"
+                    );
+
+                    if outcome.exit_code == MissiveExitCode::Success {
+                        Ok(())
+                    } else {
+                        Err(
+                            MissiveError::orchestration(outcome.failure_message.unwrap_or_else(
+                                || {
+                                    "missive doctor found local checks that require attention"
+                                        .to_owned()
+                                },
+                            ))
+                            .with_exit_code(outcome.exit_code),
+                        )
+                    }
+                }
+                Err(error) => Err(error),
+            };
+
+        match &result {
+            Ok(()) => tracing::debug!(
+                target: "missive_cli",
+                command = %command_name,
+                selected_profile = %selected_profile,
+                output_mode = %mode_label,
+                "CLI command completed"
+            ),
+            Err(error) => tracing::debug!(
+                target: "missive_cli",
+                command = %command_name,
+                selected_profile = %selected_profile,
+                output_mode = %mode_label,
+                exit_code = error.exit_code().as_i32(),
+                error_code = error.code(),
+                error_category = ?error.category(),
+                "CLI command failed"
+            ),
+        }
+
+        return result;
+    }
 
     let loaded_config = load_config(&cli.globals, environment, current_dir)?;
     command_span.record("selected_profile", loaded_config.selected_profile.as_str());
@@ -1155,7 +1214,7 @@ A2A-Tenant = "tenant-a"
                 quiet: true,
                 ..GlobalArgs::default()
             },
-            command: Some(Commands::Doctor),
+            command: Some(Commands::Completion),
         };
         let mut output = Vec::new();
 

@@ -19,7 +19,7 @@ Commands:
   webhook     Receive A2A push notification callbacks locally
   push        Manage A2A push notification configurations
   job         Enqueue, inspect, and cancel gateway-managed background communication jobs
-  doctor      Diagnose local configuration, storage, gateway, and endpoint health
+  doctor      Diagnose local configuration, storage, migrations, and tool availability
   logs        Inspect local missive logs
   events      Inspect, tail, replay, or export the local event journal
   completion  Generate shell completion scripts

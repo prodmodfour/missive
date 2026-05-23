@@ -1537,7 +1537,7 @@ Validation:
 
 ## 051 — Implement doctor check model and local health checks
 
-Status: TODO
+Status: DONE
 
 Phase: Observability
 

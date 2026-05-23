@@ -106,10 +106,11 @@ secret-like free-text assignments such as `token=...`, and HTTP auth headers
 before printing. Authorization values preserve only the scheme unless a whole
 secret-like assignment is redacted, for example `Bearer [REDACTED]` or
 `Authorization: [REDACTED]`. Auth headers passed to the A2A request builder are
-marked sensitive, and their debug representation is redacted. `missive logs`,
-`missive context export`, and `missive events list/tail/replay/export` apply the
-same output redaction and also redact raw log, message, task, and event payload
-JSON before including those records in stdout. Event producers created in current CLI
+marked sensitive, and their debug representation is redacted. `missive doctor`,
+`missive logs`, `missive context export`, and `missive events
+list/tail/replay/export` apply the same output redaction and also redact raw
+local diagnostic, log, message, task, and event payload JSON before including
+those records in stdout. Event producers created in current CLI
 paths store redacted event payloads for agent registry changes, send/stream/bcast
 requests, send responses, streaming updates, changed remote task records,
 broadcast, barrier, gather, and reduce lifecycle/member/provenance results, and
