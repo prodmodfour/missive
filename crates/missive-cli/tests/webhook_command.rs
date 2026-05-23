@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::thread;
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use missive_core::{AgentAlias, ConfigDiscovery, ContextId, MissiveExitCode, TaskId};
@@ -16,11 +17,6 @@ fn isolated_env(home: &Path) -> BTreeMap<String, String> {
         "MISSIVE_HOME".to_owned(),
         home.to_string_lossy().into_owned(),
     )])
-}
-
-fn unused_local_port() -> u16 {
-    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind ephemeral port");
-    listener.local_addr().expect("local addr").port()
 }
 
 fn http_request(
@@ -59,52 +55,196 @@ fn http_request(
     (status, response)
 }
 
-fn wait_for_health(child: &mut Child, port: u16) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        if let Some(status) = child.try_wait().expect("poll child") {
-            panic!("receiver exited before health check succeeded: {status}");
-        }
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            let (status, _response) = http_request(port, "GET", "/healthz", &[], "");
-            if status == 200 {
-                return;
-            }
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    panic!("receiver did not become healthy on port {port}");
+#[derive(Debug)]
+struct WebhookProcess {
+    child: Child,
+    port: u16,
+    stdout_lines: Arc<Mutex<Vec<String>>>,
+    stdout_reader: Option<JoinHandle<()>>,
+    line_rx: mpsc::Receiver<String>,
 }
 
-fn wait_for_child(mut child: Child, timeout: Duration) -> (ExitStatus, String, String) {
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("poll child") {
-            break status;
+impl WebhookProcess {
+    fn spawn(home: &Path, extra_env: &[(&str, &str)], args: &[&str]) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_missive"));
+        command.env_clear();
+        add_required_child_environment(&mut command);
+        command
+            .env("MISSIVE_HOME", home)
+            .arg("webhook")
+            .arg("run")
+            .arg("--bind-address")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg("0");
+        for (name, value) in extra_env {
+            command.env(name, value);
         }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("receiver did not exit before timeout");
+        for arg in args {
+            command.arg(arg);
         }
-        thread::sleep(Duration::from_millis(50));
-    };
+        let mut child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn receiver");
 
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-    child
-        .stdout
-        .take()
-        .expect("stdout pipe")
-        .read_to_string(&mut stdout)
-        .expect("read stdout");
-    child
-        .stderr
-        .take()
-        .expect("stderr pipe")
-        .read_to_string(&mut stderr)
-        .expect("read stderr");
-    (status, stdout, stderr)
+        let stdout = child.stdout.take().expect("stdout pipe");
+        let stdout_lines = Arc::new(Mutex::new(Vec::new()));
+        let reader_lines = Arc::clone(&stdout_lines);
+        let (line_tx, line_rx) = mpsc::channel();
+        let stdout_reader = thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let Ok(line) = line else {
+                    break;
+                };
+                reader_lines
+                    .lock()
+                    .expect("stdout line buffer lock")
+                    .push(line.clone());
+                if line_tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let mut process = Self {
+            child,
+            port: 0,
+            stdout_lines,
+            stdout_reader: Some(stdout_reader),
+            line_rx,
+        };
+        process.port = process.wait_for_started();
+        process.wait_for_health();
+        process
+    }
+
+    fn port(&self) -> u16 {
+        self.port
+    }
+
+    fn wait_for_started(&mut self) -> u16 {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            self.panic_if_exited("receiver exited before startup event was emitted");
+            match self.line_rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(line) => {
+                    let Ok(value) = serde_json::from_str::<Value>(&line) else {
+                        continue;
+                    };
+                    if value["kind"] != "webhook_started" {
+                        continue;
+                    }
+                    let bind_address = value["data"]["bind_address"]
+                        .as_str()
+                        .expect("webhook_started bind address");
+                    let addr: SocketAddr = bind_address
+                        .parse()
+                        .expect("webhook_started socket address");
+                    return addr.port();
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    self.panic_if_exited("receiver stdout closed before startup event was emitted");
+                    panic!("receiver stdout closed before startup event was emitted");
+                }
+            }
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let stdout = self.collected_stdout();
+        let stderr = self.drain_stderr();
+        panic!(
+            "receiver did not emit startup event before timeout; stdout: {stdout}; stderr: {stderr}"
+        );
+    }
+
+    fn wait_for_health(&mut self) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            self.panic_if_exited("receiver exited before health check succeeded");
+            if TcpStream::connect(("127.0.0.1", self.port)).is_ok() {
+                let (status, _response) = http_request(self.port, "GET", "/healthz", &[], "");
+                if status == 200 {
+                    return;
+                }
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let stdout = self.collected_stdout();
+        let stderr = self.drain_stderr();
+        let port = self.port;
+        panic!(
+            "receiver did not become healthy on port {port}; stdout: {stdout}; stderr: {stderr}"
+        );
+    }
+
+    fn wait(mut self, timeout: Duration) -> (ExitStatus, String, String) {
+        let deadline = Instant::now() + timeout;
+        let status = loop {
+            if let Some(status) = self.child.try_wait().expect("poll child") {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                panic!(
+                    "receiver did not exit before timeout; stdout: {}; stderr: {}",
+                    self.collected_stdout(),
+                    self.drain_stderr()
+                );
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+
+        let stderr = self.drain_stderr();
+        if let Some(reader) = self.stdout_reader.take() {
+            reader.join().expect("stdout reader thread");
+        }
+        (status, self.collected_stdout(), stderr)
+    }
+
+    fn panic_if_exited(&mut self, message: &str) {
+        if let Some(status) = self.child.try_wait().expect("poll child") {
+            panic!(
+                "{message}: {status}; stdout: {}; stderr: {}",
+                self.collected_stdout(),
+                self.drain_stderr()
+            );
+        }
+    }
+
+    fn collected_stdout(&self) -> String {
+        self.stdout_lines
+            .lock()
+            .expect("stdout line buffer lock")
+            .join("\n")
+    }
+
+    fn drain_stderr(&mut self) -> String {
+        let mut stderr = String::new();
+        if let Some(mut pipe) = self.child.stderr.take() {
+            pipe.read_to_string(&mut stderr).expect("read stderr");
+        }
+        stderr
+    }
+}
+
+fn add_required_child_environment(command: &mut Command) {
+    #[cfg(not(windows))]
+    let _ = command;
+
+    #[cfg(windows)]
+    {
+        for key in ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "PATHEXT"] {
+            if let Ok(value) = std::env::var(key) {
+                command.env(key, value);
+            }
+        }
+    }
 }
 
 fn open_store(environment: &BTreeMap<String, String>) -> Store {
@@ -135,8 +275,6 @@ fn webhook_run_accepts_valid_push_payload_rejects_invalid_and_shuts_down() {
         "MISSIVE_WEBHOOK_TOKEN".to_owned(),
         "local-test-callback-token".to_owned(),
     );
-    let port = unused_local_port();
-
     let store = open_store(&environment);
     let alias = AgentAlias::new("fixture").expect("alias");
     store
@@ -151,27 +289,18 @@ fn webhook_run_accepts_valid_push_payload_rejects_invalid_and_shuts_down() {
     task.context_id = Some(context_id);
     store.upsert_task(&task).expect("task row");
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_missive"))
-        .env_clear()
-        .env("MISSIVE_HOME", &home)
-        .env("MISSIVE_WEBHOOK_TOKEN", "local-test-callback-token")
-        .arg("webhook")
-        .arg("run")
-        .arg("--bind-address")
-        .arg("127.0.0.1")
-        .arg("--port")
-        .arg(port.to_string())
-        .arg("--auth-token-env")
-        .arg("MISSIVE_WEBHOOK_TOKEN")
-        .arg("--max-events")
-        .arg("1")
-        .arg("--ndjson")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn receiver");
-
-    wait_for_health(&mut child, port);
+    let child = WebhookProcess::spawn(
+        &home,
+        &[("MISSIVE_WEBHOOK_TOKEN", "local-test-callback-token")],
+        &[
+            "--auth-token-env",
+            "MISSIVE_WEBHOOK_TOKEN",
+            "--max-events",
+            "1",
+            "--ndjson",
+        ],
+    );
+    let port = child.port();
 
     let (status, _response) = http_request(
         port,
@@ -207,7 +336,7 @@ fn webhook_run_accepts_valid_push_payload_rejects_invalid_and_shuts_down() {
     );
     assert_eq!(status, 202, "response: {response}");
 
-    let (status, stdout, stderr) = wait_for_child(child, Duration::from_secs(10));
+    let (status, stdout, stderr) = child.wait(Duration::from_secs(10));
     assert_eq!(
         status.code(),
         Some(MissiveExitCode::Success.as_i32()),
