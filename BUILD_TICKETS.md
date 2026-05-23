@@ -2014,7 +2014,7 @@ Validation:
 
 ## 067 — Add end-to-end multi-agent demo
 
-Status: TODO
+Status: DONE
 
 Phase: Interoperability
 

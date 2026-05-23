@@ -306,17 +306,18 @@ entry point is:
 examples/run-smoke.sh
 ```
 
-The scripts create temporary `MISSIVE_HOME` state, start or reuse a local mock
-A2A server, and exercise agent registry, send, stream, task, context, group,
-route, and gateway commands. The default quality gate covers them through the
-CLI integration test:
+The scripts create temporary `MISSIVE_HOME` state, start or reuse local mock
+A2A servers, and exercise agent registry, send, stream, task, context, group,
+route, gateway, and the three-agent broadcast/barrier/gather/reduce collective
+workflow. The default quality gate covers them through the CLI integration test:
 
 ```bash
 cargo test -p missive-cli --test example_smoke --all-features
 ```
 
-The test injects an already-built `missive` binary plus an in-process
-`MockA2aServer` so CI does not invoke nested Cargo builds or contact external
+The test injects an already-built `missive` binary plus in-process
+`MockA2aServer` instances, including three distinct servers for the multi-agent
+collective demo, so CI does not invoke nested Cargo builds or contact external
 services.
 
 ## Running the fixture tests

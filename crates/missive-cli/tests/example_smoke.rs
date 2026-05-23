@@ -24,27 +24,37 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn configure_example_server(server: &MockA2aServer) {
+fn configure_task_server(
+    server: &MockA2aServer,
+    task_id: &str,
+    context_id: &str,
+    completed_text: &str,
+) {
     let handle = server.handle();
-    let completed = task_json(
-        EXAMPLE_TASK_ID,
-        EXAMPLE_CONTEXT_ID,
-        "TASK_STATE_COMPLETED",
-        "example task completed",
-    );
+    let completed = task_json(task_id, context_id, "TASK_STATE_COMPLETED", completed_text);
     handle.set_send_response(send_message_response_task(completed.clone()));
     handle.enqueue_task_sequence(
-        EXAMPLE_TASK_ID,
+        task_id,
         [
             task_json(
-                EXAMPLE_TASK_ID,
-                EXAMPLE_CONTEXT_ID,
+                task_id,
+                context_id,
                 "TASK_STATE_WORKING",
                 "example task is working",
             ),
             completed,
         ],
     );
+}
+
+fn configure_example_server(server: &MockA2aServer) {
+    configure_task_server(
+        server,
+        EXAMPLE_TASK_ID,
+        EXAMPLE_CONTEXT_ID,
+        "example task completed",
+    );
+    let handle = server.handle();
     handle.set_stream_events(vec![
         status_update_event(
             STREAM_TASK_ID,
@@ -108,6 +118,36 @@ fn wait_for_child(mut child: Child, timeout: Duration) -> (ExitStatus, String, S
 fn top_level_command_examples_run_against_mock_a2a_server() {
     let server = MockA2aServer::start();
     configure_example_server(&server);
+    let collective_context_id = "ctx-multi-agent-demo";
+    let collective_servers = [
+        MockA2aServer::start(),
+        MockA2aServer::start(),
+        MockA2aServer::start(),
+    ];
+    for (server, task_id, completed_text) in [
+        (
+            &collective_servers[0],
+            "task-demo-scout",
+            "scout agent mapped the local demo constraints",
+        ),
+        (
+            &collective_servers[1],
+            "task-demo-analyst",
+            "analyst agent checked the collective workflow state",
+        ),
+        (
+            &collective_servers[2],
+            "task-demo-reviewer",
+            "reviewer agent confirmed the final handoff",
+        ),
+    ] {
+        configure_task_server(server, task_id, collective_context_id, completed_text);
+    }
+    let collective_urls = collective_servers
+        .iter()
+        .map(MockA2aServer::base_url)
+        .collect::<Vec<_>>()
+        .join(",");
 
     let temp = tempdir().expect("tempdir");
     let root = repo_root();
@@ -118,6 +158,7 @@ fn top_level_command_examples_run_against_mock_a2a_server() {
         .current_dir(&root)
         .env("MISSIVE_BIN", env!("CARGO_BIN_EXE_missive"))
         .env("MISSIVE_EXAMPLE_A2A_BASE_URL", server.base_url())
+        .env("MISSIVE_EXAMPLE_MULTI_AGENT_URLS", collective_urls)
         .env("MISSIVE_EXAMPLE_WORKDIR", temp.path().join("examples"))
         .env_remove("MISSIVE_HOME")
         .env_remove("MISSIVE_CONFIG")
@@ -144,6 +185,7 @@ fn top_level_command_examples_run_against_mock_a2a_server() {
         "demo-stream-tasks.sh",
         "demo-contexts-groups.sh",
         "demo-gateway.sh",
+        "demo-multi-agent.sh",
         "agent_inspect",
         "send_result",
         "stream_result",
@@ -151,6 +193,14 @@ fn top_level_command_examples_run_against_mock_a2a_server() {
         "context_export",
         "group_capabilities",
         "gateway_started",
+        "bcast_result",
+        "barrier_result",
+        "gather_result",
+        "reduce_result",
+        "missive.bcast.completed",
+        "missive.barrier.completed",
+        "missive.gather.completed",
+        "missive.reduce.completed",
     ] {
         assert!(
             stdout.contains(marker),

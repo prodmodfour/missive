@@ -15,6 +15,8 @@ MISSIVE_EXAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MISSIVE_REPO_ROOT="$(cd "$MISSIVE_EXAMPLES_DIR/.." && pwd)"
 MISSIVE_EXAMPLE_OWNS_WORKDIR=0
 MISSIVE_EXAMPLE_MOCK_PID=""
+MISSIVE_EXAMPLE_MOCK_PIDS=()
+MISSIVE_EXAMPLE_LAST_A2A_BASE_URL=""
 
 example_usage_hint() {
   cat <<'EOF'
@@ -28,10 +30,11 @@ EOF
 
 example_cleanup() {
   local status=$?
-  if [[ -n "$MISSIVE_EXAMPLE_MOCK_PID" ]]; then
-    kill "$MISSIVE_EXAMPLE_MOCK_PID" >/dev/null 2>&1 || true
-    wait "$MISSIVE_EXAMPLE_MOCK_PID" >/dev/null 2>&1 || true
-  fi
+  local mock_pid
+  for mock_pid in "${MISSIVE_EXAMPLE_MOCK_PIDS[@]}"; do
+    kill "$mock_pid" >/dev/null 2>&1 || true
+    wait "$mock_pid" >/dev/null 2>&1 || true
+  done
   if [[ "$MISSIVE_EXAMPLE_OWNS_WORKDIR" == "1" && "${MISSIVE_EXAMPLE_KEEP_WORKDIR:-0}" != "1" ]]; then
     rm -rf "$MISSIVE_EXAMPLE_WORKDIR"
   elif [[ "$MISSIVE_EXAMPLE_OWNS_WORKDIR" == "1" ]]; then
@@ -86,12 +89,7 @@ run_missive() {
   missive "$@"
 }
 
-example_start_mock_a2a() {
-  if [[ -n "${MISSIVE_EXAMPLE_A2A_BASE_URL:-}" ]]; then
-    return 0
-  fi
-
-  local ready_file="$MISSIVE_EXAMPLE_WORKDIR/mock-a2a-base-url"
+example_mock_a2a_binary() {
   local mock_bin="${MISSIVE_EXAMPLE_MOCK_BIN:-}"
 
   if [[ -z "$mock_bin" ]]; then
@@ -108,28 +106,52 @@ example_start_mock_a2a() {
     mock_bin="$cargo_target_dir/debug/examples/mock_a2a_server"
   fi
 
-  "$mock_bin" --ready-file "$ready_file" \
-    >"$MISSIVE_EXAMPLE_WORKDIR/mock-a2a.stdout" \
-    2>"$MISSIVE_EXAMPLE_WORKDIR/mock-a2a.stderr" &
-  MISSIVE_EXAMPLE_MOCK_PID=$!
+  printf '%s\n' "$mock_bin"
+}
+
+example_start_mock_a2a_instance() {
+  local name="$1"
+  shift
+  local ready_file="$MISSIVE_EXAMPLE_WORKDIR/mock-a2a-${name}-base-url"
+  local stdout_file="$MISSIVE_EXAMPLE_WORKDIR/mock-a2a-${name}.stdout"
+  local stderr_file="$MISSIVE_EXAMPLE_WORKDIR/mock-a2a-${name}.stderr"
+  local mock_bin
+  mock_bin="$(example_mock_a2a_binary)"
+
+  "$mock_bin" --ready-file "$ready_file" "$@" >"$stdout_file" 2>"$stderr_file" &
+  local mock_pid=$!
+  MISSIVE_EXAMPLE_MOCK_PIDS+=("$mock_pid")
+  if [[ -z "$MISSIVE_EXAMPLE_MOCK_PID" ]]; then
+    MISSIVE_EXAMPLE_MOCK_PID="$mock_pid"
+  fi
 
   for _ in {1..200}; do
     if [[ -s "$ready_file" ]]; then
-      MISSIVE_EXAMPLE_A2A_BASE_URL="$(<"$ready_file")"
-      export MISSIVE_EXAMPLE_A2A_BASE_URL
+      MISSIVE_EXAMPLE_LAST_A2A_BASE_URL="$(<"$ready_file")"
+      printf '%s\n' "$MISSIVE_EXAMPLE_LAST_A2A_BASE_URL"
       return 0
     fi
-    if ! kill -0 "$MISSIVE_EXAMPLE_MOCK_PID" >/dev/null 2>&1; then
-      printf 'mock A2A server exited before writing %s\n' "$ready_file" >&2
-      sed -n '1,120p' "$MISSIVE_EXAMPLE_WORKDIR/mock-a2a.stderr" >&2 || true
+    if ! kill -0 "$mock_pid" >/dev/null 2>&1; then
+      printf 'mock A2A server %s exited before writing %s\n' "$name" "$ready_file" >&2
+      sed -n '1,120p' "$stderr_file" >&2 || true
       return 1
     fi
     sleep 0.05
   done
 
-  printf 'timed out waiting for mock A2A server ready file %s\n' "$ready_file" >&2
-  sed -n '1,120p' "$MISSIVE_EXAMPLE_WORKDIR/mock-a2a.stderr" >&2 || true
+  printf 'timed out waiting for mock A2A server %s ready file %s\n' "$name" "$ready_file" >&2
+  sed -n '1,120p' "$stderr_file" >&2 || true
   return 1
+}
+
+example_start_mock_a2a() {
+  if [[ -n "${MISSIVE_EXAMPLE_A2A_BASE_URL:-}" ]]; then
+    return 0
+  fi
+
+  example_start_mock_a2a_instance default >/dev/null
+  MISSIVE_EXAMPLE_A2A_BASE_URL="$MISSIVE_EXAMPLE_LAST_A2A_BASE_URL"
+  export MISSIVE_EXAMPLE_A2A_BASE_URL
 }
 
 example_add_echo_agent() {

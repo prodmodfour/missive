@@ -19,6 +19,7 @@ The smoke runner starts the mock A2A server once, then executes:
 * `examples/demo-stream-tasks.sh` — `stream`, remote `task list/get/wait`, and artifact listing
 * `examples/demo-contexts-groups.sh` — `context` lifecycle, `group` membership, capability summary, and `route explain`
 * `examples/demo-gateway.sh` — short-lived `gateway run` plus gateway event inspection
+* `examples/demo-multi-agent.sh` — three local mock A2A agents running `bcast`, `barrier`, `gather`, `reduce`, and collective event inspection
 
 Each script can also be run directly.
 
@@ -40,17 +41,21 @@ MISSIVE_EXAMPLE_A2A_BASE_URL=http://127.0.0.1:12345  # reuse an existing local m
 MISSIVE_EXAMPLE_WORKDIR=/tmp/missive-examples        # choose the runtime-state parent directory
 MISSIVE_EXAMPLE_KEEP_WORKDIR=1                       # preserve temporary state for inspection
 MISSIVE_EXAMPLE_MOCK_BIN=/path/to/mock_a2a_server    # use a prebuilt mock server helper
+MISSIVE_EXAMPLE_MULTI_AGENT_URLS=http://127.0.0.1:3101,http://127.0.0.1:3102,http://127.0.0.1:3103
 ```
 
 When `MISSIVE_EXAMPLE_A2A_BASE_URL` is unset, the scripts start the helper built
 from `crates/missive-test-support/examples/mock_a2a_server.rs`. That helper
 serves Agent Card discovery, HTTP+JSON send/stream/task endpoints, JSON-RPC
 endpoints, push config routes, and deterministic task/stream fixtures on
-`127.0.0.1`.
+`127.0.0.1`. The multi-agent demo starts three such helper processes unless
+`MISSIVE_EXAMPLE_MULTI_AGENT_URLS` supplies three comma-separated compatible A2A
+base URLs.
 
 ## Safety
 
 The demos intentionally unset `MISSIVE_CONFIG`/`MISSIVE_REPO_CONFIG` and create a
 fresh temporary `MISSIVE_HOME` unless `MISSIVE_EXAMPLE_USE_EXISTING_HOME=1` is
-set. Runtime databases, mock logs, and command output stay under the temporary
-workdir and must not be committed.
+set. Runtime databases, mock logs, machine-readable demo outputs, exported
+artifacts, and command output stay under the temporary workdir and must not be
+committed.

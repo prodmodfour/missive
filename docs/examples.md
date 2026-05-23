@@ -33,6 +33,7 @@ temporary `MISSIVE_HOME` state, and executes these scripts:
 | `examples/demo-stream-tasks.sh` | `stream --ndjson`, remote `task list`, remote `task get`, `task wait`, `task artifact list` |
 | `examples/demo-contexts-groups.sh` | `context create/show/fork/list/export`, `group create/add/show/capabilities`, `route explain` |
 | `examples/demo-gateway.sh` | short-lived `gateway run` and gateway event inspection |
+| `examples/demo-multi-agent.sh` | three local mock A2A agents, `bcast`, `barrier`, `gather`, `reduce`, artifact export, and collective event inspection |
 
 The Rust smoke test `crates/missive-cli/tests/example_smoke.rs` executes the same
 entry point with an already-built `missive` binary, so the examples run during
@@ -47,13 +48,27 @@ MISSIVE_EXAMPLE_A2A_BASE_URL=http://127.0.0.1:12345 examples/run-smoke.sh
 MISSIVE_EXAMPLE_WORKDIR=/tmp/missive-examples examples/run-smoke.sh
 MISSIVE_EXAMPLE_KEEP_WORKDIR=1 examples/run-smoke.sh
 MISSIVE_EXAMPLE_MOCK_BIN=/path/to/mock_a2a_server examples/run-smoke.sh
+MISSIVE_EXAMPLE_MULTI_AGENT_URLS=http://127.0.0.1:3101,http://127.0.0.1:3102,http://127.0.0.1:3103 examples/demo-multi-agent.sh
 ```
 
 When `MISSIVE_EXAMPLE_A2A_BASE_URL` is unset, the scripts build and start the
 helper at `crates/missive-test-support/examples/mock_a2a_server.rs`. The helper
 serves Agent Card discovery, HTTP+JSON send/stream/task endpoints, JSON-RPC
 endpoints, push config routes, and deterministic task/stream fixtures on
-`127.0.0.1`.
+`127.0.0.1`. The multi-agent demo starts three helper processes with distinct
+fixture task ids unless `MISSIVE_EXAMPLE_MULTI_AGENT_URLS` supplies three
+comma-separated compatible A2A base URLs.
+
+## End-to-end multi-agent demo output
+
+`examples/demo-multi-agent.sh` writes machine-readable `bcast.json`,
+`barrier.json`, `gather.json`, `reduce.json`, and `events.json` files under the
+run's temporary `multi-agent-output/` directory. The event file is produced by
+`missive events list --context ctx-multi-agent-demo --source cli --json` and
+contains the `missive.bcast.*`, `missive.barrier.*`, `missive.gather.*`, and
+`missive.reduce.*` operation events emitted by the workflow. See
+[`multi-agent-demo.md`](multi-agent-demo.md) for the full walkthrough and output
+file table.
 
 ## Manual examples and coverage notes
 

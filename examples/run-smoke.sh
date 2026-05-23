@@ -15,7 +15,8 @@ for demo in \
   demo-send.sh \
   demo-stream-tasks.sh \
   demo-contexts-groups.sh \
-  demo-gateway.sh
+  demo-gateway.sh \
+  demo-multi-agent.sh
   do
     printf '\n== Running examples/%s ==\n' "$demo"
     MISSIVE_EXAMPLE_A2A_BASE_URL="$MISSIVE_EXAMPLE_A2A_BASE_URL" \

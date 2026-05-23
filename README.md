@@ -100,7 +100,7 @@ User-facing docs:
 * [`docs/gateway.md`](docs/gateway.md) — gateway daemon run mode, health/status endpoints, HTTP adapter ingress, subscriptions, jobs, sessions, and service helpers.
 * [`docs/adapters.md`](docs/adapters.md) — stdio, file-drop, HTTP adapter surfaces, registry contract, and external stub boundaries.
 * [`docs/push-webhooks.md`](docs/push-webhooks.md) — A2A push config CRUD and the local webhook receiver.
-* [`docs/examples.md`](docs/examples.md) and [`examples/README.md`](examples/README.md) — runnable smoke-tested command demos.
+* [`docs/examples.md`](docs/examples.md), [`docs/multi-agent-demo.md`](docs/multi-agent-demo.md), and [`examples/README.md`](examples/README.md) — runnable smoke-tested command and multi-agent collective demos.
 * [`docs/interoperability.md`](docs/interoperability.md) — opt-in compatibility script for the upstream `a2a-rs` hello-world example agent.
 * [`docs/troubleshooting.md`](docs/troubleshooting.md) — doctor/logs/events workflow and common setup/runtime issues.
 

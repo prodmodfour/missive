@@ -2,6 +2,9 @@
 
 `missive` collective commands coordinate groups of registered A2A agents. The
 currently implemented collectives are broadcast, barrier, gather, and reduce.
+For a runnable local workflow with three mock A2A agents and machine-readable
+outputs, run [`examples/demo-multi-agent.sh`](../examples/demo-multi-agent.sh) or
+see [`multi-agent-demo.md`](multi-agent-demo.md).
 
 ## Broadcast: `missive bcast`
 
